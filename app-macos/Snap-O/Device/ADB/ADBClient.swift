@@ -29,7 +29,9 @@ public struct ADBClient: Sendable {
   }
 
   public func screencapPNG(deviceID: String) async throws -> Data {
-    try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
+    try await ScreenshotDeadline.run {
+      try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
+    }
   }
 
   public func startScreenrecord(

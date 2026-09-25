@@ -37,6 +37,7 @@ struct CaptureHistoryTests {
     try await oversizedGrace()
     try await failureAndRecovery()
     try await screenshotCancellation()
+    try await screenshotTimeout()
     print("Capture history tests passed")
   }
 
@@ -54,6 +55,19 @@ struct CaptureHistoryTests {
       capturedAt: Date(),
       display: DisplayInfo(size: CGSize(width: 100, height: 200), densityScale: 2)
     ))
+  }
+
+  static func screenshotTimeout() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let service = ScreenshotService(adb: ADBService(), fileStore: FileStore(baseDir: root))
+    let start = ContinuousClock.now
+    let result = await service.capture(for: [firstDevice, secondDevice])
+    precondition(start.duration(to: .now) < .seconds(2), "A stalled device must not hold screenshots for ten seconds")
+    precondition(result.media.map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
+    precondition(result.failures.count == 1 && result.failures[0].device.id == secondDevice.id)
+    precondition(result.failures[0].error.localizedDescription.contains("1 second"))
+    await service.shutdown()
   }
 
   static func screenshotCancellation() async throws {

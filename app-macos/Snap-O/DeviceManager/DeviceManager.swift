@@ -62,16 +62,7 @@ final class DeviceManager {
 
   func screenshot(for serial: String) async throws -> Data {
     let exec = await adb.exec()
-    return try await withThrowingTaskGroup(of: Data.self) { group in
-      group.addTask { try await exec.screencapPNG(deviceID: serial) }
-      group.addTask {
-        try await Task.sleep(for: .seconds(5))
-        throw ADBError.requestTimedOut("Device thumbnail timed out")
-      }
-      defer { group.cancelAll() }
-      guard let image = try await group.next() else { throw CancellationError() }
-      return image
-    }
+    return try await exec.screencapPNG(deviceID: serial)
   }
 
   func delete(_ device: ManagedEmulator) {
