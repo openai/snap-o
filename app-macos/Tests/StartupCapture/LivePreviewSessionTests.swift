@@ -8,28 +8,6 @@ enum SnapOLog {
 
 enum TestError: Error { case expected }
 
-/// A blocking stream that only ends when the production session closes it.
-final class ScreenStreamSession: @unchecked Sendable {
-  private let condition = NSCondition()
-  private var isClosed = false
-
-  func read(maxLength _: Int) throws -> Data? {
-    condition.lock()
-    defer { condition.unlock() }
-    while !isClosed {
-      condition.wait()
-    }
-    return nil
-  }
-
-  func close() {
-    condition.lock()
-    isClosed = true
-    condition.broadcast()
-    condition.unlock()
-  }
-}
-
 actor RetryDelays {
   private(set) var values: [Duration] = []
 
@@ -42,7 +20,10 @@ actor RetryDelays {
 actor ADBService {
   private let densityGate: TestGate?
   private let settingsGate: TestGate?
-  private let failsToStart: Bool
+  private let failsWake: Bool
+  private let wakeGate: TestGate?
+  private(set) var keyEvents: [String] = []
+  private(set) var densityQueries = 0
   private let failsSettingRead: Bool
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
@@ -55,8 +36,6 @@ actor ADBService {
   private(set) var commandTimeouts: [Duration?] = []
   private(set) var settingsReadStarted = false
   private(set) var writes: [Bool] = []
-  private(set) var streamStarts = 0
-  private(set) var latestStream: ScreenStreamSession?
 
   init(
     showsTouches: Bool = false,
@@ -66,7 +45,8 @@ actor ADBService {
     blocksBootQuery: Bool = false,
     densityGate: TestGate? = nil,
     settingsGate: TestGate? = nil,
-    failsToStart: Bool = false,
+    failsWake: Bool = false,
+    wakeGate: TestGate? = nil,
     failsSettingRead: Bool = false,
     failsSettingWrite: Bool = false
   ) {
@@ -77,7 +57,8 @@ actor ADBService {
     self.blocksBootQuery = blocksBootQuery
     self.densityGate = densityGate
     self.settingsGate = settingsGate
-    self.failsToStart = failsToStart
+    self.failsWake = failsWake
+    self.wakeGate = wakeGate
     self.failsSettingRead = failsSettingRead
     self.failsSettingWrite = failsSettingWrite
   }
@@ -100,23 +81,20 @@ actor ADBService {
     bootComplete = true
   }
 
-  func keyEvent(deviceID _: String, keyCode _: String) throws {}
+  func keyEvent(deviceID _: String, keyCode: String) async throws {
+    keyEvents.append(keyCode)
+    await wakeGate?.wait()
+    if failsWake { throw TestError.expected }
+  }
 
   func displayDensity(deviceID _: String) async throws -> Int {
+    densityQueries += 1
     await densityGate?.wait()
     if densityFailures > 0 {
       densityFailures -= 1
       throw TestError.expected
     }
     return 3
-  }
-
-  func startScreenStream(deviceID _: String) throws -> ScreenStreamSession {
-    streamStarts += 1
-    if failsToStart { throw TestError.expected }
-    let stream = ScreenStreamSession()
-    latestStream = stream
-    return stream
   }
 
   func withTimeout(_ timeout: Duration?) -> ADBService {
@@ -144,43 +122,6 @@ actor ADBService {
   }
 }
 
-final class H264StreamDecoder: @unchecked Sendable {
-  @MainActor static var latest: H264StreamDecoder?
-  private let formatHandler: (CMFormatDescription) -> Void
-  private let finishLock = NSLock()
-  private var finishes = 0
-
-  var finishCount: Int {
-    finishLock.withLock { finishes }
-  }
-
-  @MainActor
-  init(
-    sampleHandler _: @escaping (CMSampleBuffer, Bool) -> Void,
-    formatHandler: @escaping (CMFormatDescription) -> Void
-  ) {
-    self.formatHandler = formatHandler
-    Self.latest = self
-  }
-
-  func append(_: Data) {}
-  func finish() {
-    dispatchPrecondition(condition: .notOnQueue(.main))
-    finishLock.withLock { finishes += 1 }
-  }
-
-  @MainActor
-  func emitFormat() {
-    var format: CMVideoFormatDescription?
-    let status = CMVideoFormatDescriptionCreate(
-      allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
-      width: 1080, height: 2400, extensions: nil, formatDescriptionOut: &format
-    )
-    guard status == noErr, let format else { fatalError("Could not make video format") }
-    formatHandler(format)
-  }
-}
-
 @main
 @MainActor
 struct LivePreviewSessionTests {
@@ -195,14 +136,17 @@ struct LivePreviewSessionTests {
     try await stoppingEmulatorCancelsBootSetup()
     try await sourceFailureReleasesReadinessWaiters()
     cancellationStopsSourceOnce()
-    try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
     await touchSettingWaitsAreBounded()
     try await shutdownDuringTouchSetup()
     try await startupRestoresSettings()
     try await startupWaitsForBoot()
     try await readyDeviceDoesNotWait()
-    try await physicalDensityDoesNotDelaySession()
+    try await physicalPreviewWakesDevice()
+    try await physicalPreviewWaitsForWakeBeforeStartingSource()
+    try await wakeFailureDoesNotPreventPreview()
+    try await cancellationDuringWakeDoesNotStartSource()
+    try await physicalPreviewDoesNotQueryDensity()
     try await bootQueriesRetryWithBackoff()
     for shutdown in [false, true] {
       try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
@@ -211,8 +155,8 @@ struct LivePreviewSessionTests {
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
   }
 
-  static func makeSession(stream: ScreenStreamSession = ScreenStreamSession()) -> LivePreviewSession {
-    LivePreviewSession(deviceID: "test", densityScale: 3, source: ADBPreviewFrameSource(stream: stream))
+  static func makeSession() -> LivePreviewSession {
+    LivePreviewSession(deviceID: "test", densityScale: 3, source: DeviceVideoSource(deviceID: "test"))
   }
 
   static func readinessWaitersReceiveFirstFormat() async throws {
@@ -225,7 +169,7 @@ struct LivePreviewSessionTests {
     for _ in 0 ..< 20 {
       await Task.yield()
     }
-    H264StreamDecoder.latest?.emitFormat()
+    DeviceVideoSource.latest?.emitFormat()
     let firstMedia = try await first.value
     let secondMedia = try await second.value
     precondition(firstMedia == secondMedia)
@@ -353,13 +297,10 @@ struct LivePreviewSessionTests {
     let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
     let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
     await eventually { await adb.bootQueries > 0 }
-    let earlyStarts = await adb.streamStarts
     let earlySettingsRead = await adb.settingsReadStarted
-    precondition(earlyStarts == 0 && !earlySettingsRead, "Boot wait must precede streams and settings changes")
+    precondition(!earlySettingsRead, "Boot wait must precede settings changes")
     await adb.finishBoot()
     let handle = try await task.value
-    let starts = await adb.streamStarts
-    precondition(starts == 1)
     _ = await service.stop(handle)
   }
 
@@ -374,15 +315,56 @@ struct LivePreviewSessionTests {
     _ = await service.stop(handle)
   }
 
-  static func physicalDensityDoesNotDelaySession() async throws {
-    let gate = TestGate()
-    let adb = ADBService(densityGate: gate)
+  static func physicalPreviewWakesDevice() async throws {
+    let adb = ADBService()
     let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
-    let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
-    precondition(handle.session.media == nil, "Session must exist while density is unavailable")
+    let handle = try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: false))
+    let keys = await adb.keyEvents
+    precondition(keys == ["KEYCODE_WAKEUP"])
+    _ = await service.stop(handle)
+  }
+
+  static func physicalPreviewWaitsForWakeBeforeStartingSource() async throws {
+    let gate = TestGate()
+    let adb = ADBService(wakeGate: gate)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    DeviceVideoSource.latest = nil
+    let startup = Task { try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: false)) }
+    await eventually { await gate.waitCount == 1 }
+    precondition(DeviceVideoSource.latest == nil)
     await gate.open()
-    let interactive = await service.waitUntilInteractive(handle)
-    precondition(interactive)
+    _ = try await service.stop(startup.value)
+  }
+
+  static func wakeFailureDoesNotPreventPreview() async throws {
+    let adb = ADBService(failsWake: true)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    DeviceVideoSource.latest = nil
+    let handle = try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: false))
+    precondition(DeviceVideoSource.latest != nil)
+    _ = await service.stop(handle)
+  }
+
+  static func cancellationDuringWakeDoesNotStartSource() async throws {
+    let gate = TestGate()
+    let adb = ADBService(wakeGate: gate)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    DeviceVideoSource.latest = nil
+    let startup = Task { try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: false)) }
+    await eventually { await gate.waitCount == 1 }
+    startup.cancel()
+    await gate.open()
+    _ = await startup.result
+    precondition(DeviceVideoSource.latest == nil)
+  }
+
+  static func physicalPreviewDoesNotQueryDensity() async throws {
+    let adb = ADBService()
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let handle = try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: false))
+    _ = await service.waitUntilInteractive(handle)
+    let queries = await adb.densityQueries
+    precondition(queries == 0)
     _ = await service.stop(handle)
   }
 
@@ -396,8 +378,7 @@ struct LivePreviewSessionTests {
     let observedDelays = await delays.values
     precondition(observedDelays == [1, 2, 4, 8, 10, 10].map { .seconds($0) })
     let queries = await adb.bootQueries
-    let starts = await adb.streamStarts
-    precondition(queries == 7 && starts == 1, "Failed queries must recover automatically once Android is ready")
+    precondition(queries == 7, "Failed queries must recover automatically once Android is ready")
     _ = await service.stop(handle)
   }
 
@@ -429,21 +410,10 @@ struct LivePreviewSessionTests {
       // Both caller cancellation and shutdown must interrupt discovery immediately.
     }
     precondition(start.duration(to: .now) < .seconds(1), "Cancellation must interrupt the probe or backoff sleep")
-    let starts = await adb.streamStarts
     let settingsRead = await adb.settingsReadStarted
-    precondition(starts == 0 && !settingsRead)
+    precondition(!settingsRead)
     let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
     await coordinator.release(lease)
-  }
-
-  static func streamCompletionFlushesOnce() async throws {
-    let stream = ScreenStreamSession()
-    let session = makeSession(stream: stream)
-    guard let decoder = H264StreamDecoder.latest else { fatalError("Missing decoder") }
-    stream.close()
-    _ = await session.waitUntilStop()
-    session.cancel()
-    precondition(decoder.finishCount == 1)
   }
 
   static func showTouchesRestoration() async {
@@ -603,12 +573,13 @@ struct LivePreviewSessionTests {
     await eventually { await adb.writes == [true, false] }
   }
 
-  enum StartupOutcome: CaseIterable { case success, failure, cancellation }
+  enum StartupOutcome: CaseIterable { case success, cancellation }
 
   static func startupRestoresSettings() async throws {
     for outcome in StartupOutcome.allCases {
       let settingsGate = TestGate()
-      let adb = ADBService(settingsGate: settingsGate, failsToStart: outcome == .failure)
+      let adb = ADBService(settingsGate: settingsGate)
+      DeviceVideoSource.latest = nil
       let coordinator = CaptureCoordinator()
       let service = LivePreviewService(adb: adb, coordinator: coordinator)
       var returned = false
@@ -618,7 +589,7 @@ struct LivePreviewSessionTests {
         return handle
       }
       await eventually { await adb.settingsReadStarted }
-      await eventually { await adb.streamStarts == 1 }
+      await eventually { DeviceVideoSource.latest != nil }
       precondition(!returned, "Stream startup must overlap the blocked settings read")
       if outcome == .cancellation { startup.cancel() }
       await settingsGate.open()
@@ -628,8 +599,6 @@ struct LivePreviewSessionTests {
         let applied = await adb.writes
         precondition(applied == [true])
         _ = await service.stop(handle)
-      } catch TestError.expected {
-        precondition(outcome == .failure)
       } catch is CancellationError {
         precondition(outcome == .cancellation)
       }
@@ -684,5 +653,25 @@ final class EmulatorPreviewFrameSource: TestRawFrameSource {
   init(deviceID _: String) {
     super.init()
     Self.latest = self
+  }
+}
+
+@MainActor
+final class DeviceVideoSource: TestRawFrameSource {
+  static var latest: DeviceVideoSource?
+
+  init(deviceID _: String) {
+    super.init()
+    Self.latest = self
+  }
+
+  func emitFormat() {
+    var format: CMVideoFormatDescription?
+    let status = CMVideoFormatDescriptionCreate(
+      allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
+      width: 1080, height: 2400, extensions: nil, formatDescriptionOut: &format
+    )
+    guard status == noErr, let format else { fatalError("Could not make video format") }
+    deliver?(.format(format))
   }
 }

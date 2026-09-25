@@ -96,47 +96,6 @@ public struct ADBClient: Sendable {
     )
   }
 
-  public func startScreenStream(deviceID: String, bitRateMbps: Int = 8) async throws -> ScreenStreamSession {
-    #if PERF_TRACING
-    let timing = Perf.startupBegin("adb screen stream setup", deviceID: deviceID)
-    defer { Perf.startupEnd(timing) }
-    #endif
-
-    let sizeHint = try? await displaySize(deviceID: deviceID)
-    let command = makeScreenRecordCommand(
-      bitRateMbps: bitRateMbps,
-      timeLimitSeconds: 0,
-      size: sizeHint,
-      destination: "-",
-      outputFormat: "h264"
-    )
-
-    let connection = try await makeConnection()
-    do {
-      try connection.sendTransport(to: deviceID)
-      try connection.sendShell(command)
-    } catch {
-      connection.close()
-      throw error
-    }
-
-    #if PERF_TRACING
-    Perf.startupEvent("adb screen socket open", deviceID: deviceID)
-    #endif
-    #if PERF_TRACING
-    let wakeTiming = Perf.startupBegin("adb wake", deviceID: deviceID)
-    #endif
-    _ = try? await keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
-    #if PERF_TRACING
-    Perf.startupEnd(wakeTiming)
-    #endif
-    return ScreenStreamSession(
-      deviceID: deviceID,
-      connection: connection,
-      startedAt: Date()
-    )
-  }
-
   func isBootComplete(deviceID: String) async throws -> Bool {
     #if PERF_TRACING
     let timing = Perf.startupBegin("adb boot check", deviceID: deviceID)

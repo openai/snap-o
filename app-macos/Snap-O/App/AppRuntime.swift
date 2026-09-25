@@ -44,10 +44,7 @@ final class AppRuntime {
       history: captureHistory.repository,
       startRecording: startRecording
     )
-    let physicalSession: LivePreviewService.PhysicalSession = { deviceID in
-      LivePreviewSession(deviceID: deviceID, densityScale: nil, source: DeviceVideoSource(deviceID: deviceID))
-    }
-    let livePreview = LivePreviewService(adb: adbService, coordinator: captureCoordinator, physicalSession: physicalSession)
+    let livePreview = LivePreviewService(adb: adbService, coordinator: captureCoordinator)
 
     self.deviceManager = deviceManager
     self.adbService = adbService

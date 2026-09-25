@@ -90,6 +90,8 @@ final class LivePreviewSession {
   private func receive(_ event: LivePreviewFrameEvent) {
     guard !hasStopped else { return }
     switch event {
+    case .density(let density):
+      updateDensityScale(density)
     case .format(let format):
       #if PERF_TRACING
       Perf.startupEvent("session format received", deviceID: deviceID)

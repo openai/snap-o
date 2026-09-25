@@ -74,6 +74,7 @@ final class NativeScreenRecording: ScreenRecording {
     guard finishTask == nil else { return }
     do {
       switch event {
+      case .density: break
       case .format(let incoming):
         if let format, writer != nil, !CMFormatDescriptionEqual(format, otherFormatDescription: incoming) {
           throw ADBError.protocolFailure("Recording ended because the device video format changed")

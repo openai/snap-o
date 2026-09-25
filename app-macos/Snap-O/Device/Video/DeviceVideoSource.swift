@@ -64,6 +64,7 @@ private final class DeviceVideoStream {
   private var task: Task<Void, Never>?
   private var timeout: Task<Void, Never>?
   private var format: CMVideoFormatDescription?
+  private var density: CGFloat?
   private let commands = DispatchQueue(label: "snapo.video.commands")
   var isEmpty: Bool {
     subscribers.isEmpty
@@ -76,6 +77,7 @@ private final class DeviceVideoStream {
   func subscribe(_ receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) -> UUID {
     let id = UUID()
     subscribers[id] = Subscriber(receive: receive)
+    if let density { receive(.density(density)) }
     if let format { receive(.format(format)) }
     if task == nil { start() }
     requestKeyFrame()
@@ -136,8 +138,9 @@ private final class DeviceVideoStream {
         while !Task.isCancelled {
           let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
           switch packet {
-          case .display:
+          case .display(_, _, let density, _):
             builder.reset()
+            await self?.receive(.density(CGFloat(density) / 160))
           case .frame(let flags, let timestamp, let data):
             let oldFormat = builder.format
             let sample = try builder.sample(data: data, timestamp: timestamp, flags: flags)
@@ -161,6 +164,8 @@ private final class DeviceVideoStream {
   private func receive(_ event: LivePreviewFrameEvent) {
     guard !hasStopped else { return }
     switch event {
+    case .density(let density):
+      self.density = density
     case .format(let description):
       format = description
       for id in subscribers.keys {

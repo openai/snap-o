@@ -11,6 +11,7 @@ protocol LivePreviewFrameSource: AnyObject {
 
 /// Samples are transferred to the main actor and never mutated after delivery.
 enum LivePreviewFrameEvent: @unchecked Sendable {
+  case density(CGFloat)
   case format(CMVideoFormatDescription)
   case sample(CMSampleBuffer, isKeyFrame: Bool)
   case stopped(Error?)
