@@ -30,7 +30,7 @@ Hold Option and drag to use two touch points for pinch or rotation gestures. Hol
 
 Command-drag the preview to share the current frame as a screenshot, or right-click for **Copy Image** and **Save Image As…**. Each action adds that frame to Capture History. Watching the preview alone does not.
 
-Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device → Start With** to change how new windows open.
+With keyboard focus outside the device image, press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device → Start With** to change how new windows open.
 
 ## Device and emulator controls
 
@@ -39,6 +39,14 @@ Live Preview shows floating controls beside the Capture window. Use **Back**, **
 Physical devices and emulators offer **Rotate Left** and **Rotate Right**. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.
 
 Right-click the controls and choose **Position → Left of Window** or **Position → Below Capture Pane**. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.
+
+## Keyboard input
+
+Click the device image to type, delete text, or use arrow keys. **Keyboard input** is on by default; toggle it in the floating controls. Click outside the image to release keyboard focus.
+
+While the device image has keyboard focus, `⌘C` copies selected Android text and `⌘V` pastes Mac text into Android. These actions also work with clipboard sync off. Use Paste for characters the Android keyboard cannot type, including emoji. To copy the preview image, use its **Copy Image** context menu.
+
+`Esc` goes to Android while the image has keyboard focus, unless it cancels an active gesture or text composition.
 
 ## Clipboard sync
 
@@ -76,7 +84,7 @@ Press `⇧⌘S` to capture a screenshot from all connected Android devices. Use 
 
 ## Record the screen
 
-Press `⇧⌘V` to record the screens of all connected Android devices, and `Esc` to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
+Press `⇧⌘V` to record the screens of all connected Android devices, and `Esc` to stop. Live Preview stays interactive while recording, so you can continue using the device. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
@@ -94,7 +102,7 @@ Each capture action groups its devices into one entry. Double-click an entry to 
 
 Captures start as **Untitled**. Click the name in the Capture pane or history preview to rename it. In the history grid, choose **Rename** from the context menu. The name applies to all devices in that capture.
 
-Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Right-click a selected entry and choose **Delete…** to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
+Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or `⌘Delete`, or right-click a selected entry and choose **Delete…**, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
 
 <details markdown="1" id="manage-history-storage">
 <summary>Manage history storage</summary>
