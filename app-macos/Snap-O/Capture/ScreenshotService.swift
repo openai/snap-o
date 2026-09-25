@@ -13,7 +13,7 @@ actor ScreenshotService {
     let result: Result<CaptureMedia, Error>
   }
 
-  private static let timeoutSeconds = 10
+  private static let timeoutSeconds = 1
 
   private let adb: ADBService
   private let fileStore: FileStore
@@ -167,7 +167,7 @@ actor ScreenshotService {
       group.addTask {
         try await Task.sleep(for: .seconds(timeoutSeconds))
         throw ADBError.requestTimedOut(
-          "Screenshot capture timed out after \(timeoutSeconds) seconds"
+          "Screenshot capture timed out after \(timeoutSeconds) second"
         )
       }
 
