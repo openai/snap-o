@@ -358,8 +358,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   }
 
   func close() {
-    workers.wait()
     lock.withLock { peers.forEach { $0.close() } }
+    workers.wait()
   }
 
   private func connect() throws -> ADBSocketConnection {
@@ -380,88 +380,86 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     DispatchQueue.global().async { [stall, workers, requests, legacyReply, bootOutput] in
       defer { workers.leave() }
       do {
-        try peer.withRequestTimeout(.seconds(2)) {
-          let transport = try Self.readRequest(peer)
-          if transport == "host:devices-l" {
-            if stall == .transport { return }
-            let payload = self.lock.withLock {
-              let payload = self.deviceLists.indices.contains(self.listRequests) ? self.deviceLists[self.listRequests] : ""
-              self.listRequests += 1
-              return payload
-            }
-            Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
-            peer.close()
-            return
+        let transport = try Self.readRequest(peer)
+        if transport == "host:devices-l" {
+          if stall == .transport { return }
+          let payload = self.lock.withLock {
+            let payload = self.deviceLists.indices.contains(self.listRequests) ? self.deviceLists[self.listRequests] : ""
+            self.listRequests += 1
+            return payload
           }
-          if transport == "host:track-devices-l" {
-            if stall != .transport { Self.send("OKAY0000", to: descriptor) }
-            requests.continuation.yield(transport)
-            return
-          }
-          if transport.hasPrefix("host-serial:stalled:") { return }
-          let stalled = transport == "host:transport:stalled"
-          if stalled, stall == .transport { return }
-          if stalled, stall == .partialStatus {
-            Self.send("OK", to: descriptor)
-            return
-          }
-          Self.send("OKAY", to: descriptor)
-          let command = try Self.readRequest(peer)
-          requests.continuation.yield(command)
-          if stalled, stall == .shell { return }
-          Self.send("OKAY", to: descriptor)
-          if command.hasPrefix("localabstract:"), let legacyReply {
-            defer { peer.close() }
-            guard let request = try peer.readLine() else { return }
-            switch legacyReply {
-            case .raw(let response):
-              guard request == "HelloSnapO" else { return }
-              Self.send(response + "\n", to: descriptor)
-            case .http(let body):
-              guard request == "GET /app HTTP/1.1" else { return }
-              while let header = try peer.readLine(), !header.isEmpty {}
-              Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
-            case .trickle:
-              for _ in 0 ..< 200 {
-                if !Self.send("x", to: descriptor) { return }
-                Thread.sleep(forTimeInterval: 0.03)
-              }
-              self.lock.withLock { self.finishedLegacyStream = true }
-            }
-            return
-          }
-          if stalled {
-            if stall == .partialOutput { Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_99\n", to: descriptor) }
-            if stall == .trickle {
-              for _ in 0 ..< 50 {
-                if !Self.send("x", to: descriptor) { break }
-                // Keep the full stream longer than the client's idle timeout.
-                Thread.sleep(forTimeInterval: 0.03)
-              }
-              peer.close()
-            }
-            return
-          }
-          switch command {
-          case "shell:getprop sys.boot_completed":
-            Self.send(bootOutput, to: descriptor)
-          case "shell:" + ToolDiscovery.snapshotCommand:
-            Self.send(
-              "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n",
-              to: descriptor
-            )
-          case "shell:cat /proc/321/cmdline 2>/dev/null":
-            Self.send("com.example.demo:worker\0ignored", to: descriptor)
-          case "shell:cat /proc/321/status 2>/dev/null":
-            Self.send("Uid: 1010234 1010234 1010234 1010234\n", to: descriptor)
-          default:
-            Self.send(
-              "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n",
-              to: descriptor
-            )
-          }
+          Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
           peer.close()
+          return
         }
+        if transport == "host:track-devices-l" {
+          if stall != .transport { Self.send("OKAY0000", to: descriptor) }
+          requests.continuation.yield(transport)
+          return
+        }
+        if transport.hasPrefix("host-serial:stalled:") { return }
+        let stalled = transport == "host:transport:stalled"
+        if stalled, stall == .transport { return }
+        if stalled, stall == .partialStatus {
+          Self.send("OK", to: descriptor)
+          return
+        }
+        Self.send("OKAY", to: descriptor)
+        let command = try Self.readRequest(peer)
+        requests.continuation.yield(command)
+        if stalled, stall == .shell { return }
+        Self.send("OKAY", to: descriptor)
+        if command.hasPrefix("localabstract:"), let legacyReply {
+          defer { peer.close() }
+          guard let request = try peer.readLine() else { return }
+          switch legacyReply {
+          case .raw(let response):
+            guard request == "HelloSnapO" else { return }
+            Self.send(response + "\n", to: descriptor)
+          case .http(let body):
+            guard request == "GET /app HTTP/1.1" else { return }
+            while let header = try peer.readLine(), !header.isEmpty {}
+            Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
+          case .trickle:
+            for _ in 0 ..< 200 {
+              if !Self.send("x", to: descriptor) { return }
+              Thread.sleep(forTimeInterval: 0.03)
+            }
+            self.lock.withLock { self.finishedLegacyStream = true }
+          }
+          return
+        }
+        if stalled {
+          if stall == .partialOutput { Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_99\n", to: descriptor) }
+          if stall == .trickle {
+            for _ in 0 ..< 50 {
+              if !Self.send("x", to: descriptor) { break }
+              // Keep the full stream longer than the client's idle timeout.
+              Thread.sleep(forTimeInterval: 0.03)
+            }
+            peer.close()
+          }
+          return
+        }
+        switch command {
+        case "shell:getprop sys.boot_completed":
+          Self.send(bootOutput, to: descriptor)
+        case "shell:" + ToolDiscovery.snapshotCommand:
+          Self.send(
+            "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n",
+            to: descriptor
+          )
+        case "shell:cat /proc/321/cmdline 2>/dev/null":
+          Self.send("com.example.demo:worker\0ignored", to: descriptor)
+        case "shell:cat /proc/321/status 2>/dev/null":
+          Self.send("Uid: 1010234 1010234 1010234 1010234\n", to: descriptor)
+        default:
+          Self.send(
+            "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n",
+            to: descriptor
+          )
+        }
+        peer.close()
       } catch {
         peer.close()
       }
