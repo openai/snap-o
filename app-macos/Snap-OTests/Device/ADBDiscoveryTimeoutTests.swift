@@ -327,9 +327,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private let stall: Stall
   private let workers = DispatchGroup()
   private let lock = NSLock()
-  private var peers: [ADBSocketConnection] = []
+  private var peers: [(connection: ADBSocketConnection, descriptor: Int32)] = []
   private var connections: [ADBSocketConnection] = []
   private var finishedLegacyStream = false
+  private var isClosed = false
 
   init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n", deviceLists: [String] = []) {
     self.stall = stall
@@ -358,8 +359,15 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   }
 
   func close() {
-    lock.withLock { peers.forEach { $0.close() } }
+    let active = lock.withLock {
+      guard !isClosed else { return [] as [(connection: ADBSocketConnection, descriptor: Int32)] }
+      isClosed = true
+      return peers
+    }
+    // Unblock workers without allowing their raw descriptors to be reused.
+    active.forEach { _ = shutdown($0.descriptor, SHUT_RDWR) }
     workers.wait()
+    active.forEach { $0.connection.close() }
   }
 
   private func connect() throws -> ADBSocketConnection {
@@ -372,11 +380,16 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     let descriptor = descriptors[1]
     var noSigPipe: Int32 = 1
     _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-    lock.withLock {
-      peers.append(peer)
+    try lock.withLock {
+      guard !isClosed else {
+        connection.close()
+        peer.close()
+        throw CancellationError()
+      }
+      peers.append((peer, descriptor))
       connections.append(connection)
+      workers.enter()
     }
-    workers.enter()
     DispatchQueue.global().async { [stall, workers, requests, legacyReply, bootOutput] in
       defer { workers.leave() }
       do {
@@ -389,7 +402,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             return payload
           }
           Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
-          peer.close()
+          _ = shutdown(descriptor, SHUT_RDWR)
           return
         }
         if transport == "host:track-devices-l" {
@@ -410,7 +423,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
         if stalled, stall == .shell { return }
         Self.send("OKAY", to: descriptor)
         if command.hasPrefix("localabstract:"), let legacyReply {
-          defer { peer.close() }
+          defer { _ = shutdown(descriptor, SHUT_RDWR) }
           guard let request = try peer.readLine() else { return }
           switch legacyReply {
           case .raw(let response):
@@ -437,7 +450,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
               // Keep the full stream longer than the client's idle timeout.
               Thread.sleep(forTimeInterval: 0.03)
             }
-            peer.close()
+            _ = shutdown(descriptor, SHUT_RDWR)
           }
           return
         }
@@ -459,9 +472,9 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             to: descriptor
           )
         }
-        peer.close()
+        _ = shutdown(descriptor, SHUT_RDWR)
       } catch {
-        peer.close()
+        _ = shutdown(descriptor, SHUT_RDWR)
       }
     }
     return connection
