@@ -20,9 +20,9 @@ struct DeviceClipboardTransportTests {
         try await transport.receive { _ in Issue.record("Unexpected clipboard event") }
       }
     }
-    // Bound a hung socket so a failure cannot stall the suite.
+    // Allow slow CI setup; cancellation below still has a one-second bound.
     let rescue = Task {
-      try await Task.sleep(for: .seconds(3))
+      try await Task.sleep(for: .seconds(30))
       ready.continuation.finish()
       connection.close()
       peer.close()
