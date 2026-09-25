@@ -130,9 +130,7 @@ private final class DeviceVideoStream {
         try connection.withRequestTimeout(.seconds(8)) {
           try connection.sendTransport(to: deviceID)
           _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
-          guard try Self.readExactly(4, from: connection) == Data([0x53, 0x4E, 0x56, 0x31]) else {
-            throw ADBError.protocolFailure("Unsupported device video protocol")
-          }
+          try DeviceVideoPacket.validateHeader(Self.readExactly(4, from: connection))
         }
         var builder = DeviceVideoSampleBuilder()
         while !Task.isCancelled {

@@ -144,7 +144,7 @@ actor RecordingService {
 
     let lease = try await coordinator.acquire(
       deviceIDs: devices.map(\.id),
-      for: .recording
+      for: options.recordsBugReport ? .bugReportRecording : .recording
     )
     guard !Task.isCancelled, !isShuttingDown else {
       await coordinator.release(lease)

@@ -2,6 +2,7 @@ import Foundation
 
 enum DeviceCaptureActivity: String {
   case recording
+  case bugReportRecording = "bug-report recording"
   case livePreview = "live preview"
 }
 
@@ -26,7 +27,7 @@ struct DeviceCaptureLease: Hashable {
   fileprivate let id: UUID
 }
 
-/// Allows a preview and recording together, with one owner for each activity.
+/// Owns capture compatibility across all windows. Bug-report recording is exclusive.
 actor CaptureCoordinator {
   private var leases: [UUID: (devices: Set<String>, activity: DeviceCaptureActivity)] = [:]
   private var idleWaiters: [CheckedContinuation<Void, Never>] = []
@@ -41,13 +42,22 @@ actor CaptureCoordinator {
     let deviceIDs = Set(deviceIDs)
     guard !deviceIDs.isEmpty else { throw CaptureCoordinationError.noDevices }
 
-    for deviceID in deviceIDs.sorted() where leases.values.contains(where: { $0.activity == activity && $0.devices.contains(deviceID) }) {
-      throw CaptureCoordinationError.deviceBusy(deviceID: deviceID, activity: activity)
+    for deviceID in deviceIDs.sorted() {
+      if let occupant = leases.values.first(where: { $0.devices.contains(deviceID) && !Self.canShare(activity, $0.activity) }) {
+        throw CaptureCoordinationError.deviceBusy(deviceID: deviceID, activity: occupant.activity)
+      }
     }
 
     let lease = DeviceCaptureLease(id: UUID())
     leases[lease.id] = (deviceIDs, activity)
     return lease
+  }
+
+  private static func canShare(_ first: DeviceCaptureActivity, _ second: DeviceCaptureActivity) -> Bool {
+    switch (first, second) {
+    case (.livePreview, .recording), (.recording, .livePreview): true
+    default: false
+    }
   }
 
   func release(_ lease: DeviceCaptureLease) {

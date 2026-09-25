@@ -6,6 +6,14 @@ enum DeviceVideoPacket {
   case display(width: Int, height: Int, density: Int, rotation: Int)
   case frame(flags: UInt32, timestamp: Int64, data: Data)
 
+  static let magic: UInt32 = 0x534E_5631
+
+  static func validateHeader(_ data: Data) throws {
+    guard data.count == 4, data.reduce(UInt32(0), { ($0 << 8) | UInt32($1) }) == magic else {
+      throw ADBError.protocolFailure("Unsupported device video protocol")
+    }
+  }
+
   static let maximumBytes = 16 * 1024 * 1024
 
   static func read(from readBytes: (Int) throws -> Data) throws -> Self {

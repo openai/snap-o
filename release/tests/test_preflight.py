@@ -405,12 +405,20 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("tool-reader/src/Changed.java", report)
         self.assertIn("device-helper/src/Changed.java", report)
 
-    def test_reports_device_video_version(self):
+    def test_reports_device_video_versions(self):
         self.write("device-helper/src/com/openai/snapo/video/Main.java", "private static final int MAGIC = 0x534e5631;\n")
         self.commit()
         report = self.report()
         self.assertIn("Device video helper versioned magic", report)
         self.assertIn("0x534e5631", report)
+        self.assertIn("UNRESOLVED: Device video client versioned magic", report)
+        self.write("app-macos/Snap-O/Device/Video/DeviceVideoPacket.swift", "static let magic: UInt32 = 0x534E5632\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device video client versioned magic", report)
+        self.assertIn("0x534e5631", report)
+        self.assertIn("0x534E5632", report)
+        self.assertNotIn("UNRESOLVED: Device video client versioned magic", report)
 
     def test_reports_device_keyboard_versions(self):
         self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 1;\n")

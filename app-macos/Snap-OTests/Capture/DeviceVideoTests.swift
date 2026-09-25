@@ -8,6 +8,13 @@ import Testing
 @MainActor
 struct DeviceVideoTests {
   @Test
+  func validatesDeviceVideoVersion() throws {
+    try DeviceVideoPacket.validateHeader(Data([0x53, 0x4E, 0x56, 0x31]))
+    #expect(throws: (any Error).self) { try DeviceVideoPacket.validateHeader(Data([0x53, 0x4E, 0x56, 0x32])) }
+    #expect(throws: (any Error).self) { try DeviceVideoPacket.validateHeader(Data([0x53, 0x4E, 0x56])) }
+  }
+
+  @Test
   func rejectsOversizedPacketsBeforeReadingTheirPayload() throws {
     var bytes = Data([2, 0, 0, 0, 1])
     bytes.append(contentsOf: [UInt8](repeating: 0, count: 8))
@@ -43,6 +50,34 @@ struct DeviceVideoTests {
     await coordinator.release(recording)
     await coordinator.release(nextPreview)
     await coordinator.waitUntilIdle()
+  }
+
+  @Test
+  func captureCompatibilityAppliesInBothAcquisitionOrders() async throws {
+    let activities: [DeviceCaptureActivity] = [.livePreview, .recording, .bugReportRecording]
+    for existing in activities {
+      for requested in activities {
+        let coordinator = CaptureCoordinator()
+        let first = try await coordinator.acquire(deviceIDs: ["shared"], for: existing)
+        let independent = try await coordinator.acquire(deviceIDs: ["other"], for: requested)
+        await coordinator.release(independent)
+        switch (existing, requested) {
+        case (.livePreview, .recording), (.recording, .livePreview):
+          let second = try await coordinator.acquire(deviceIDs: ["shared"], for: requested)
+          await coordinator.release(second)
+        default:
+          await #expect(throws: CaptureCoordinationError.deviceBusy(deviceID: "shared", activity: existing)) {
+            try await coordinator.acquire(deviceIDs: ["other", "shared"], for: requested)
+          }
+          let unaffected = try await coordinator.acquire(deviceIDs: ["other"], for: requested)
+          await coordinator.release(unaffected)
+        }
+        await coordinator.release(first)
+        let next = try await coordinator.acquire(deviceIDs: ["shared"], for: requested)
+        await coordinator.release(next)
+        await coordinator.waitUntilIdle()
+      }
+    }
   }
 
   @Test
