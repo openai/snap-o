@@ -51,7 +51,7 @@ final class DeviceVideoSource: LivePreviewFrameSource {
 }
 
 @MainActor
-final class DeviceVideoStream {
+private final class DeviceVideoStream {
   private struct Subscriber {
     let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void
     var needsKeyFrame = true
@@ -60,7 +60,6 @@ final class DeviceVideoStream {
   let deviceID: String
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
-  private let client: ADBClient
   private var connection: ADBSocketConnection?
   private var isReady = false
   private var task: Task<Void, Never>?
@@ -72,9 +71,8 @@ final class DeviceVideoStream {
     subscribers.isEmpty
   }
 
-  init(deviceID: String, client: ADBClient = ADBClient()) {
+  init(deviceID: String) {
     self.deviceID = deviceID
-    self.client = client
   }
 
   func subscribe(_ receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) -> UUID {
@@ -106,7 +104,6 @@ final class DeviceVideoStream {
 
   private func start() {
     let deviceID = deviceID
-    let client = client
     timeout = Task { [weak self] in
       do { try await Task.sleep(for: .seconds(8)) } catch { return }
       self?.receive(.stopped(ADBError.requestTimedOut("Device video did not start")))
@@ -127,7 +124,7 @@ final class DeviceVideoStream {
           chmod 444 "$directory/helper.jar" || exit 1
         CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" 2>/dev/null
         """
-        let connection = try await client.makeConnection()
+        let connection = try await ADBClient().makeConnection()
         socket = connection
         guard await self?.install(connection) == true else { connection.close()
           return
