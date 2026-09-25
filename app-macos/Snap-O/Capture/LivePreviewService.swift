@@ -101,13 +101,7 @@ actor LivePreviewService {
       deviceID: deviceID,
       session: session,
       showTouchesOverride: showTouchesOverride,
-      setupTask: Task {
-        let exec = await adb.exec()
-        if let density = try? await exec.displayDensity(deviceID: deviceID), !Task.isCancelled {
-          await session.updateDensityScale(CGFloat(density))
-        }
-        return showTouchesOverride
-      },
+      setupTask: nil,
       lease: lease
     )
     return LivePreviewOperationHandle(
@@ -118,17 +112,10 @@ actor LivePreviewService {
   }
 
   private func makeSession(for deviceID: String) async throws -> LivePreviewSession {
-    #if PERF_TRACING
-    let timing = Perf.startupBegin("physical session setup", deviceID: deviceID)
-    defer { Perf.startupEnd(timing) }
-    #endif
-    let exec = await adb.exec()
-    let stream = try await exec.startScreenStream(deviceID: deviceID)
-    guard !Task.isCancelled else {
-      stream.close()
-      throw CancellationError()
-    }
-    return await LivePreviewSession(deviceID: deviceID, densityScale: nil, source: ADBPreviewFrameSource(stream: stream))
+    let exec = await adb.exec().withTimeout(.seconds(1))
+    _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
+    try Task.checkCancellation()
+    return await LivePreviewSession(deviceID: deviceID, densityScale: nil, source: DeviceVideoSource(deviceID: deviceID))
   }
 
   private func startEmulator(

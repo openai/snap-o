@@ -37,7 +37,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void = { [weak self] event in
       switch event {
       case .sample, .stopped: self?.startupTimeout?.cancel()
-      case .format: break
+      case .format, .density: break
       }
       deliver(event)
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Android clipboard helper bundled with Snap-O."""
+"""Build the Android device helper bundled with Snap-O."""
 
 import argparse
 import os
@@ -21,7 +21,7 @@ def main():
     java = Path(os.environ["JAVA_HOME"]) / "bin/javac" if "JAVA_HOME" in os.environ else shutil.which("javac")
     if not android.is_file() or not d8.is_file() or not java:
         parser.error("Install Android SDK platform 36, build-tools 36.0.0, and JDK 17.")
-    with tempfile.TemporaryDirectory(prefix="snapo-clipboard-build-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="snapo-device-build-") as temporary:
         temporary = Path(temporary)
         classes = temporary / "classes"
         classes.mkdir()
@@ -40,7 +40,7 @@ def main():
         if args.check:
             if not destination.is_file() or destination.read_bytes() != output.read_bytes():
                 parser.error("Helper is out of date; run device-helper/build.py.")
-            print("Android clipboard helper matches its sources.")
+            print("Android device helper matches its sources.")
         else:
             shutil.copyfile(output, destination)
             print(f"Built {destination.name}: {destination.stat().st_size} bytes")

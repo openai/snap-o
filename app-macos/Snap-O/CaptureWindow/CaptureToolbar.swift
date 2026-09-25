@@ -38,8 +38,6 @@ struct CaptureToolbar: View {
   let transitioningPane: WorkspaceLayoutTransition.Pane?
   let titlebarHeight: CGFloat
 
-  @Environment(AppSettings.self)
-  private var settings
   @Environment(\.openWindow)
   private var openWindow
   @State private var isToolSearchPresented = false
@@ -244,26 +242,26 @@ struct CaptureToolbar: View {
 
   @ViewBuilder
   private func recordingControls() -> some View {
-    let bugReportEnabled = settings.recordAsBugReport
-
-    if controller.isProcessing {
-      Button {} label: {
+    if controller.isFinishingRecording {
+      HStack(spacing: 6) {
         ProgressView()
-          .progressViewStyle(.circular)
           .controlSize(.small)
+        Text("Stopping…")
+          .font(.body.weight(.semibold))
+          .foregroundStyle(.secondary)
       }
-      .help("Stopping Recording")
-      .disabled(true)
     } else {
       Button {
         Task { await controller.stopRecording() }
       } label: {
-        Label("Stop Recording", systemImage: bugReportEnabled ? "ant.circle" : "record.circle")
-          .labelStyle(.iconOnly)
-          .font(SnapOToolbarStyle.iconFont)
-          .symbolEffect(.pulse)
-          .foregroundStyle(.red)
+        Label("Stop Recording", systemImage: "stop.fill")
+          .labelStyle(.titleAndIcon)
+          .font(.body.weight(.semibold))
+          .foregroundStyle(.white)
       }
+      .buttonStyle(.borderedProminent)
+      .buttonBorderShape(.capsule)
+      .tint(.red)
       .help("Stop Recording (⎋)")
       .keyboardShortcut(.escape, modifiers: [])
     }

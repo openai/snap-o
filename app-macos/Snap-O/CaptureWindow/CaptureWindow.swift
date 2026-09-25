@@ -510,11 +510,24 @@ struct CaptureWindow: View {
     }
   }
 
+  private func idleOverlay(controller: CaptureWindowController) -> some View {
+    IdleOverlayView(
+      hasDevices: controller.hasDevices,
+      isDeviceListInitialized: controller.isDeviceListInitialized,
+      isProcessing: controller.isProcessing,
+      isRecording: controller.isRecording,
+      stopRecording: { Task { await controller.stopRecording() } },
+      lastError: controller.lastError
+    )
+  }
+
   private func captureContent(controller: CaptureWindowController) -> some View {
     ZStack {
       captureLetterboxBackground
 
-      if controller.currentCapture != nil {
+      if controller.isFinishingRecording {
+        idleOverlay(controller: controller)
+      } else if controller.currentCapture != nil {
         CaptureSnapshotView(
           controller: controller.snapshotController,
           fileStore: controller.fileStore,
@@ -523,16 +536,26 @@ struct CaptureWindow: View {
       } else if controller.isLivePreviewActive, controller.hasDevices {
         WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: "Connecting to device")
       } else if controller.isDeviceListInitialized {
-        IdleOverlayView(
-          hasDevices: controller.hasDevices,
-          isDeviceListInitialized: controller.isDeviceListInitialized,
-          isProcessing: controller.isProcessing,
-          isRecording: controller.isRecording,
-          stopRecording: { Task { await controller.stopRecording() } },
-          lastError: controller.lastError
-        )
+        idleOverlay(controller: controller)
       } else {
         WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
+      }
+
+      if controller.isLivePreviewActive, let error = controller.lastError {
+        VStack {
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+              .foregroundStyle(.orange)
+            Text(error).font(.caption).textSelection(.enabled)
+            Spacer(minLength: 0)
+            Button("Dismiss", systemImage: "xmark", action: controller.dismissScreenshotFailures)
+              .labelStyle(.iconOnly)
+              .buttonStyle(.plain)
+          }
+          .padding(12)
+          .background(.regularMaterial)
+          Spacer()
+        }
       }
 
       if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {

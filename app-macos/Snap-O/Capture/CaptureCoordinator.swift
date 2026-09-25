@@ -2,6 +2,7 @@ import Foundation
 
 enum DeviceCaptureActivity: String {
   case recording
+  case bugReportRecording = "bug-report recording"
   case livePreview = "live preview"
 }
 
@@ -26,15 +27,9 @@ struct DeviceCaptureLease: Hashable {
   fileprivate let id: UUID
 }
 
-/// Owns app-wide policy shared by mutually exclusive capture modes.
+/// Owns capture compatibility across all windows. Bug-report recording is exclusive.
 actor CaptureCoordinator {
-  private struct Occupant {
-    let leaseID: UUID
-    let activity: DeviceCaptureActivity
-  }
-
-  private var occupants: [String: Occupant] = [:]
-  private var deviceIDsByLeaseID: [UUID: Set<String>] = [:]
+  private var leases: [UUID: (devices: Set<String>, activity: DeviceCaptureActivity)] = [:]
   private var idleWaiters: [CheckedContinuation<Void, Never>] = []
   private var isClosed = false
 
@@ -48,31 +43,25 @@ actor CaptureCoordinator {
     guard !deviceIDs.isEmpty else { throw CaptureCoordinationError.noDevices }
 
     for deviceID in deviceIDs.sorted() {
-      if let occupant = occupants[deviceID] {
-        throw CaptureCoordinationError.deviceBusy(
-          deviceID: deviceID,
-          activity: occupant.activity
-        )
+      if let occupant = leases.values.first(where: { $0.devices.contains(deviceID) && !Self.canShare(activity, $0.activity) }) {
+        throw CaptureCoordinationError.deviceBusy(deviceID: deviceID, activity: occupant.activity)
       }
     }
 
     let lease = DeviceCaptureLease(id: UUID())
-    for deviceID in deviceIDs {
-      occupants[deviceID] = Occupant(
-        leaseID: lease.id,
-        activity: activity
-      )
-    }
-    deviceIDsByLeaseID[lease.id] = deviceIDs
+    leases[lease.id] = (deviceIDs, activity)
     return lease
   }
 
-  func release(_ lease: DeviceCaptureLease) {
-    guard let deviceIDs = deviceIDsByLeaseID.removeValue(forKey: lease.id) else { return }
-
-    for deviceID in deviceIDs where occupants[deviceID]?.leaseID == lease.id {
-      occupants.removeValue(forKey: deviceID)
+  private static func canShare(_ first: DeviceCaptureActivity, _ second: DeviceCaptureActivity) -> Bool {
+    switch (first, second) {
+    case (.livePreview, .recording), (.recording, .livePreview): true
+    default: false
     }
+  }
+
+  func release(_ lease: DeviceCaptureLease) {
+    guard leases.removeValue(forKey: lease.id) != nil else { return }
     resumeIdleWaitersIfNeeded()
   }
 
@@ -81,14 +70,14 @@ actor CaptureCoordinator {
   }
 
   func waitUntilIdle() async {
-    guard !deviceIDsByLeaseID.isEmpty else { return }
+    guard !leases.isEmpty else { return }
     await withCheckedContinuation { continuation in
       idleWaiters.append(continuation)
     }
   }
 
   private func resumeIdleWaitersIfNeeded() {
-    guard deviceIDsByLeaseID.isEmpty else { return }
+    guard leases.isEmpty else { return }
     let waiters = idleWaiters
     idleWaiters.removeAll()
     for waiter in waiters {

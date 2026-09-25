@@ -29,7 +29,8 @@ struct RecordingTests {
     try await unconfirmedStopPreservesRemoteRecording(root: root, video: video)
     try await invalidDownloadPreservesRemoteRecording(root: root)
     try await confirmedRecordingRemovesRemoteCopy(root: root, video: video)
-    print("Recording tests passed (8 cases)")
+    try await bugReportRecordingIsExclusive(root: root, video: video)
+    print("Recording tests passed (9 cases)")
   }
 
   struct Fixture {
@@ -52,6 +53,33 @@ struct RecordingTests {
         await history.currentSnapshot().entries.first?.items.first?.failure != nil
       }
     }
+  }
+
+  static func bugReportRecordingIsExclusive(root: URL, video: URL) async throws {
+    let coordinator = CaptureCoordinator()
+    let adb = ADBService(video: video)
+    let service = RecordingService(adb: adb, fileStore: FileStore(baseDir: root), coordinator: coordinator)
+    let preview = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+    do {
+      _ = try await service.start(for: devices, options: RecordingOptions(recordsBugReport: true, showsTouches: false))
+      fatalError("Another window's preview must block bug-report recording")
+    } catch let error as CaptureCoordinationError {
+      precondition(error == .deviceBusy(deviceID: devices[0].id, activity: .livePreview))
+    }
+    let settings = await adb.touchSettings
+    precondition(settings.isEmpty, "Acquire exclusive access before changing device settings")
+    await coordinator.release(preview)
+    let recording = try await service.start(for: devices, options: RecordingOptions(recordsBugReport: true, showsTouches: false))
+    do {
+      _ = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+      fatalError("An active bug-report recording must block another window's preview")
+    } catch let error as CaptureCoordinationError {
+      precondition(error == .deviceBusy(deviceID: devices[0].id, activity: .bugReportRecording))
+    }
+    await service.cancel(recording)
+    let resumed = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+    await coordinator.release(resumed)
+    await service.shutdown()
   }
 
   static func failedDeviceLeavesHealthyRecordingActive(root: URL, video: URL) async throws {
