@@ -95,16 +95,17 @@ struct LivePreviewKeyboardTests {
     transport.finish()
   }
 
-  @Test
-  func preparesBeforeTypingAndKeepsConnectionAcrossFocusChanges() async {
+  @Test(arguments: [false, true])
+  func preparesBeforeTypingAndPreservesNewFocusInput(staleRequestFails: Bool) async {
     let pasteboard = NSPasteboard.withUniqueName()
     defer { pasteboard.releaseGlobally() }
     pasteboard.setString("original", forType: .string)
     let transport = KeyboardTestTransport()
+    let replacement = KeyboardTestTransport()
     var connections = 0
     let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: pasteboard) { _ in
       connections += 1
-      return transport
+      return connections == 1 ? transport : replacement
     }
     defer { keyboard.stop() }
     keyboard.prepare()
@@ -117,12 +118,24 @@ struct LivePreviewKeyboardTests {
     keyboard.send(.text("discard"))
     keyboard.discardPendingInput()
     keyboard.send(.text("new focus"))
-    transport.finish(.copied("stale copy"))
-    await transport.waitForCount(2)
-    #expect(connections == 1 && !transport.isClosed)
-    #expect(transport.events == [.copy, .text("new focus")])
+    if staleRequestFails {
+      transport.fail()
+      while replacement.events.isEmpty, keyboard.errorMessage == nil {
+        await Task.yield()
+      }
+      #expect(connections == 2 && transport.isClosed)
+      #expect(transport.events == [.copy])
+      #expect(replacement.events == [.text("new focus")])
+      replacement.finish()
+    } else {
+      transport.finish(.copied("stale copy"))
+      await transport.waitForCount(2)
+      #expect(connections == 1 && !transport.isClosed)
+      #expect(transport.events == [.copy, .text("new focus")])
+      transport.finish()
+    }
+    #expect(keyboard.errorMessage == nil)
     #expect(pasteboard.string(forType: .string) == "original")
-    transport.finish()
   }
 
   @Test

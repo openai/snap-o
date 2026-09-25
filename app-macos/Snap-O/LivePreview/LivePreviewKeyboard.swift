@@ -53,7 +53,13 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
 
   private func flush() async {
     guard !Task.isCancelled else { return }
-    defer { if !Task.isCancelled { task = nil } }
+    defer {
+      if !Task.isCancelled {
+        task = nil
+        if !pending.isEmpty { prepare() }
+      }
+    }
+    var revision = inputRevision
     do {
       if transport == nil {
         let connection = try await connect(deviceID)
@@ -64,7 +70,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
         transport = connection
       }
       while !Task.isCancelled, !pending.isEmpty, let transport {
-        let revision = inputRevision
+        revision = inputRevision
         let (event, changeCount) = pending.removeFirst()
         let response = try await transport.send(event)
         guard !Task.isCancelled else { return }
@@ -86,6 +92,12 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
       }
     } catch {
       guard !Task.isCancelled else { return }
+      if revision != inputRevision {
+        // Retry only unsent input from the new focus, never the failed event.
+        transport?.close()
+        transport = nil
+        return
+      }
       stop()
       errorMessage = "Keyboard input unavailable. Check the device connection."
     }
