@@ -8,6 +8,21 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 12.0.0</title>
+        <description sparkle:format="markdown"><![CDATA[- Type, copy, and paste directly in Live Preview.
+- Screen recording now has a live preview so you can continue interacting with the device in Snap-O while you record.
+- Rotate physical devices and emulators with the same controls and keyboard shortcuts.
+- Use new capture shortcuts: ⇧⌘S for screenshots, ⇧⌘V for recording, and ⌘Y for Capture History.
+- Delete selected captures with Delete or ⌘Delete.
+]]></description>
+        <pubDate>Fri, 25 Sep 2026 17:42:40 +0000</pubDate>
+        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20260925.01</sparkle:version>
+        <sparkle:shortVersionString>12.0.0</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/12.0.0/Snap-O.dmg" length="7898057" type="application/octet-stream" sparkle:edSignature="xWc6WUrc93RTx7aZ1wrU5P7jvuidFH93N6A1jF/KN8YTBo9MzA9UqRz174s4mxGfa+8mO2QAzTAmRRztIYVyCQ==" />
+    </item>
+
+    <item>
         <title>Snap‑O 11.2.0</title>
         <description sparkle:format="markdown"><![CDATA[- Select multiple captures in Capture History and delete them together.
 - Start Live Preview faster.
