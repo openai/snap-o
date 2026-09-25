@@ -51,6 +51,8 @@ actor ADBService {
   private var bootFailures: Int
   private let blocksBootQuery: Bool
   private(set) var bootQueries = 0
+  private var writeGate: TestGate?
+  private(set) var commandTimeouts: [Duration?] = []
   private(set) var settingsReadStarted = false
   private(set) var writes: [Bool] = []
   private(set) var streamStarts = 0
@@ -117,8 +119,13 @@ actor ADBService {
     return stream
   }
 
-  func withTimeout(_: Duration?) -> ADBService {
-    self
+  func withTimeout(_ timeout: Duration?) -> ADBService {
+    commandTimeouts.append(timeout)
+    return self
+  }
+
+  func blockWrites(on gate: TestGate) {
+    writeGate = gate
   }
 
   func getShowTouches(deviceID _: String) async throws -> Bool {
@@ -128,7 +135,8 @@ actor ADBService {
     return showsTouches
   }
 
-  func setShowTouches(deviceID _: String, enabled: Bool) throws {
+  func setShowTouches(deviceID _: String, enabled: Bool) async throws {
+    await writeGate?.wait()
     writes.append(enabled)
     showsTouches = enabled
     // A failed command may still have changed the device setting.
@@ -189,6 +197,8 @@ struct LivePreviewSessionTests {
     cancellationStopsSourceOnce()
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
+    await touchSettingWaitsAreBounded()
+    try await shutdownDuringTouchSetup()
     try await startupRestoresSettings()
     try await startupWaitsForBoot()
     try await readyDeviceDoesNotWait()
@@ -499,6 +509,100 @@ struct LivePreviewSessionTests {
     precondition(restoredWrites == [true, false])
   }
 
+  static func touchSettingWaitsAreBounded() async {
+    for cancel in [false, true] {
+      let gate = TestGate()
+      let adb = ADBService(settingsGate: gate)
+      let deviceID = "shared-wait-\(cancel)"
+      let preview = Task {
+        await ShowTouchesOverride.apply(deviceID: deviceID, enabled: true, using: adb)
+      }
+      await eventually { await adb.settingsReadStarted }
+      var returned = false
+      let recording = Task {
+        let lease = await ShowTouchesOverride.apply(
+          deviceID: deviceID, enabled: false, using: adb,
+          timeout: cancel ? .seconds(30) : .milliseconds(30)
+        )
+        returned = true
+        return lease
+      }
+      // Let the second owner join the pending read before cancelling it.
+      try? await Task.sleep(for: .milliseconds(10))
+      if cancel { recording.cancel() }
+      await eventually { returned }
+      let abandoned = await recording.value
+      await abandoned.restore(using: adb)
+      let pendingWrites = await adb.writes
+      precondition(pendingWrites.isEmpty, "A caller must return while the shared read is blocked")
+      await gate.open()
+      let active = await preview.value
+      // Join the latest preference to wait for its queued write to finish.
+      let joined = await ShowTouchesOverride.apply(deviceID: deviceID, enabled: false, using: adb)
+      await joined.restore(using: adb)
+      await active.restore(using: adb)
+      let writes = await adb.writes
+      precondition(writes == [true, false, false], "The remaining owner must retain shared work and restore the original")
+      let timeouts = await adb.commandTimeouts
+      precondition(timeouts.allSatisfy { $0 == .seconds(3) }, "Every shared command needs its own deadline")
+    }
+
+    let gate = TestGate()
+    let adb = ADBService(settingsGate: gate)
+    let abandoned = await ShowTouchesOverride.apply(
+      deviceID: "abandoned-setup", enabled: true, using: adb, timeout: .milliseconds(30)
+    )
+    await abandoned.restore(using: adb)
+    await gate.open()
+    await eventually { await adb.writes == [true, false] }
+
+    for cancel in [false, true] {
+      let adb = ADBService()
+      let lease = await ShowTouchesOverride.apply(deviceID: "blocked-restore-\(cancel)", enabled: true, using: adb)
+      let gate = TestGate()
+      await adb.blockWrites(on: gate)
+      var returned = false
+      let restore = Task {
+        await lease.restore(using: adb, timeout: cancel ? .seconds(30) : .milliseconds(30))
+        returned = true
+      }
+      await eventually { await gate.waitCount == 1 }
+      if cancel { restore.cancel() }
+      await eventually { returned }
+      await restore.value
+      await gate.open()
+      await eventually { await adb.writes == [true, false] }
+    }
+  }
+
+  static func shutdownDuringTouchSetup() async throws {
+    let gate = TestGate()
+    let adb = ADBService(settingsGate: gate)
+    let coordinator = CaptureCoordinator()
+    let service = LivePreviewService(adb: adb, coordinator: coordinator)
+    let startup = Task {
+      try await service.start(for: "shutdown-settings", options: LivePreviewOptions(showsTouches: true))
+    }
+    await eventually { await adb.settingsReadStarted }
+    var stopped = false
+    let shutdown = Task {
+      await service.shutdown()
+      stopped = true
+    }
+    await eventually { stopped }
+    await shutdown.value
+    do {
+      _ = try await startup.value
+      fatalError("Startup must not succeed after shutdown")
+    } catch is CancellationError {
+      // Expected while the device is still unresponsive.
+    }
+    let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .livePreview)
+    await coordinator.release(lease)
+    await gate.open()
+    await eventually { await adb.writes == [true, false] }
+  }
+
   enum StartupOutcome: CaseIterable { case success, failure, cancellation }
 
   static func startupRestoresSettings() async throws {
@@ -529,6 +633,7 @@ struct LivePreviewSessionTests {
       } catch is CancellationError {
         precondition(outcome == .cancellation)
       }
+      await eventually { await adb.writes == [true, false] }
       let writes = await adb.writes
       precondition(writes == [true, false], "Every exit must restore the previous device setting")
       let lease = try await coordinator.acquire(deviceIDs: ["phone"], for: .livePreview)
