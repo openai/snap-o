@@ -7,7 +7,7 @@ struct LivePreviewThumbnailView<Host: LivePreviewHosting>: View {
   let deviceID: String
   let isSelected: Bool
   let size: CGSize
-  @State private var didCheckInitialThumbnail = false
+  @State private var refresh = LivePreviewThumbnailRefresh()
   @Environment(\.displayScale)
   private var displayScale
 
@@ -40,14 +40,32 @@ struct LivePreviewThumbnailView<Host: LivePreviewHosting>: View {
     }
     .task(id: isSelected) {
       guard let thumbnail else { return }
-      thumbnail.pixelSize = CGSize(width: size.width * displayScale, height: size.height * displayScale)
-      guard !didCheckInitialThumbnail else { return }
-      didCheckInitialThumbnail = true
-      guard !isSelected else { return }
-      await thumbnail.refresh(pixelSize: thumbnail.pixelSize) {
+      await refresh.run(
+        thumbnail: thumbnail,
+        isSelected: isSelected,
+        pixelSize: CGSize(width: size.width * displayScale, height: size.height * displayScale)
+      ) {
         try await host.livePreviewScreenshot(for: deviceID)
       }
     }
+  }
+}
+
+@MainActor
+final class LivePreviewThumbnailRefresh {
+  private var didCheckInitialThumbnail = false
+
+  func run(
+    thumbnail: LivePreviewThumbnail,
+    isSelected: Bool,
+    pixelSize: CGSize,
+    capture: () async throws -> Data
+  ) async {
+    thumbnail.pixelSize = pixelSize
+    guard !didCheckInitialThumbnail else { return }
+    didCheckInitialThumbnail = true
+    guard !isSelected else { return }
+    await thumbnail.refresh(pixelSize: pixelSize, load: capture)
   }
 }
 

@@ -96,24 +96,28 @@ enum DeviceClipboardProtocol {
   }
 
   static func readNumber(_ connection: ADBSocketConnection) throws -> UInt32 {
-    try readExactly(4, connection: connection).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    try readExactly(4, read: connection.readChunk).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
   }
 
   static func readText(_ connection: ADBSocketConnection) throws -> String {
-    let length = try readNumber(connection)
+    try readText(read: connection.readChunk)
+  }
+
+  static func readText(read: (Int) throws -> Data?) throws -> String {
+    let length = try readExactly(4, read: read).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
     guard length <= ClipboardSyncState.maximumTextBytes else {
       throw ADBError.protocolFailure("Clipboard text is too large")
     }
-    guard let text = try String(data: readExactly(Int(length), connection: connection), encoding: .utf8) else {
+    guard let text = try String(data: readExactly(Int(length), read: read), encoding: .utf8) else {
       throw ADBError.protocolFailure("Invalid clipboard text")
     }
     return text
   }
 
-  private static func readExactly(_ count: Int, connection: ADBSocketConnection) throws -> Data {
+  private static func readExactly(_ count: Int, read: (Int) throws -> Data?) throws -> Data {
     var data = Data()
     while data.count < count {
-      guard let chunk = try connection.readChunk(maxLength: count - data.count) else {
+      guard let chunk = try read(count - data.count) else {
         throw ADBError.protocolFailure("Clipboard helper disconnected")
       }
       data.append(chunk)

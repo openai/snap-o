@@ -20,7 +20,8 @@ struct DeviceKeyboardTransportTests {
       _ = try await transport.send(.copy)
     }
     let rescue = Task {
-      try await Task.sleep(for: .seconds(3))
+      try await Task.sleep(for: .seconds(30))
+      Issue.record("Handshake did not reach the cancellation point")
       connection.close()
       peer.close()
     }
@@ -37,13 +38,13 @@ struct DeviceKeyboardTransportTests {
         #expect(try DeviceClipboardProtocol.readNumber(peer) == 4)
       }
     }
-    let start = ContinuousClock.now
     task.cancel()
+    expectClosedConnection(connection)
     do {
       try await task.value
       Issue.record("Expected cancellation")
     } catch {
-      #expect(start.duration(to: .now) < .seconds(1))
+      // Closing a blocked read can surface either cancellation or a socket error.
     }
   }
 

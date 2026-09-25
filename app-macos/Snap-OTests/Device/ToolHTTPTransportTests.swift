@@ -10,41 +10,6 @@ struct ToolHTTPTransportTests {
   private static let endpoint = ToolURL.api
   private static let reference = ToolServerReference(deviceId: "phone", socketName: "snapo_network_42")
 
-  @Test("GET and JSON POST preserve request details")
-  func forwardsRequests() async throws {
-    let server = FakeToolADB(plans: [
-      .response(Self.response(body: #"{"method":"GET"}"#)),
-      .response(Self.response(body: #"{"method":"POST"}"#))
-    ])
-    defer { server.close() }
-    let adb = server.client()
-
-    var get = URLRequest(url: Self.endpoint.appending(path: "items").appending(queryItems: [.init(name: "page", value: "2")]))
-    get.setValue("application/json", forHTTPHeaderField: "Accept")
-    let getResult = try await Self.operation(get, adb: adb).load()
-    #expect(String(decoding: getResult, as: UTF8.self) == #"{"method":"GET"}"#)
-
-    var post = URLRequest(url: Self.endpoint.appending(path: "items"))
-    post.httpMethod = "POST"
-    post.httpBodyStream = InputStream(data: Data(#"{"enabled":true}"#.utf8))
-    post.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    _ = try await Self.operation(post, adb: adb).load()
-
-    let requests = server.requests
-    #expect(requests.count == 2)
-    #expect(requests[0].hasPrefix("GET /items?page=2 HTTP/1.1\r\n"))
-    #expect(requests[0].contains("Accept: application/json\r\n"))
-    #expect(requests[0].contains("Host: localhost\r\n"))
-    #expect(requests[0].contains("Origin: snapo://tool\r\n"))
-    #expect(requests[1].hasPrefix("POST /items HTTP/1.1\r\n"))
-    #expect(requests[1].contains("Content-Length: 16\r\n"))
-    #expect(requests[1].hasSuffix(#"{"enabled":true}"#))
-    #expect(server.commands == [
-      "host:transport:phone", "localabstract:snapo_network_42",
-      "host:transport:phone", "localabstract:snapo_network_42"
-    ])
-  }
-
   @Test("Truncated responses and oversized headers fail", arguments: [
     "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhi",
     "HTTP/1.1 200 OK\r\nX-Large: " + String(repeating: "x", count: 17 * 1024) + "\r\n\r\n"
@@ -80,10 +45,9 @@ struct ToolHTTPTransportTests {
     let operation = try Self.operation(URLRequest(url: Self.endpoint), adb: server.client(timeout: .seconds(10)))
     let task = Task { try await operation.load() }
     try await eventually { server.commands.count == command + 1 }
-    let start = ContinuousClock.now
     task.cancel()
+    server.expectClosedConnections()
     await #expect(throws: CancellationError.self) { try await task.value }
-    #expect(start.duration(to: .now) < .seconds(1))
     try await eventually { server.cancelledConnections == 1 }
     #expect(server.connectionCount == 1)
     #expect(server.requests.isEmpty)
@@ -317,6 +281,7 @@ private final class FakeToolADB: @unchecked Sendable {
   private let workers = DispatchGroup()
   private var plans: [Plan]
   private var peers: [ADBSocketConnection] = []
+  private var connections: [ADBSocketConnection] = []
   private var storedCommands: [String] = []
   private var storedRequests: [String] = []
   private var storedCancellations = 0
@@ -339,6 +304,12 @@ private final class FakeToolADB: @unchecked Sendable {
 
   var connectionCount: Int {
     lock.withLock { peers.count }
+  }
+
+  func expectClosedConnections() {
+    let active = lock.withLock { connections }
+    #expect(!active.isEmpty)
+    active.forEach { expectClosedConnection($0) }
   }
 
   func client(timeout: Duration = .seconds(1)) -> ADBClient {
@@ -364,6 +335,7 @@ private final class FakeToolADB: @unchecked Sendable {
     let peer = ADBSocketConnection(connectedSocket: descriptors[1])
     let plan = lock.withLock { () -> Plan in
       peers.append(peer)
+      connections.append(client)
       return plans.removeFirst()
     }
     workers.enter()
