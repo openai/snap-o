@@ -315,6 +315,11 @@ struct RecordingOperationResult {
 actor RecordingService {
   private(set) var requests: [[String]] = []
   private var finishGate: TestGate?
+  private var completedMedia: [CaptureMedia] = []
+
+  func setCompletedMedia(_ media: [CaptureMedia]) {
+    completedMedia = media
+  }
 
   func blockFinish(on gate: TestGate) {
     finishGate = gate
@@ -327,7 +332,7 @@ actor RecordingService {
 
   func waitForCompletion(of handle: RecordingOperationHandle) async -> RecordingOperationResult? {
     await handle.completion.wait()
-    return nil
+    return RecordingOperationResult(media: completedMedia, error: nil)
   }
 
   func updateConnectedDeviceIDs(_: Set<String>, for _: RecordingOperationHandle) {}

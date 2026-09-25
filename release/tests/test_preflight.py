@@ -405,6 +405,13 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("tool-reader/src/Changed.java", report)
         self.assertIn("device-helper/src/Changed.java", report)
 
+    def test_reports_device_video_version(self):
+        self.write("device-helper/src/com/openai/snapo/video/Main.java", "private static final int MAGIC = 0x534e5631;\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device video helper versioned magic", report)
+        self.assertIn("0x534e5631", report)
+
     def test_reports_device_keyboard_versions(self):
         self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 1;\n")
         self.write("app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift", "static let version: UInt32 = 1\n")

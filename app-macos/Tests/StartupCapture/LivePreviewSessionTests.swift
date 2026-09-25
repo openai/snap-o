@@ -447,6 +447,16 @@ struct LivePreviewSessionTests {
       }
     }
 
+    let sharedSettings = ADBService(showsTouches: false)
+    let preview = await ShowTouchesOverride.apply(deviceID: "shared-settings", enabled: true, using: sharedSettings)
+    let recording = await ShowTouchesOverride.apply(deviceID: "shared-settings", enabled: true, using: sharedSettings)
+    await preview.restore(using: sharedSettings)
+    let writesWhileRecording = await sharedSettings.writes
+    precondition(writesWhileRecording == [true], "Ending preview must preserve the recording setting")
+    await recording.restore(using: sharedSettings)
+    let finalWrites = await sharedSettings.writes
+    precondition(finalWrites == [true, false], "The final consumer must restore the original setting")
+
     let unreadable = ADBService(failsSettingRead: true)
     let noOverride = await ShowTouchesOverride.apply(deviceID: "unreadable", enabled: true, using: unreadable)
     await noOverride.restore(using: unreadable)

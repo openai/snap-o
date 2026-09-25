@@ -1,6 +1,6 @@
 # Device helper
 
-Snap-O bundles `snapo-device-helper.jar` for clipboard sync and keyboard input during Live Preview.
+Snap-O bundles `snapo-device-helper.jar` for clipboard sync, keyboard input, and physical-device video.
 It runs through `app_process` as the ADB shell. No APK, root access, or app dependency is required.
 Emulators continue using their existing gRPC clipboard service.
 Keyboard input uses the helper on both emulators and physical devices.
@@ -64,3 +64,31 @@ The preview's Copy Image menu item always copies the image.
 Validate typing, deletion, selection, Unicode paste, and copy with clipboard sync both on and off.
 Verify that changing focus or devices discards queued input. Use synthetic text only.
 See the [internal keyboard contract](../contracts/device-keyboard/README.md).
+
+## Device video
+
+Physical-device preview and normal recording share one hardware AVC encoder per device.
+The Mac decodes preview frames and writes the original compressed samples to MP4.
+Each consumer owns a subscription. Closing a preview does not stop its recording.
+The final subscription closes the ADB connection and ends the helper.
+Emulators retain gRPC preview and Android file recording. Bug-report recordings retain
+Android's overlay writer and temporarily stop preview.
+
+Video uses a separate helper process and connection from keyboard and clipboard input.
+It captures the main display at its current resolution, targeting 16 Mbps and 60 fps.
+Actual frame rate and quality depend on the device encoder and transport.
+The helper uses framework display-mirroring APIs under the shell identity. These APIs
+vary across Android versions and vendors; validate supported devices before release.
+It never captures protected surfaces or bypasses Android's secure-content restrictions.
+
+The Mac requests a keyframe when a recording joins an existing preview. Packet timestamps
+come from the encoder. Slow storage fails the recording instead of silently dropping frames.
+A disconnect or format change finalizes the received video and reports the interruption.
+Rotating a device currently ends its recording; preview reconnects to the new video format.
+
+See the [internal video contract](../contracts/device-video/README.md).
+
+The opt-in `DeviceVideoTests.physicalDeviceKeepsPreviewAndRecordingIndependent` test uses
+`SNAPO_VIDEO_DEVICE_ID`. With `xcodebuild test`, set `TEST_RUNNER_SNAPO_VIDEO_DEVICE_ID`
+to a connected device serial. Use a device showing synthetic content. The test records
+briefly, validates the output, and deletes its temporary movie.

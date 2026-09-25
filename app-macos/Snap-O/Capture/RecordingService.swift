@@ -71,7 +71,7 @@ actor RecordingService {
 
   private struct Entry {
     let device: Device
-    let session: RecordingSession
+    let session: any ScreenRecording
     let showTouchesOverride: ShowTouchesOverride
     var touchRestoration: Task<Void, Never>?
     var stopStatus: StopStatus = .recording
@@ -87,7 +87,7 @@ actor RecordingService {
   }
 
   private struct SessionMonitor {
-    let session: RecordingSession
+    let session: any ScreenRecording
     let task: Task<Void, Never>
   }
 
@@ -99,6 +99,8 @@ actor RecordingService {
     let historyID: UUID?
   }
 
+  typealias StartRecording = @Sendable (String, Bool) async throws -> any ScreenRecording
+  private let startRecording: StartRecording
   private let adb: ADBService
   private let fileStore: FileStore
   private let coordinator: CaptureCoordinator
@@ -115,9 +117,14 @@ actor RecordingService {
     adb: ADBService,
     fileStore: FileStore,
     coordinator: CaptureCoordinator,
-    history: CaptureHistoryRepository? = nil
+    history: CaptureHistoryRepository? = nil,
+    startRecording: StartRecording? = nil
   ) {
     self.adb = adb
+    self.startRecording = startRecording ?? { deviceID, bugReport in
+      let session = try await adb.exec().startScreenrecord(deviceID: deviceID, bugReport: bugReport)
+      return ADBScreenRecording(session: session, adb: adb)
+    }
     self.fileStore = fileStore
     self.coordinator = coordinator
     self.history = history
@@ -242,10 +249,11 @@ actor RecordingService {
     options: RecordingOptions
   ) async -> ([Entry], Error?) {
     let adb = adb
+    let startRecording = startRecording
     var entries: [Entry] = []
     var encounteredError: Error?
 
-    await withTaskGroup(of: (Device, ShowTouchesOverride, Result<RecordingSession, Error>).self) { group in
+    await withTaskGroup(of: (Device, ShowTouchesOverride, Result<any ScreenRecording, Error>).self) { group in
       for device in devices {
         group.addTask {
           let showTouchesOverride = await ShowTouchesOverride.apply(
@@ -254,12 +262,8 @@ actor RecordingService {
             using: adb,
             timeout: .seconds(3)
           )
-          let exec = await adb.exec()
           do {
-            let session = try await exec.startScreenrecord(
-              deviceID: device.id,
-              bugReport: options.recordsBugReport
-            )
+            let session = try await startRecording(device.id, options.recordsBugReport)
             return (device, showTouchesOverride, .success(session))
           } catch {
             await showTouchesOverride.restore(using: adb, timeout: .seconds(3))
@@ -347,7 +351,7 @@ actor RecordingService {
     operation.entries[index].failure = message
     operations[operationID] = operation
     // Record an unconfirmed stop before closing the stream can wake its monitor.
-    entry.session.close()
+    await entry.session.close()
     await restoration.value
     guard let current = operations[operationID] else { return }
     await history?.recordFailure(
@@ -362,7 +366,7 @@ actor RecordingService {
 
   private func complete(
     _ operationID: UUID,
-    endedSession: RecordingSession? = nil
+    endedSession: (any ScreenRecording)? = nil
   ) async {
     guard let operation = takeOperation(
       operationID,
@@ -389,10 +393,10 @@ actor RecordingService {
 
   private func takeOperation(
     _ operationID: UUID,
-    preservingMonitorFor session: RecordingSession? = nil
+    preservingMonitorFor session: (any ScreenRecording)? = nil
   ) -> Operation? {
     guard let operation = operations.removeValue(forKey: operationID) else { return nil }
-    for monitor in operation.sessionMonitors where monitor.session !== session {
+    for monitor in operation.sessionMonitors where monitor.session.id != session?.id {
       monitor.task.cancel()
     }
     return operation
@@ -402,8 +406,7 @@ actor RecordingService {
     guard entry.stopStatus == .recording else { return entry }
     var stopped = entry
     do {
-      try await adb.exec().signalScreenrecordStop(session: entry.session)
-      try await entry.session.waitUntilStopped(timeout: .seconds(5))
+      try await entry.session.stop()
       stopped.stopStatus = .confirmed
     } catch {
       stopped.stopStatus = .unconfirmed
@@ -414,25 +417,25 @@ actor RecordingService {
 
   private func collect(_ entry: Entry, historyID: UUID?) async -> CollectedRecording {
     let stopped = await stopIfRecording(entry)
-    defer { entry.session.close() }
     await stopped.restoreTouches(using: adb)
     let capturedAt = await timestampSource.next()
     let destination = fileStore.makePreviewDestination(deviceID: entry.device.id, capturedAt: capturedAt, kind: .video)
-    let exec = await adb.exec()
 
     do {
       try Task.checkCancellation()
-      try await exec.downloadScreenrecord(session: entry.session, savingTo: destination)
+      try await entry.session.save(to: destination)
       let capture = try await loadRecording(at: destination, device: entry.device, capturedAt: capturedAt)
       let retained = await history?.record(capture, in: historyID) ?? capture
       // Delete only after a confirmed stop and a usable local copy. Recovery keeps the device copy.
       if stopped.stopStatus == .confirmed {
-        try? await exec.removeScreenrecord(session: entry.session)
+        await entry.session.remove()
       }
+      await entry.session.close()
       return CollectedRecording(device: entry.device, media: retained, failure: stopped.failure)
     } catch {
       try? FileManager.default.removeItem(at: destination)
       let message = [stopped.failure, error.localizedDescription].compactMap(\.self).joined(separator: "\n")
+      await entry.session.close()
       return CollectedRecording(device: entry.device, media: nil, failure: message)
     }
   }
@@ -462,8 +465,8 @@ actor RecordingService {
           group.addTask {
             let stopped = await self.stopIfRecording(entry)
             // Explicit discard removes the device copy even when stopping could not be confirmed.
-            try? await self.adb.exec().removeScreenrecord(session: entry.session)
-            entry.session.close()
+            await entry.session.remove()
+            await entry.session.close()
             await stopped.restoreTouches(using: self.adb)
           }
         }

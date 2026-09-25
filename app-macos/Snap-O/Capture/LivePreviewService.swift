@@ -19,6 +19,8 @@ actor LivePreviewService {
     let lease: DeviceCaptureLease
   }
 
+  typealias PhysicalSession = @MainActor @Sendable (String) -> LivePreviewSession
+  private let physicalSession: PhysicalSession?
   private let adb: ADBService
   private let coordinator: CaptureCoordinator
   private let bootRetrySleep: @Sendable (Duration) async throws -> Void
@@ -33,8 +35,10 @@ actor LivePreviewService {
   init(
     adb: ADBService,
     coordinator: CaptureCoordinator,
-    bootRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    bootRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+    physicalSession: PhysicalSession? = nil
   ) {
+    self.physicalSession = physicalSession
     self.adb = adb
     self.coordinator = coordinator
     self.bootRetrySleep = bootRetrySleep
@@ -118,6 +122,7 @@ actor LivePreviewService {
   }
 
   private func makeSession(for deviceID: String) async throws -> LivePreviewSession {
+    if let physicalSession { return await physicalSession(deviceID) }
     #if PERF_TRACING
     let timing = Perf.startupBegin("physical session setup", deviceID: deviceID)
     defer { Perf.startupEnd(timing) }

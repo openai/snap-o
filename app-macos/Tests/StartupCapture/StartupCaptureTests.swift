@@ -59,15 +59,22 @@ struct StartupCaptureTests {
     await restoresPreferredDevice()
     await waitsForPreferredDeviceMedia()
     await stopReleasesWindowLevel()
+    await stopShowsRecordings()
     print("Startup capture tests passed")
   }
 
-  static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
-    for _ in 0 ..< 10000 {
+  static func eventually(
+    _ message: String = "Condition did not become true",
+    file: StaticString = #file,
+    line: UInt = #line,
+    _ condition: () async -> Bool
+  ) async {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while ContinuousClock.now < deadline {
       if await condition() { return }
-      await Task.yield()
+      try? await Task.sleep(for: .milliseconds(1))
     }
-    fatalError(message)
+    fatalError(message, file: file, line: line)
   }
 
   static func prepare(
@@ -909,15 +916,17 @@ struct StartupCaptureTests {
     let fixture = ControllerFixture(devices: [first, second], blockedDisplayDevice: second)
     await fixture.start()
     let command = await fixture.request(recordsVideo: recordsVideo)
-    await fixture.assertNoCaptureRequests()
+    if !recordsVideo { await fixture.assertNoCaptureRequests() }
 
     if previewReadyFirst {
       await fixture.readyGate.open()
     } else {
       await fixture.displayGate.open()
     }
-    await eventually("The explicit command must stop the automatic preview") { await fixture.live.stops.count == 1 }
-    await fixture.assertNoCaptureRequests()
+    if !recordsVideo {
+      await eventually("A screenshot must stop the automatic preview") { await fixture.live.stops.count == 1 }
+      await fixture.assertNoCaptureRequests()
+    }
     await fixture.stopGate.open()
     await command.value
 
@@ -932,7 +941,12 @@ struct StartupCaptureTests {
       }
     }
     let active = await fixture.live.active
-    precondition(active.isEmpty)
+    precondition(recordsVideo ? !active.isEmpty : active.isEmpty)
+    if recordsVideo {
+      precondition(fixture.controller.isLivePreviewActive, "Recording must keep preview interactive")
+      let stops = await fixture.live.stops
+      precondition(stops.isEmpty, "Recording must reuse the startup preview")
+    }
     await fixture.displayGate.open()
     await fixture.controller.tearDown()
   }
@@ -945,7 +959,7 @@ struct StartupCaptureTests {
     await fixture.controller.tearDown()
     await waitForCommand(command)
     await fixture.displayGate.open()
-    await fixture.assertNoCaptureRequests()
+    if !recordsVideo { await fixture.assertNoCaptureRequests() }
     precondition(!fixture.controller.isRecording && !fixture.controller.isLivePreviewActive)
   }
 
@@ -958,7 +972,8 @@ struct StartupCaptureTests {
     await fixture.stopGate.open()
     await fixture.displayGate.open()
     await command.value
-    await fixture.assertNoCaptureRequests()
+    let requests = await fixture.recording.requests
+    precondition(requests.count <= 1, "Disconnection must not start another recording")
     await fixture.controller.tearDown()
   }
 
@@ -979,19 +994,50 @@ struct StartupCaptureTests {
   static func stopReleasesWindowLevel() async {
     let fixture = ControllerFixture()
     AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.displayGate.open()
     await fixture.controller.start()
     await eventually { !fixture.controller.isProcessing && fixture.controller.canStartRecordingNow }
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
     await fixture.controller.startRecording()
-    await eventually { fixture.controller.isRecording }
-    precondition(fixture.controller.shouldFloatRecordingWindow)
+    await eventually { fixture.controller.isRecording && fixture.controller.isLivePreviewActive }
+    precondition(!fixture.controller.shouldFloatRecordingWindow, "Interactive recording must keep normal window behavior")
     let finishGate = TestGate()
     await fixture.recording.blockFinish(on: finishGate)
     let stop = Task { await fixture.controller.stopRecording() }
     await eventually { await finishGate.waitCount > 0 }
-    precondition(fixture.controller.isProcessing && fixture.controller.isRecording)
+    precondition(fixture.controller.isProcessing && fixture.controller.isRecording && fixture.controller.isFinishingRecording)
     precondition(!fixture.controller.shouldFloatRecordingWindow, "Stop must release the window before device work finishes")
     await finishGate.open()
     await stop.value
+    precondition(!fixture.controller.isRecording && fixture.controller.isLivePreviewActive)
+    await fixture.controller.tearDown()
+  }
+
+  static func stopShowsRecordings() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.controller.start()
+    await eventually { fixture.controller.mediaList.count == 2 && !fixture.controller.isProcessing }
+    let media = [first, second].map { device in
+      CaptureMedia(device: device, media: .video(
+        url: URL(fileURLWithPath: "/tmp/recording-\(device.id).mp4"),
+        data: MediaCommon(capturedAt: Date(), display: DisplayInfo(size: CGSize(width: 100, height: 200), densityScale: 1))
+      ))
+    }
+    await fixture.recording.setCompletedMedia(media)
+    fixture.controller.selectDevice(id: second.id)
+    await fixture.controller.startRecording()
+    let stop = Task { await fixture.controller.stopRecording() }
+    await eventually { await fixture.live.stops.count > 0 }
+    precondition(fixture.controller.isProcessing && !fixture.controller.canStartRecordingNow)
+    await fixture.stopGate.open()
+    await stop.value
+    precondition(!fixture.controller.isRecording && !fixture.controller.isLivePreviewActive)
+    precondition(Set(fixture.controller.mediaList.map(\.id)) == Set(media.map(\.id)))
+    precondition(fixture.controller.currentCapture?.media.isVideo == true)
+    precondition(fixture.controller.selectedDeviceID == second.id)
     await fixture.controller.tearDown()
   }
 

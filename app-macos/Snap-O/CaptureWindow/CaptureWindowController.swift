@@ -22,6 +22,8 @@ final class CaptureWindowController {
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var imageCopyID: UUID?
+  private var recordingMode: RecordingMode?
+  private(set) var isFinishingRecording = false
   private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
@@ -137,12 +139,11 @@ final class CaptureWindowController {
   }
 
   var isRecording: Bool {
-    if case .recording = mode { return true }
-    return false
+    recordingMode != nil
   }
 
   var shouldFloatRecordingWindow: Bool {
-    isRecording && !isProcessing
+    isRecording && !isProcessing && !isLivePreviewActive
   }
 
   var isLivePreviewActive: Bool {
@@ -277,66 +278,82 @@ final class CaptureWindowController {
   func startRecording() async {
     guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
     hasStartedInitialCapture = true
+    let recordsBugReport = AppSettings.shared.recordAsBugReport
+    let needsPreview = !isLivePreviewActive && !recordsBugReport
+    guard !isTornDown, !Task.isCancelled else { return }
     isProcessing = true
     await startupPreparation.discard()
     guard !isTornDown else { return }
-    guard await stopLivePreviewForCapture() else { return }
+    guard hasDevices else { isProcessing = false
+      return
+    }
+    if recordsBugReport {
+      guard await stopLivePreviewForCapture() else { return }
+      mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+    }
     let devices = knownDevices
     lastError = nil
     screenshotFailures = []
-    pendingPreferredDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id ?? lastViewedDeviceID
-    mediaDisplayMode.updateMediaList(
-      [],
-      preserveDeviceID: nil,
-      shouldSort: false
-    )
     let recordingMode = RecordingMode(
       recordingService: recordingService,
       devices: devices,
       options: RecordingOptions(
-        recordsBugReport: AppSettings.shared.recordAsBugReport,
+        recordsBugReport: recordsBugReport,
         showsTouches: AppSettings.shared.showTouchesDuringCapture
       )
     ) { [weak self] result in
-      guard let self, !isTornDown else { return }
-      switch result {
-      case .failed(let error):
-        lastError = error.localizedDescription
-        isProcessing = false
-        mode = .idle
-      case .completed(let media, let error):
-        if error == nil, media.isEmpty {
-          mode = .idle
-          Task {
-            isProcessing = false
-            await self.captureScreenshots()
-          }
-        } else {
-          applyCaptureResults(newMedia: media, encounteredError: error)
-        }
-      }
+      await self?.completeRecording(result)
     }
-    mode = .recording(recordingMode)
+    self.recordingMode = recordingMode
     recordingMode.start()
     isProcessing = false
+    if needsPreview { Task { await self.startLivePreview(allowRecording: true) } }
+  }
+
+  private func completeRecording(_ result: RecordingMode.Result) async {
+    guard !isTornDown else { return }
+    isFinishingRecording = true
+    isProcessing = true
+    if case .completed(let media, _) = result, !media.isEmpty,
+       case .livePreview(let preview) = mode {
+      pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
+      await preview.stop()
+      guard !isTornDown else { return }
+      mode = .idle
+    }
+    recordingMode = nil
+    isFinishingRecording = false
+    isProcessing = false
+    switch result {
+    case .failed(let error):
+      lastError = error.localizedDescription
+      if !isLivePreviewActive { mode = .idle }
+    case .completed(let media, let error):
+      if media.isEmpty, isLivePreviewActive {
+        lastError = error?.localizedDescription
+      } else {
+        applyCaptureResults(newMedia: media, encounteredError: error)
+      }
+    }
   }
 
   func stopRecording() async {
-    guard isRecording else { return }
-    guard case .recording(let recordingMode) = mode else { return }
+    guard isRecording, !isFinishingRecording else { return }
+    guard let recordingMode else { return }
 
     isProcessing = true
     lastError = nil
     screenshotFailures = []
 
+    isFinishingRecording = true
     await recordingMode.finish()
   }
 
   func showLivePreview(deviceID: String) async {
     let deadline = Date().addingTimeInterval(20)
     while !isTornDown, !Task.isCancelled, Date() < deadline {
-      if isRecording {
-        lastError = "Stop the screen recording before switching to Live Preview."
+      if isRecording, isLivePreviewActive, knownDevices.contains(where: { $0.id == deviceID }) {
+        selectDevice(id: deviceID)
         return
       }
       if !isProcessing, knownDevices.contains(where: { $0.id == deviceID }) {
@@ -354,8 +371,8 @@ final class CaptureWindowController {
     return knownDevices.first { $0.id == id }?.id
   }
 
-  func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil) async {
-    guard canStartLivePreviewNow else { return }
+  func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil, allowRecording: Bool = false) async {
+    guard canStartLivePreviewNow || (allowRecording && isRecording && !isLivePreviewActive && !isTornDown) else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil
@@ -398,7 +415,7 @@ final class CaptureWindowController {
       },
       onMediaApplied: { [weak self] in
         guard let self, !isTornDown, !isStoppingLivePreview else { return }
-        isProcessing = false
+        isProcessing = isFinishingRecording
         if let pending = pendingPreferredDeviceID, mediaList.contains(where: { $0.device.id == pending }) {
           pendingPreferredDeviceID = nil
         }
@@ -409,7 +426,7 @@ final class CaptureWindowController {
     await livePreviewMode.start(with: knownDevices)
     guard !isTornDown, !livePreviewMode.isStopping,
           case .livePreview(let currentMode) = mode, currentMode === livePreviewMode else { return }
-    isProcessing = false
+    isProcessing = isFinishingRecording
   }
 
   private func stopLivePreviewForCapture() async -> Bool {
@@ -444,7 +461,8 @@ final class CaptureWindowController {
     if case .preparingScreenshot(let screenshotMode) = activeMode {
       screenshotMode.cancel()
     }
-    if case .recording(let recordingMode) = activeMode {
+    if let recordingMode {
+      self.recordingMode = nil
       await recordingMode.cancel()
     }
     if case .livePreview(let livePreviewMode) = activeMode {
@@ -519,7 +537,7 @@ final class CaptureWindowController {
     }
     Task { @MainActor [weak self] in
       guard let self else { return }
-      if case .recording(let recordingMode) = mode {
+      if let recordingMode {
         await recordingMode.updateDevices(devices)
       }
       if case .livePreview(let livePreviewMode) = mode {
@@ -550,7 +568,7 @@ final class CaptureWindowController {
   }
 
   private func waitForInitialCaptureSetup() async -> Bool {
-    guard isProcessing, let task = initialCaptureTask else { return !Task.isCancelled }
+    guard let task = initialCaptureTask else { return !Task.isCancelled }
     // Preview readiness can unblock captures before all startup display queries finish.
     let id = UUID()
     await withTaskCancellationHandler {

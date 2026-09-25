@@ -12,7 +12,7 @@ final class RecordingMode {
   private let recordingService: RecordingService
   private let initialDevices: [Device]
   private let options: RecordingOptions
-  private let onResult: @MainActor (Result) -> Void
+  private let onResult: @MainActor (Result) async -> Void
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var completionTask: Task<Void, Never>?
   private var operation: RecordingOperationHandle?
@@ -23,7 +23,7 @@ final class RecordingMode {
     recordingService: RecordingService,
     devices: [Device],
     options: RecordingOptions,
-    onResult: @escaping @MainActor (Result) -> Void
+    onResult: @escaping @MainActor (Result) async -> Void
   ) {
     self.recordingService = recordingService
     initialDevices = devices
@@ -54,7 +54,7 @@ final class RecordingMode {
       } catch {
         guard !hasCompleted else { return }
         hasCompleted = true
-        onResult(.failed(error))
+        await onResult(.failed(error))
       }
     }
   }
@@ -96,7 +96,7 @@ final class RecordingMode {
       guard !hasCompleted else { return }
       hasCompleted = true
       self.operation = nil
-      onResult(.completed(media: result.media, error: result.error))
+      await onResult(.completed(media: result.media, error: result.error))
     }
   }
 }
