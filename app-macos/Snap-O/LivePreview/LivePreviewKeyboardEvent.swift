@@ -15,6 +15,8 @@ enum LivePreviewKeyboardResponse: Equatable {
 
 @MainActor
 protocol LivePreviewKeyboardHandling: AnyObject {
+  func prepare()
+  func discardPendingInput()
   func send(_ event: LivePreviewKeyboardEvent)
   func stop()
 }

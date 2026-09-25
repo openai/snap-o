@@ -95,39 +95,51 @@ struct LivePreviewKeyboardTests {
     transport.finish()
   }
 
-  @Test
-  func refocusDiscardsStaleCopy() async {
+  @Test(arguments: [false, true])
+  func preparesBeforeTypingAndPreservesNewFocusInput(staleRequestFails: Bool) async {
     let pasteboard = NSPasteboard.withUniqueName()
     defer { pasteboard.releaseGlobally() }
     pasteboard.setString("original", forType: .string)
-    let first = KeyboardTestTransport()
-    let second = KeyboardTestTransport()
+    let transport = KeyboardTestTransport()
+    let replacement = KeyboardTestTransport()
     var connections = 0
-    let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: pasteboard) { deviceID in
-      #expect(deviceID == "test-device")
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: pasteboard) { _ in
       connections += 1
-      return connections == 1 ? first : second
+      return connections == 1 ? transport : replacement
     }
     defer { keyboard.stop() }
+    keyboard.prepare()
+    while connections == 0 {
+      await Task.yield()
+    }
+    #expect(transport.events.isEmpty)
     keyboard.send(.copy)
-    await first.waitForCount(1)
-    keyboard.stop()
+    await transport.waitForCount(1)
+    keyboard.send(.text("discard"))
+    keyboard.discardPendingInput()
     keyboard.send(.text("new focus"))
-    await second.waitForCount(1)
-    first.finish(.copied("stale device copy"))
-    await Task.yield()
-    keyboard.send(.key(code: 67))
-    second.finish()
-    await second.waitForCount(2)
-    #expect(first.isClosed)
-    #expect(!second.isClosed)
+    if staleRequestFails {
+      transport.fail()
+      while replacement.events.isEmpty, keyboard.errorMessage == nil {
+        await Task.yield()
+      }
+      #expect(connections == 2 && transport.isClosed)
+      #expect(transport.events == [.copy])
+      #expect(replacement.events == [.text("new focus")])
+      replacement.finish()
+    } else {
+      transport.finish(.copied("stale copy"))
+      await transport.waitForCount(2)
+      #expect(connections == 1 && !transport.isClosed)
+      #expect(transport.events == [.copy, .text("new focus")])
+      transport.finish()
+    }
+    #expect(keyboard.errorMessage == nil)
     #expect(pasteboard.string(forType: .string) == "original")
-    #expect(second.events == [.text("new focus"), .key(code: 67)])
-    second.finish()
   }
 
   @Test
-  func cancelledConnectionCannotReplaceRefocusedConnection() async {
+  func cancelledConnectionCannotReplaceRestartedConnection() async {
     let first = KeyboardTestTransport()
     let second = KeyboardTestTransport()
     var delayedConnection: CheckedContinuation<any LivePreviewKeyboardTransport, Never>?
@@ -141,7 +153,7 @@ struct LivePreviewKeyboardTests {
       return second
     }
     defer { keyboard.stop() }
-    keyboard.send(.text("old focus"))
+    keyboard.prepare()
     while delayedConnection == nil {
       await Task.yield()
     }
