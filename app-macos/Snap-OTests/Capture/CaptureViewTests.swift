@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import AVFoundation
 @testable import Snap_O
 import SwiftUI
 import Testing
@@ -33,6 +34,26 @@ struct CaptureViewTests {
       view.layoutSubtreeIfNeeded()
       try await eventually { mounted.first?.frame.size == size }
       #expect(mounted.count == 1, "Sizing changes must preserve the mounted media view")
+    }
+  }
+
+  @Test
+  func videoLayerTracksBoundsChanges() throws {
+    let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    defer { store.purgeExistingFiles() }
+    let preview = LivePreviewDisplayView(fileStore: store)
+    let video = try #require(preview.layer?.sublayers?.compactMap { $0 as? AVSampleBufferDisplayLayer }.first)
+
+    for bounds in [
+      CGRect(x: 0, y: 0, width: 240, height: 480),
+      CGRect(x: 24, y: 12, width: 480, height: 240),
+      CGRect(x: 0, y: 0, width: 240, height: 480)
+    ] {
+      preview.setFrameSize(bounds.size)
+      preview.setBoundsOrigin(bounds.origin)
+      preview.needsLayout = true
+      preview.layoutSubtreeIfNeeded()
+      #expect(video.frame == bounds)
     }
   }
 
