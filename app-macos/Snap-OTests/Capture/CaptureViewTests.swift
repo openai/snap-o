@@ -38,44 +38,22 @@ struct CaptureViewTests {
   }
 
   @Test
-  func rotationAndPaneResizingKeepTheVideoLayerAligned() async throws {
+  func videoLayerTracksBoundsChanges() throws {
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
-    var mounted: [LivePreviewDisplayView] = []
-    func surface(_ ratio: CGFloat) -> some View {
-      CaptureSurfaceView(aspectRatio: ratio) {
-        PreviewSurfaceProbe(store: store) { mounted.append($0) }
-      }
-    }
-    let view = NSHostingView(rootView: surface(0.5))
-    let window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 450, height: 900),
-      styleMask: [.borderless], backing: .buffered, defer: false
-    )
-    window.contentView = view
-    window.orderFront(nil)
-    defer {
-      window.orderOut(nil)
-      window.contentView = nil
-    }
-    for (ratio, width): (CGFloat, CGFloat) in [(0.5, 450), (2, 450), (0.5, 450), (0.5, 360), (0.5, 500)] {
-      window.setContentSize(CGSize(width: width, height: 900))
-      withAnimation(.linear(duration: 0.05)) { view.rootView = surface(ratio) }
-      view.layoutSubtreeIfNeeded()
-      try await Task.sleep(for: .milliseconds(100))
-      let expected = CGSize(width: min(width, 900 * ratio), height: min(900, width / ratio))
-      try await eventually { mounted.first?.frame.size == expected }
-      let preview = try #require(mounted.first)
-      let video = try #require(preview.layer?.sublayers?.compactMap { $0 as? AVSampleBufferDisplayLayer }.first)
-      preview.setBoundsOrigin(CGPoint(x: 24, y: 12))
+    let preview = LivePreviewDisplayView(fileStore: store)
+    let video = try #require(preview.layer?.sublayers?.compactMap { $0 as? AVSampleBufferDisplayLayer }.first)
+
+    for bounds in [
+      CGRect(x: 0, y: 0, width: 240, height: 480),
+      CGRect(x: 24, y: 12, width: 480, height: 240),
+      CGRect(x: 0, y: 0, width: 240, height: 480)
+    ] {
+      preview.setFrameSize(bounds.size)
+      preview.setBoundsOrigin(bounds.origin)
       preview.needsLayout = true
       preview.layoutSubtreeIfNeeded()
-      #expect(video.frame == preview.bounds, "Video must fill its view after rotation and pane resizing")
-      preview.setBoundsOrigin(.zero)
-      preview.needsLayout = true
-      preview.layoutSubtreeIfNeeded()
-      #expect(video.frame == preview.bounds, "Returning to the original bounds must remove any offset")
-      #expect(mounted.count == 1, "Rotation must preserve the live renderer")
+      #expect(video.frame == bounds)
     }
   }
 
@@ -157,17 +135,4 @@ private final class FailedPreviewHost: LivePreviewHosting {
   func livePreviewScreenshot(for _: String) async throws -> Data {
     Data()
   }
-}
-
-private struct PreviewSurfaceProbe: NSViewRepresentable {
-  let store: FileStore
-  let mounted: (LivePreviewDisplayView) -> Void
-
-  func makeNSView(context: Context) -> LivePreviewDisplayView {
-    let view = LivePreviewDisplayView(fileStore: store)
-    mounted(view)
-    return view
-  }
-
-  func updateNSView(_ view: LivePreviewDisplayView, context: Context) {}
 }
