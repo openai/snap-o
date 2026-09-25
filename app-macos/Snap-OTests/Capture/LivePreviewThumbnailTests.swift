@@ -59,42 +59,47 @@ struct LivePreviewThumbnailTests {
   }
 
   @Test
-  func pickerRefreshesOtherDevicesOnEachAppearanceAndCancelsOnDismissal() async throws {
-    let host = try ThumbnailHost(png: makePNG())
-    let view = NSHostingView(rootView: picker(host: host, visible: true))
-    let window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 200, height: 100),
-      styleMask: [.borderless], backing: .buffered, defer: false
-    )
-    window.contentView = view
-    defer { window.contentView = nil }
-    view.layoutSubtreeIfNeeded()
-    try await eventually { host.other.thumbnail.image != nil }
-    #expect(host.requests == ["other"])
-
-    view.rootView = picker(host: host, visible: true, selectedID: "other")
-    view.layoutSubtreeIfNeeded()
-    try await Task.sleep(for: .milliseconds(30))
-    #expect(host.requests == ["other"], "Deselecting a live device must not request a screenshot")
-    view.rootView = picker(host: host, visible: true)
-    view.layoutSubtreeIfNeeded()
-    try await Task.sleep(for: .milliseconds(30))
-    #expect(host.requests == ["other"], "Switching back must keep the outgoing device's cached frame")
-
-    view.rootView = picker(host: host, visible: false)
-    view.layoutSubtreeIfNeeded()
-    try await Task.sleep(for: .milliseconds(30))
-    host.holdRequest = true
-    view.rootView = picker(host: host, visible: true)
-    view.layoutSubtreeIfNeeded()
-    try await eventually { host.requests.count == 2 }
-    #expect(host.requests == ["other", "other"])
-    #expect(host.other.thumbnail.image != nil)
-
-    view.rootView = picker(host: host, visible: false)
-    view.layoutSubtreeIfNeeded()
-    try await eventually { host.cancelledRequests == 1 }
-    #expect(!host.other.thumbnail.hasFailed)
+  func refreshPolicyRunsOncePerAppearanceAndSkipsTheSelectedDevice() async throws {
+    let thumbnail = LivePreviewThumbnail()
+    let png = try makePNG()
+    var requests = 0
+    let selected = LivePreviewThumbnailRefresh()
+    for isSelected in [true, false, true] {
+      await selected.run(thumbnail: thumbnail, isSelected: isSelected, pixelSize: CGSize(width: 40, height: 80)) {
+        requests += 1
+        return png
+      }
+    }
+    #expect(requests == 0)
+    let other = LivePreviewThumbnailRefresh()
+    for isSelected in [false, true, false] {
+      await other.run(thumbnail: thumbnail, isSelected: isSelected, pixelSize: CGSize(width: 80, height: 160)) {
+        requests += 1
+        return png
+      }
+    }
+    #expect(requests == 1)
+    #expect(thumbnail.pixelSize == CGSize(width: 80, height: 160))
+    let cached = try #require(thumbnail.image)
+    let nextAppearance = LivePreviewThumbnailRefresh()
+    let entered = AsyncStream<Void>.makeStream()
+    let task = Task {
+      await nextAppearance.run(thumbnail: thumbnail, isSelected: false, pixelSize: CGSize(width: 80, height: 160)) {
+        requests += 1
+        entered.continuation.yield(())
+        try await suspendUntilCancelled(.zero)
+        return png
+      }
+    }
+    var iterator = entered.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    #expect(requests == 2)
+    #expect(thumbnail.image === cached)
+    task.cancel()
+    await task.value
+    #expect(thumbnail.image === cached)
+    #expect(!thumbnail.isLoading)
+    #expect(!thumbnail.hasFailed)
   }
 
   @Test
@@ -164,17 +169,6 @@ struct LivePreviewThumbnailTests {
     #expect(thumbnail.image === cached)
   }
 
-  private func picker(host: ThumbnailHost, visible: Bool, selectedID: String = "selected") -> some View {
-    HStack {
-      if visible {
-        ForEach(["selected", "other"], id: \.self) { id in
-          LivePreviewThumbnailView(host: host, deviceID: id, isSelected: id == selectedID, size: CGSize(width: 40, height: 80))
-            .frame(width: 40, height: 80)
-        }
-      }
-    }
-  }
-
   private func makePNG(size: CGSize = CGSize(width: 320, height: 640)) throws -> Data {
     let bitmap = try #require(NSBitmapImageRep(
       bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
@@ -191,47 +185,5 @@ struct LivePreviewThumbnailTests {
       try await Task.sleep(for: .milliseconds(5))
     }
     try #require(condition())
-  }
-}
-
-@MainActor
-private final class ThumbnailHost: LivePreviewHosting {
-  func canReconnectLivePreview(for _: String) -> Bool {
-    true
-  }
-
-  let selected = LivePreviewConnection()
-  let other = LivePreviewConnection()
-  let png: Data
-  var requests: [String] = []
-  var cancelledRequests = 0
-  var holdRequest = false
-
-  init(png: Data) {
-    self.png = png
-  }
-
-  func livePreviewConnection(for deviceID: String) -> LivePreviewConnection? {
-    deviceID == "selected" ? selected : other
-  }
-
-  func livePreviewScreenshot(for deviceID: String) async throws -> Data {
-    requests.append(deviceID)
-    if holdRequest {
-      do { try await Task.sleep(for: .seconds(60)) } catch {
-        cancelledRequests += 1
-        throw error
-      }
-    }
-    return png
-  }
-
-  func startLivePreviewStream(for _: String) async -> LivePreviewRenderer? {
-    Issue.record("Thumbnails must not start streams")
-    return nil
-  }
-
-  func stopLivePreviewStream(_: LivePreviewRenderer) async {
-    Issue.record("Thumbnails must not stop the selected stream")
   }
 }

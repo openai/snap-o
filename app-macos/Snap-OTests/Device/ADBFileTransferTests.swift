@@ -54,13 +54,12 @@ struct ADBFileTransferTests {
       try await server.client.uploadFile(deviceID: "synthetic-device", localURL: source, remotePath: "/sample") { _ in }
     }
     _ = try await server.receive(acknowledge: false)
-    let start = ContinuousClock.now
     task.cancel()
+    expectClosedConnection(server.connection)
     do {
       try await task.value
       Issue.record("Expected cancellation")
     } catch is CancellationError {}
-    #expect(start.duration(to: .now) < .seconds(1))
   }
 
   @Test("APK drops prompt once and keep mixed files together")
@@ -177,7 +176,7 @@ private func word(_ value: UInt32) -> Data {
 private final class UploadPeer: @unchecked Sendable {
   let client: ADBClient
   private let peer: ADBSocketConnection
-  private let connection: ADBSocketConnection
+  let connection: ADBSocketConnection
 
   init() throws {
     var sockets: [Int32] = [0, 0]

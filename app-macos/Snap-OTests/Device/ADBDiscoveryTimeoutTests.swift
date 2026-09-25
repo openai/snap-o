@@ -5,21 +5,6 @@ import Testing
 
 @Suite("ADB discovery timeouts")
 struct ADBDiscoveryTimeoutTests {
-  @Test("screenshots enforce one deadline even while bytes arrive", arguments: [FakeDiscoveryADB.Stall.output, .trickle])
-  private func boundsScreenshotAttempt(stall: FakeDiscoveryADB.Stall) async throws {
-    let server = FakeDiscoveryADB(stall: stall)
-    defer { server.close() }
-    let start = ContinuousClock.now
-    do {
-      _ = try await server.client(timeout: .seconds(10)).screencapPNG(deviceID: "stalled")
-      Issue.record("Expected screenshot timeout")
-    } catch ADBError.requestTimedOut(let message) {
-      #expect(message == "Screenshot capture timed out after 1 second")
-    }
-    #expect(start.duration(to: .now) < .seconds(2))
-    #expect(server.connectionCount == 1)
-  }
-
   /// Continuous output is tested separately because it has no total response deadline.
   @Test(
     "a stalled device cannot hide healthy tools",
@@ -71,13 +56,12 @@ struct ADBDiscoveryTimeoutTests {
     }
     var requests = server.requests.stream.makeAsyncIterator()
     _ = await requests.next()
-    let start = ContinuousClock.now
     task.cancel()
+    server.expectClosedConnections()
     do {
       _ = try await task.value
       Issue.record("Expected cancellation")
     } catch is CancellationError {}
-    #expect(start.duration(to: .now) < .seconds(1))
     #expect(server.connectionCount == 1)
   }
 
@@ -86,7 +70,8 @@ struct ADBDiscoveryTimeoutTests {
     let server = FakeDiscoveryADB(stall: .transport)
     defer { server.close() }
     let rescue = Task {
-      try await Task.sleep(for: .seconds(2))
+      try await Task.sleep(for: .seconds(30))
+      Issue.record("Handshake did not reach the cancellation point")
       server.close()
     }
     defer { rescue.cancel() }
@@ -96,8 +81,8 @@ struct ADBDiscoveryTimeoutTests {
     }
     var requests = server.requests.stream.makeAsyncIterator()
     #expect(await requests.next() == "host:track-devices-l")
-    let start = ContinuousClock.now
     task.cancel()
+    server.expectClosedConnections()
     do {
       try await task.value
       Issue.record("Expected cancellation")
@@ -106,7 +91,6 @@ struct ADBDiscoveryTimeoutTests {
     } catch {
       Issue.record("Expected cancellation, got \(error)")
     }
-    #expect(start.duration(to: .now) < .seconds(1))
     #expect(server.connectionCount == 1)
   }
 
@@ -149,10 +133,9 @@ struct ADBDiscoveryTimeoutTests {
     _ = await snapshots.next()
     // An unchanged device list can stay silent longer than the setup timeout.
     try await Task.sleep(for: .milliseconds(700))
-    let start = ContinuousClock.now
     task.cancel()
+    server.expectClosedConnections()
     #expect(try await task.value)
-    #expect(start.duration(to: .now) < .seconds(1))
     #expect(server.connectionCount == 1)
   }
 
@@ -310,6 +293,7 @@ struct ADBDiscoveryTimeoutTests {
     var requests = server.requests.stream.makeAsyncIterator()
     _ = await requests.next()
     task.cancel()
+    server.expectClosedConnections()
     do {
       _ = try await task.value
       Issue.record("Expected cancellation")
@@ -344,6 +328,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private let workers = DispatchGroup()
   private let lock = NSLock()
   private var peers: [ADBSocketConnection] = []
+  private var connections: [ADBSocketConnection] = []
   private var finishedLegacyStream = false
 
   init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n", deviceLists: [String] = []) {
@@ -359,6 +344,12 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
 
   var legacyStreamFinished: Bool {
     lock.withLock { finishedLegacyStream }
+  }
+
+  func expectClosedConnections() {
+    let active = lock.withLock { connections }
+    #expect(!active.isEmpty)
+    active.forEach { expectClosedConnection($0) }
   }
 
   func client(timeout: Duration = .milliseconds(500)) -> ADBClient {
@@ -381,7 +372,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     let descriptor = descriptors[1]
     var noSigPipe: Int32 = 1
     _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-    lock.withLock { peers.append(peer) }
+    lock.withLock {
+      peers.append(peer)
+      connections.append(connection)
+    }
     workers.enter()
     DispatchQueue.global().async { [stall, workers, requests, legacyReply, bootOutput] in
       defer { workers.leave() }

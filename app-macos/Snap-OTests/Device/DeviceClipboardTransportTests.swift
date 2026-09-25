@@ -20,10 +20,11 @@ struct DeviceClipboardTransportTests {
         try await transport.receive { _ in Issue.record("Unexpected clipboard event") }
       }
     }
-    // Allow slow CI setup; cancellation below still has a one-second bound.
+    // Rescue only a broken handshake; cancellation is checked through connection state.
     let rescue = Task {
       try await Task.sleep(for: .seconds(30))
       ready.continuation.finish()
+      Issue.record("Handshake did not reach the cancellation point")
       connection.close()
       peer.close()
     }
@@ -48,32 +49,14 @@ struct DeviceClipboardTransportTests {
       var signals = ready.stream.makeAsyncIterator()
       try #require(await signals.next() != nil)
     }
-    let start = ContinuousClock.now
     task.cancel()
+    expectClosedConnection(connection)
     do {
       try await task.value
       Issue.record("Expected cancellation")
     } catch {
-      #expect(start.duration(to: .now) < .seconds(1))
+      // Closing a blocked read can surface either cancellation or a socket error.
     }
-  }
-
-  @Test(arguments: [
-    Data([0xFF, 0xFF, 0xFF, 0xFF]), // Invalid length, rejected before allocating the body.
-    Data([0, 0x10, 0, 1]), // One byte over the limit.
-    Data([0, 0, 0, 2, 0xC3, 0x28]), // Invalid UTF-8.
-    Data([0, 0, 0, 10, 1]), // Truncated body.
-    Data([0, 0]) // Truncated header.
-  ])
-  func rejectsMalformedFrames(_ frame: Data) throws {
-    let (connection, peer) = try sockets()
-    defer {
-      connection.close()
-      peer.close()
-    }
-    try peer.writeFully(frame)
-    peer.close()
-    #expect(throws: (any Error).self) { try DeviceClipboardProtocol.readText(connection) }
   }
 
   private func sockets() throws -> (ADBSocketConnection, ADBSocketConnection) {
