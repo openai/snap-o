@@ -22,7 +22,10 @@ struct ShowTouchesOverride {
 private actor TouchSettingLeases {
   static let shared = TouchSettingLeases()
   private struct Entry {
-    let originalValue: Task<Bool?, Never>
+    var originalValue: Task<Bool?, Never>
+    var enabled: Bool
+    // A failed update may have applied partially, so restore after any preference change.
+    var hasUpdatedPreference = false
     var owners: Set<UUID>
   }
 
@@ -37,7 +40,18 @@ private actor TouchSettingLeases {
         await previous?.value
         return await Self.apply(deviceID: deviceID, enabled: enabled, adb: adb, timeout: timeout)
       }
-      entries[deviceID] = Entry(originalValue: setup, owners: [])
+      entries[deviceID] = Entry(originalValue: setup, enabled: enabled, owners: [])
+    }
+    if var entry = entries[deviceID], entry.enabled != enabled {
+      let previous = entry.originalValue
+      entry.originalValue = Task {
+        guard let original = await previous.value else { return nil }
+        await Self.write(enabled, deviceID: deviceID, adb: adb, timeout: timeout)
+        return original
+      }
+      entry.enabled = enabled
+      entry.hasUpdatedPreference = true
+      entries[deviceID] = entry
     }
     entries[deviceID]?.owners.insert(lease.id)
     _ = await entries[deviceID]?.originalValue.value
@@ -52,7 +66,7 @@ private actor TouchSettingLeases {
     }
     entries.removeValue(forKey: lease.deviceID)
     let task = Task {
-      guard let original = await entry.originalValue.value else { return }
+      guard let original = await entry.originalValue.value, original != entry.enabled || entry.hasUpdatedPreference else { return }
       await Self.write(original, deviceID: lease.deviceID, adb: adb, timeout: timeout)
     }
     cleanup[lease.deviceID] = task
@@ -71,7 +85,7 @@ private actor TouchSettingLeases {
       logFailure(action: "read", deviceID: deviceID, error: error)
       return nil
     }
-    guard original != enabled else { return nil }
+    guard original != enabled else { return original }
     await write(enabled, deviceID: deviceID, adb: adb, timeout: timeout)
     return original
   }

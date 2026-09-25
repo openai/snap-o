@@ -73,13 +73,19 @@ struct DeviceVideoTests {
     recording.receive(.stopped(CocoaError(.fileReadUnknown)))
     await #expect(throws: (any Error).self) { try await stopped.value }
     await #expect(throws: (any Error).self) { try await recording.waitUntilStopped() }
+    let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(recording.id).mp4")
+    await #expect(throws: (any Error).self) { try await recording.save(to: source) }
+    await recording.close()
+    #expect(FileManager.default.fileExists(atPath: temporary.path), "A failed save must preserve the recovery file")
     let saved = directory.appendingPathComponent("saved.mp4")
     try await recording.save(to: saved)
     let result = AVURLAsset(url: saved)
     #expect(try await result.load(.isPlayable))
     let duration = try await result.load(.duration).seconds
     #expect(duration >= 1.5 && duration < 2)
-    await recording.remove()
+    await recording.close()
+    #expect(!FileManager.default.fileExists(atPath: temporary.path), "Closing a recovered recording must remove its temporary file")
+    #expect(FileManager.default.fileExists(atPath: saved.path))
   }
 
   @Test(.enabled(if: ProcessInfo.processInfo.environment["SNAPO_VIDEO_DEVICE_ID"] != nil))

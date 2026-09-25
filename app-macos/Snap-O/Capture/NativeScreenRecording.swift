@@ -12,6 +12,7 @@ final class NativeScreenRecording: ScreenRecording {
   private var format: CMVideoFormatDescription?
   private var lastTimestamp: CMTime?
   private var lastReceivedAt: TimeInterval?
+  private var hasSavedCopy = false
   private var finishTask: Task<Void, Error>?
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -56,6 +57,7 @@ final class NativeScreenRecording: ScreenRecording {
     _ = await finishTask?.result
     guard writer?.status == .completed else { throw writer?.error ?? ADBError.protocolFailure("No playable recording was received") }
     try FileManager.default.copyItem(at: url, to: destination)
+    hasSavedCopy = true
   }
 
   func remove() async {
@@ -65,6 +67,7 @@ final class NativeScreenRecording: ScreenRecording {
 
   func close() async {
     try? await stop()
+    if hasSavedCopy { try? FileManager.default.removeItem(at: url) }
   }
 
   func receive(_ event: LivePreviewFrameEvent) {

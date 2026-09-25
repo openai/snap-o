@@ -457,11 +457,40 @@ struct LivePreviewSessionTests {
     let finalWrites = await sharedSettings.writes
     precondition(finalWrites == [true, false], "The final consumer must restore the original setting")
 
+    for original in [false, true] {
+      for firstRequested in [false, true] {
+        for recordingEndsFirst in [false, true] {
+          let adb = ADBService(showsTouches: original)
+          let preview = await ShowTouchesOverride.apply(deviceID: "changed-settings", enabled: firstRequested, using: adb)
+          let recording = await ShowTouchesOverride.apply(deviceID: "changed-settings", enabled: !firstRequested, using: adb)
+          var expected = original == firstRequested ? [] : [firstRequested]
+          expected.append(!firstRequested)
+          let applied = await adb.writes
+          precondition(applied == expected, "A new consumer must apply the latest preference")
+          await (recordingEndsFirst ? recording : preview).restore(using: adb)
+          let sharedWrites = await adb.writes
+          precondition(sharedWrites == expected, "The latest preference stays active until the final consumer exits")
+          await (recordingEndsFirst ? preview : recording).restore(using: adb)
+          expected.append(original)
+          let restored = await adb.writes
+          precondition(restored == expected, "Restore the original value even when the first consumer did not change it")
+        }
+      }
+    }
+
     let unreadable = ADBService(failsSettingRead: true)
     let noOverride = await ShowTouchesOverride.apply(deviceID: "unreadable", enabled: true, using: unreadable)
     await noOverride.restore(using: unreadable)
     let skippedWrites = await unreadable.writes
     precondition(skippedWrites.isEmpty)
+
+    let failedUpdate = ADBService(showsTouches: false, failsSettingWrite: true)
+    let first = await ShowTouchesOverride.apply(deviceID: "failed-update", enabled: true, using: failedUpdate)
+    let second = await ShowTouchesOverride.apply(deviceID: "failed-update", enabled: false, using: failedUpdate)
+    await first.restore(using: failedUpdate)
+    await second.restore(using: failedUpdate)
+    let retriedRestore = await failedUpdate.writes
+    precondition(retriedRestore == [true, false, false], "A failed preference update must not skip final restoration")
 
     let partialWrite = ADBService(failsSettingWrite: true)
     let override = await ShowTouchesOverride.apply(deviceID: "partial-write", enabled: true, using: partialWrite)
