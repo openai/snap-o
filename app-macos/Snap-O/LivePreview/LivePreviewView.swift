@@ -204,7 +204,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     displayLayer.videoGravity = .resizeAspect
     updateDisplayLayerBackgroundColor()
     displayLayer.frame = bounds
-    displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -353,6 +352,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   override func layout() {
     super.layout()
+    // Rotation can change both the size and origin of the hosted view's bounds.
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    displayLayer.frame = bounds
+    CATransaction.commit()
     updateTouchOverlay()
   }
 
