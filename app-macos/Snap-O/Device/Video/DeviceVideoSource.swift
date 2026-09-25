@@ -61,6 +61,7 @@ private final class DeviceVideoStream {
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
   private var connection: ADBSocketConnection?
+  private var isReady = false
   private var task: Task<Void, Never>?
   private var timeout: Task<Void, Never>?
   private var format: CMVideoFormatDescription?
@@ -97,7 +98,7 @@ private final class DeviceVideoStream {
   }
 
   private func requestKeyFrame() {
-    guard let connection else { return }
+    guard isReady, !hasStopped, let connection else { return }
     commands.async { try? connection.writeFully(Data([1])) }
   }
 
@@ -134,6 +135,7 @@ private final class DeviceVideoStream {
           _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
           try DeviceVideoPacket.validateHeader(Self.readExactly(4, from: connection))
         }
+        await self?.markReady()
         var builder = DeviceVideoSampleBuilder()
         while !Task.isCancelled {
           let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
@@ -153,6 +155,12 @@ private final class DeviceVideoStream {
       }
       socket?.close()
     }
+  }
+
+  private func markReady() {
+    guard !hasStopped else { return }
+    isReady = true
+    requestKeyFrame()
   }
 
   private func install(_ connection: ADBSocketConnection) -> Bool {
