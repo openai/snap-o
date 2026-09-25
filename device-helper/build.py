@@ -21,6 +21,9 @@ def main():
     java = Path(os.environ["JAVA_HOME"]) / "bin/javac" if "JAVA_HOME" in os.environ else shutil.which("javac")
     if not android.is_file() or not d8.is_file() or not java:
         parser.error("Install Android SDK platform 36, build-tools 36.0.0, and JDK 17.")
+    version = subprocess.run([str(java), "-version"], capture_output=True, text=True, check=True)
+    if not (version.stdout + version.stderr).strip().startswith("javac 17."):
+        parser.error("Set JAVA_HOME to JDK 17 so the bundled helper matches CI.")
     with tempfile.TemporaryDirectory(prefix="snapo-device-build-") as temporary:
         temporary = Path(temporary)
         classes = temporary / "classes"
