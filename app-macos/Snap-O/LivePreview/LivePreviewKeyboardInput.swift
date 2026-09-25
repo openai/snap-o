@@ -9,14 +9,16 @@ extension LivePreviewDisplayView: @preconcurrency NSTextInputClient {
   func configureKeyboard(_ handler: (any LivePreviewKeyboardHandling)?) {
     guard keyboard !== handler else { return }
     releaseKeyboardFocus()
+    keyboard?.stop()
     keyboard = handler
+    keyboard?.prepare()
   }
 
   func releaseKeyboardFocus() {
     keyboardArmed = false
     unmarkText()
     inputContext?.discardMarkedText()
-    keyboard?.stop()
+    keyboard?.discardPendingInput()
   }
 
   override func resignFirstResponder() -> Bool {

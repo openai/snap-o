@@ -38,6 +38,16 @@ enum LivePreviewPointerSource { case mouse, touchscreen }
 private final class KeyboardRecorder: LivePreviewKeyboardHandling {
   var events: [LivePreviewKeyboardEvent] = []
   var stops = 0
+  var preparations = 0
+  var discardedInputs = 0
+  func prepare() {
+    preparations += 1
+  }
+
+  func discardPendingInput() {
+    discardedInputs += 1
+  }
+
   func send(_ event: LivePreviewKeyboardEvent) {
     events.append(event)
   }
@@ -141,6 +151,7 @@ struct LivePreviewFrameExportTests {
     }
     click()
     precondition(view.canSendKeyboardInput)
+    precondition(recorder.preparations == 1, "Preview setup must prepare keyboard input")
     let stopsBeforeUpdate = recorder.stops
     view.configureKeyboard(recorder)
     precondition(view.canSendKeyboardInput && recorder.stops == stopsBeforeUpdate, "View updates must preserve typing focus")
@@ -191,13 +202,14 @@ struct LivePreviewFrameExportTests {
     view.update(with: renderer, isVisible: true)
     precondition(!view.canSendKeyboardInput, "Unhiding must not rearm typing")
     click()
+    precondition(recorder.stops == 0, "Focus changes must keep keyboard input connected")
     view.configureKeyboard(nil)
     precondition(!view.performKeyEquivalent(with: key(53, characters: "\u{1B}")))
     view.sendKeyboard(.text("disabled"))
     precondition(!view.canSendKeyboardInput && recorder.events.count == 5)
     view.configureKeyboard(recorder)
     precondition(!view.canSendKeyboardInput, "Enabling must require another click")
-    precondition(recorder.stops > 0)
+    precondition(recorder.discardedInputs > 0 && recorder.stops == 1 && recorder.preparations == 2)
   }
 
   private static func keyboardOnlySendsFromFocusedWindow(store: FileStore) {
@@ -238,10 +250,10 @@ struct LivePreviewFrameExportTests {
     }
     precondition(recorders[0].events == [.text("first")] && recorders[1].events.isEmpty)
 
-    let stops = recorders.map(\.stops)
+    let discardedInputs = recorders.map(\.discardedInputs)
     windows[0].testKey = false
     NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: windows[0])
-    precondition(recorders[0].stops == stops[0] + 1 && recorders[1].stops == stops[1])
+    precondition(recorders[0].discardedInputs == discardedInputs[0] + 1 && recorders[1].discardedInputs == discardedInputs[1])
     precondition(!views[0].keyboardArmed, "Losing the key window must release keyboard focus")
     windows[1].testKey = true
     for view in views {
@@ -294,10 +306,10 @@ struct LivePreviewFrameExportTests {
         selectedRange: NSRange(location: 7, length: 0),
         replacementRange: NSRange(location: NSNotFound, length: 0)
       )
-      let stops = recorder.stops
+      let discardedInputs = recorder.discardedInputs
       NSApplication.shared.sendEvent(event)
       precondition(!view.canSendKeyboardInput && !view.hasMarkedText())
-      precondition(recorder.stops == stops + 1, "Every click that ends typing must stop queued input")
+      precondition(recorder.discardedInputs == discardedInputs + 1, "Every click that ends typing must discard queued input")
       view.insertText("must not send", replacementRange: NSRange(location: NSNotFound, length: 0))
       precondition(recorder.events.isEmpty)
     }

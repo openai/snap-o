@@ -14,6 +14,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
   @ObservationIgnored private let pasteboard: NSPasteboard
   @ObservationIgnored private let deviceID: String
   @ObservationIgnored private var pending: [(LivePreviewKeyboardEvent, Int)] = []
+  @ObservationIgnored private var inputRevision = 0
   @ObservationIgnored private var task: Task<Void, Never>?
   @ObservationIgnored private var transport: (any LivePreviewKeyboardTransport)?
 
@@ -27,10 +28,19 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
     self.connect = connect
   }
 
+  func prepare() {
+    guard task == nil, transport == nil || !pending.isEmpty else { return }
+    task = Task { await flush() }
+  }
+
   func send(_ event: LivePreviewKeyboardEvent) {
     pending.append((event, pasteboard.changeCount))
-    guard task == nil else { return }
-    task = Task { await flush() }
+    prepare()
+  }
+
+  func discardPendingInput() {
+    inputRevision += 1
+    pending.removeAll()
   }
 
   func stop() {
@@ -38,7 +48,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
     task = nil
     transport?.close()
     transport = nil
-    pending.removeAll()
+    discardPendingInput()
   }
 
   private func flush() async {
@@ -54,9 +64,12 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
         transport = connection
       }
       while !Task.isCancelled, !pending.isEmpty, let transport {
+        let revision = inputRevision
         let (event, changeCount) = pending.removeFirst()
         let response = try await transport.send(event)
         guard !Task.isCancelled else { return }
+        // Finish the wire response, but ignore results from a previous keyboard focus.
+        guard revision == inputRevision else { continue }
         switch response {
         case .sent:
           errorMessage = nil
@@ -74,7 +87,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
     } catch {
       guard !Task.isCancelled else { return }
       stop()
-      errorMessage = "Couldn’t send keyboard input. Check the device connection."
+      errorMessage = "Keyboard input unavailable. Check the device connection."
     }
   }
 }
