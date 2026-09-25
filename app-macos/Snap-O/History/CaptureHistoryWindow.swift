@@ -109,7 +109,11 @@ struct CaptureHistoryWindow: View {
       .onKeyPress(.leftArrow) { isVideoFocused ? .ignored : navigate(-1) }
       .onKeyPress(.rightArrow) { isVideoFocused ? .ignored : navigate(1) }
       .onDeleteCommand(perform: requestSelectionDeletion)
-      .onCommand(#selector(NSResponder.deleteToBeginningOfLine(_:)), perform: requestSelectionDeletion)
+      .onKeyPress(KeyEquivalent("\u{7F}"), phases: .down) { press in
+        guard press.modifiers == .command else { return .ignored }
+        requestSelectionDeletion()
+        return .handled
+      }
       .onExitCommand { if entry != nil { goBack() } }
       .task(id: protectedIDs) {
         await history.repository.protect(protectedIDs, owner: protectionID)
