@@ -62,6 +62,8 @@ Android builds generate the tool metadata and package its frontend automatically
 
 ### Dependency changes and recovery
 
+Before Node setup, the plugin removes managed installations containing dangling symlinks, including stale versions. Node setup reinstalls the selected version. This workaround is disabled when `node.download` is false.
+
 Android builds and development-server startup use `npm ci`, both locally and in CI. This installs the committed dependency versions without changing the lockfile. A missing or mismatched lockfile fails the build; there is no automatic fallback to `npm install`. Gradle skips installation when its inputs and outputs are unchanged.
 
 After intentionally editing dependencies in `package.json`, run:

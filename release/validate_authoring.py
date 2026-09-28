@@ -158,6 +158,7 @@ def verify_configuration_cache(command, example, env):
 
 def verify_node_runtimes(example, command, managed_env):
     verify_configuration_cache([*command, ":example-tool:buildSnapoToolFrontend"], example, managed_env)
+    verify_node_recovery(example, command, managed_env)
 
     init = example / "installed-node.gradle"
     installed_node = Path(shutil.which("node")).resolve()
@@ -177,6 +178,25 @@ gradle.beforeProject { project ->
         init.unlink(missing_ok=True)
 
 
+def verify_node_recovery(example, command, managed_env):
+    work = example / "example-tool/.gradle/nodejs"
+    installation, = work.glob("node-v*")
+    npx = installation / "bin/npx"
+    build = [*command, ":example-tool:buildSnapoToolFrontend", "--configuration-cache"]
+
+    stale = work / "node-v0.0.0-linux-x64"
+    stale.mkdir()
+    (stale / "npx").symlink_to("missing")
+    output = run(build, example, capture=True, env=managed_env)
+    assert not stale.exists(), "Damaged stale Node installation was not removed"
+    assert ":example-tool:nodeSetup UP-TO-DATE" in output, output
+
+    npx.unlink()
+    npx.symlink_to("missing")
+    run(build, example, env=managed_env)
+    assert npx.is_file(), "Dangling npx link was not repaired"
+
+
 def verify_prebuilt_frontend(example, command, managed_env):
     init = example / "prebuilt-frontend.gradle"
     prebuilt = [*command, "--init-script", str(init), ":app:assembleDebug"]
@@ -190,7 +210,7 @@ gradle.beforeProject { project ->
 }
 ''')
         graph = run([*prebuilt, "--dry-run"], example, capture=True, env=managed_env)
-        for task in ("nodeSetup", "npmSetup", "prepareSnapoToolHost",
+        for task in ("nodeSetup", "npmSetup", "prepareSnapoNodeInstallation", "prepareSnapoToolHost",
                      "npmInstall", "buildSnapoToolFrontend"):
             assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
         run(prebuilt, example, env=managed_env)
@@ -518,7 +538,7 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
               "exampleProject": str(example), "debugApk": str(apk),
               "frontendModes": ["managed-node-without-path"], "published": False}
     if args.mode == "full":
-        report["frontendModes"].extend(["installed-node", "prebuilt", "automatic-node-repository",
+        report["frontendModes"].extend(["installed-node", "managed-node-recovery", "prebuilt", "automatic-node-repository",
                                         "frontend-initializer", "frozen-install", "host-sdk-clean-restore",
                                         "host-sdk-upgrade", "host-sdk-downgrade"])
         report["configurationCacheReused"] = True
