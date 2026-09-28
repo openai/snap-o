@@ -6,6 +6,7 @@ import com.github.gradle.node.NodeExtension
 import com.github.gradle.node.NodePlugin
 import com.github.gradle.node.npm.task.NpmInstallTask
 import com.github.gradle.node.npm.task.NpmTask
+import com.github.gradle.node.task.NodeSetupTask
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -30,14 +31,22 @@ class ToolPackagerPlugin : Plugin<Project> {
         tool.frontendDirectory.convention(layout.projectDirectory.dir("frontend"))
 
         pluginManager.apply(NodePlugin::class.java)
-        extensions.getByType<NodeExtension>().apply {
+        val node = extensions.getByType<NodeExtension>().apply {
             version.set("22.23.2")
             download.set(true)
             nodeProjectDir.set(tool.frontendDirectory)
             npmInstallCommand.set("ci")
             enableTaskRules.set(false)
         }
-        val downloadNode = extensions.getByType<NodeExtension>().download
+        val prepareNode = tasks.register<PrepareNodeInstallationTask>("prepareSnapoNodeInstallation") {
+            description = "Removes damaged managed Node installations before setup."
+            download.set(node.download)
+            workDirectory.set(node.workDir)
+        }
+        tasks.named<NodeSetupTask>(NodeSetupTask.NAME) {
+            dependsOn(prepareNode)
+        }
+        val downloadNode = node.download
         val installedPath = providers.environmentVariable("Path").orElse(providers.environmentVariable("PATH"))
         tasks.withType<NpmTask>().configureEach {
             // node-gradle 7.1.0 prepends its cached runtime even when download is false.
