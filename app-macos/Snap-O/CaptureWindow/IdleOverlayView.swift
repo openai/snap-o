@@ -29,12 +29,7 @@ struct IdleOverlayView: View {
           }
         }
         .keyboardShortcut(.cancelAction)
-      } else if isRecording {
-        ProgressView()
-          .progressViewStyle(.circular)
-          .tint(.primary)
-          .controlSize(.large)
-      } else if !hasDevices, isDeviceListInitialized {
+      } else if !isRecording, !hasDevices, isDeviceListInitialized {
         Text("Waiting for device")
           .foregroundStyle(.gray)
       }
