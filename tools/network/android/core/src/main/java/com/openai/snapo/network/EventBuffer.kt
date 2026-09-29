@@ -1,5 +1,6 @@
 package com.openai.snapo.network
 
+import com.openai.snapo.network.capture.BodyContentType
 import java.util.ArrayList
 import java.util.IdentityHashMap
 
@@ -70,6 +71,11 @@ internal class EventBuffer(
                             (requestBody != null && (request.bodyTruncatedBytes ?: 0) == 0L)
                         ),
                     request?.headers?.let(::hasGzipContentEncoding) == true,
+                    BodyContentType.parse(
+                        request?.headers?.firstOrNull {
+                            it.name.equals("content-type", true)
+                        }?.value
+                    )?.charsetOrUtf8() ?: Charsets.UTF_8,
                 ),
                 SearchableBody(
                     responseBody,

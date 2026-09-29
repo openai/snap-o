@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import java.util.Locale
 import java.util.zip.GZIPInputStream
@@ -44,6 +45,7 @@ internal data class SearchableBody(
     val body: CapturedBody?,
     val complete: Boolean,
     val gzip: Boolean = false,
+    val charset: Charset = Charsets.UTF_8,
 )
 
 internal data class SearchableRequest(
@@ -72,7 +74,7 @@ private const val MaxSearchCharacters = 8 * 1024 * 1024
 
 private suspend fun searchBody(source: SearchableBody, terms: List<String>): BodySearchMatch {
     val captured = source.body ?: return BodySearchMatch(emptyList(), source.complete)
-    val decoded = decodeSearchBody(captured, source.gzip) ?: return BodySearchMatch(emptyList(), false)
+    val decoded = decodeSearchBody(captured, source.gzip, source.charset) ?: return BodySearchMatch(emptyList(), false)
     val text = decoded.take(MaxSearchCharacters)
     val normalized = text.lowercase(Locale.ROOT)
     val matches = mutableListOf<String>()
@@ -99,7 +101,7 @@ private suspend fun searchBody(source: SearchableBody, terms: List<String>): Bod
     )
 }
 
-private fun decodeSearchBody(body: CapturedBody, gzip: Boolean): String? {
+private fun decodeSearchBody(body: CapturedBody, gzip: Boolean, charset: Charset): String? {
     if (!body.encoding.equals("base64", true)) return body.body
     if (!gzip || body.body.length > MaxSearchCharacters * 2) return null
     return runCatching {
@@ -115,7 +117,7 @@ private fun decodeSearchBody(body: CapturedBody, gzip: Boolean): String? {
             if (output.size() > MaxSearchCharacters) return null
             output.toByteArray()
         }
-        Charsets.UTF_8.newDecoder().onMalformedInput(
+        charset.newDecoder().onMalformedInput(
             CodingErrorAction.REPORT
         ).decode(ByteBuffer.wrap(decoded)).toString()
     }.getOrNull()

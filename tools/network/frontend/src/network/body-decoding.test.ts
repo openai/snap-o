@@ -1,8 +1,9 @@
+import { request } from "./body-test-fixtures";
 import { describe, expect, it } from "vitest";
 import { decodeRequestBody } from "./body-decoding";
 import { decodeRequestBodyForDisplay } from "./payload";
 import { searchLocalBodies, mergeBodyMatches } from "./body-search";
-import { createEmptyToolState, reduceCdpMessage, requestRecordKey, type RequestRecord } from "./cdp";
+import { createEmptyToolState, reduceCdpMessage, requestRecordKey } from "./cdp";
 import { filterRecords } from "../features/network-tool/lib/records";
 
 async function gzip(body: string | Uint8Array): Promise<string> {
@@ -13,26 +14,15 @@ async function gzip(body: string | Uint8Array): Promise<string> {
 }
 
 const signal = () => new AbortController().signal;
-function record(body: string, encoding: string, contentEncoding: string): RequestRecord {
-  return {
-    kind: "request",
-    processId: "process",
-    requestId: "one",
-    method: "POST",
-    url: "https://example.test/",
-    requestHeaders: [{ name: "Content-Encoding", value: contentEncoding }],
-    responseHeaders: [],
-    status: { kind: "success", code: 204 },
-    startedAt: 1,
-    endedAt: 2,
-    updatedAt: 2,
-    streamEvents: [],
-    streamEventCount: 0,
+function record(body: string, encoding: string, contentEncoding: string) {
+  return request("process", {
     requestBody: body,
     requestBodyEncoding: encoding,
+    requestHeaders: [{ name: "Content-Encoding", value: contentEncoding }],
     requestBodyTruncatedBytes: 0,
-    requestHasPostData: true
-  };
+    requestHasPostData: true,
+    status: { kind: "success", code: 204 }
+  });
 }
 
 describe("shared request body decoding", () => {
@@ -47,6 +37,19 @@ describe("shared request body decoding", () => {
       expect(matches.request).toMatchObject({ terms: ["needle"], complete: true });
     }
   );
+
+  it.each(["ISO-8859-1", '"ISO-8859-1"'])("uses the declared gzip charset: %s", async (charset) => {
+    const body = await gzip(new Uint8Array([99, 97, 102, 233]));
+    const request = record(body, "base64", "gzip");
+    request.requestHeaders.push({ name: "Content-Type", value: `text/plain; charset=${charset}` });
+    expect(await decodeRequestBodyForDisplay({ body, encoding: "base64", headers: request.requestHeaders })).toBe(
+      "café"
+    );
+    expect((await searchLocalBodies(request, ["café"], signal())).request).toMatchObject({
+      terms: ["café"],
+      complete: true
+    });
+  });
 
   it("keeps binary display explanations out of searchable text", async () => {
     const body = await gzip(new Uint8Array([0xff, 0xfe]));

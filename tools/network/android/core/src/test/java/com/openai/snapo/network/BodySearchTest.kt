@@ -31,16 +31,7 @@ class BodySearchTest {
 
     @Test
     fun `does not search binary base64 as text`() = runBlocking {
-        val result = searchBodies(
-            listOf(
-                SearchableRequest(
-                    "binary",
-                    SearchableBody(null, true),
-                    SearchableBody(CapturedBody("dGJv", "base64"), true)
-                )
-            ),
-            listOf("dGJv"),
-        ).results.single().response
+        val result = searchResponse(SearchableBody(CapturedBody("dGJv", "base64"), true), "dGJv")
         assertTrue(result.terms.isEmpty())
         assertFalse(result.complete)
     }
@@ -53,24 +44,29 @@ class BodySearchTest {
     }
 
     @Test
-    fun `searches gzip text and keeps a copy after the cache removes the body`() = runBlocking {
-        val output = java.io.ByteArrayOutputStream()
-        java.util.zip.GZIPOutputStream(output).use { it.write("compressed needle".toByteArray()) }
-        val encoded = kotlin.io.encoding.Base64.encode(output.toByteArray())
-        val gzip =
-            searchBodies(
-                listOf(
-                    SearchableRequest(
-                        "gzip",
-                        SearchableBody(CapturedBody(encoded, "base64"), true, true),
-                        SearchableBody(null, true)
-                    )
-                ),
-                listOf("needle")
+    fun `searches gzip using the declared charset`() = runBlocking {
+        listOf("UTF-8", "ISO-8859-1").forEach { charset ->
+            val bytes = "café".toByteArray(java.nio.charset.Charset.forName(charset))
+            val output = java.io.ByteArrayOutputStream()
+            java.util.zip.GZIPOutputStream(output).use { it.write(bytes) }
+            val buffer = EventBuffer(NetworkInspectorConfig())
+            buffer.append(
+                request(kotlin.io.encoding.Base64.encode(output.toByteArray())).copy(
+                    headers = listOf(
+                        Header("Content-Encoding", "gzip"),
+                        Header("Content-Type", "text/plain; charset=$charset")
+                    ),
+                    bodyEncoding = "base64",
+                )
             )
-        assertEquals(listOf("needle"), gzip.results.single().request.terms)
-        assertTrue(gzip.results.single().request.complete)
+            val result = searchBodies(buffer.bodySearchSnapshot(listOf("one")), listOf("café")).results.single().request
+            assertEquals(listOf("café"), result.terms)
+            assertTrue(result.complete)
+        }
+    }
 
+    @Test
+    fun `keeps a copy after the cache removes the body`() = runBlocking {
         val buffer = EventBuffer(NetworkInspectorConfig(maxBufferedEvents = 1))
         buffer.append(ResponseReceived(id = "old", tWallMs = 1L, tMonoNs = 1L, code = 200, body = "retained needle"))
         val snapshot = buffer.bodySearchSnapshot(listOf("old"))
@@ -92,11 +88,7 @@ class BodySearchTest {
     @Test
     fun `request events carry explicit truncation metadata`() {
         listOf(null, 0L, 4L).forEach { truncated ->
-            val event = RequestWillBeSent(
-                id = "one", tWallMs = 1L, tMonoNs = 1L, method = "POST",
-                url = "https://example.test/", hasBody = true, body = "éééééé",
-                bodyEncoding = null, bodyTruncatedBytes = truncated, bodySize = 10L,
-            )
+            val event = request("éééééé").copy(bodyTruncatedBytes = truncated, bodySize = 10L)
             val message = event.toCdpMessage(null)
             val params = ProtocolJson.decodeFromJsonElement(CdpRequestWillBeSentParams.serializer(), message.params!!)
             assertEquals(truncated, params.request.postDataTruncatedBytes)
@@ -107,4 +99,14 @@ class BodySearchTest {
     fun `limits requests per search`() {
         BodySearchQuery(List(65) { "$it" }, listOf("tbo")).validate()
     }
+
+    private fun request(body: String) = RequestWillBeSent(
+        id = "one", tWallMs = 1L, tMonoNs = 1L, method = "POST", url = "https://example.test/",
+        hasBody = true, body = body, bodyEncoding = null, bodyTruncatedBytes = 0, bodySize = null,
+    )
+
+    private suspend fun searchResponse(body: SearchableBody, term: String) = searchBodies(
+        listOf(SearchableRequest("one", SearchableBody(null, true), body)),
+        listOf(term),
+    ).results.single().response
 }

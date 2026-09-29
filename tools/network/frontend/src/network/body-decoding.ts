@@ -32,7 +32,7 @@ export async function decodeRequestBody(input: CapturedRequestBody, signal?: Abo
   try {
     const bytes = Uint8Array.from(atob(input.body.replace(/\s+/gu, "")), (char) => char.charCodeAt(0));
     const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")).getReader();
-    const chunks: Uint8Array[] = [];
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
     let length = 0;
     try {
       while (true) {
@@ -46,20 +46,25 @@ export async function decodeRequestBody(input: CapturedRequestBody, signal?: Abo
     } finally {
       await reader.cancel();
     }
+    const decoded = await new Blob(chunks).arrayBuffer();
     signal?.throwIfAborted();
-    const result = new Uint8Array(length);
-    let offset = 0;
-    for (const chunk of chunks) {
-      result.set(chunk, offset);
-      offset += chunk.length;
-    }
     try {
-      return { kind: "text", text: new TextDecoder("utf-8", { fatal: true }).decode(result) };
+      return { kind: "text", text: textDecoder(input.headers).decode(decoded) };
     } catch {
       return { kind: "binary", byteLength: length };
     }
   } catch {
     signal?.throwIfAborted();
     return { kind: "unavailable" };
+  }
+}
+
+function textDecoder(headers: Header[]): TextDecoder {
+  const contentType = headers.find((header) => header.name.toLowerCase() === "content-type")?.value;
+  const charset = contentType?.match(/;\s*charset\s*=\s*(?:"([^"\r\n]*)"|([^;\s]*))/iu);
+  try {
+    return new TextDecoder(charset?.[1] ?? charset?.[2] ?? "utf-8", { fatal: true });
+  } catch {
+    return new TextDecoder("utf-8", { fatal: true });
   }
 }
