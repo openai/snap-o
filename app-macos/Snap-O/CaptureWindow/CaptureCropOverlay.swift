@@ -25,7 +25,10 @@ struct CaptureCropOverlay: NSViewRepresentable {
     private static let handleOutlineWidth: CGFloat = 5
 
     var imageFrame = CGRect.zero
-    var crop = CaptureCropGeometry.fullImage
+    var crop = CaptureCropGeometry.fullImage {
+      didSet { updateHandleOpacity() }
+    }
+
     var isEnabled = true
     var cropChanged: ((CGRect) -> Void)?
     var makeDragItem: ((CGRect) -> NSDraggingItem?)?
@@ -33,6 +36,26 @@ struct CaptureCropOverlay: NSViewRepresentable {
     private var initialCrop = CaptureCropGeometry.fullImage
     private var activeHandle: CaptureCropHandle?
     private var isExporting = false
+    private var targetHandleOpacity: CGFloat = 0.45
+    @objc dynamic var handleOpacity: CGFloat = 0.45 {
+      didSet { needsDisplay = true }
+    }
+
+    override static func defaultAnimation(forKey key: NSAnimatablePropertyKey) -> Any? {
+      if key == "handleOpacity" { return CABasicAnimation() }
+      return super.defaultAnimation(forKey: key)
+    }
+
+    private func updateHandleOpacity() {
+      let target: CGFloat = crop == CaptureCropGeometry.fullImage ? 0.45 : 1
+      guard target != targetHandleOpacity else { return }
+      targetHandleOpacity = target
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.18
+        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        animator().handleOpacity = target
+      }
+    }
 
     override var isFlipped: Bool {
       true
@@ -167,10 +190,10 @@ struct CaptureCropOverlay: NSViewRepresentable {
           path.line(to: point)
           path.line(to: CGPoint(x: point.x + (position.x == 0 ? 12 : -12), y: point.y))
         }
-        NSColor.black.withAlphaComponent(0.6).setStroke()
+        NSColor.black.withAlphaComponent(0.6 * handleOpacity).setStroke()
         path.lineWidth = Self.handleOutlineWidth
         path.stroke()
-        NSColor.white.setStroke()
+        NSColor.white.withAlphaComponent(handleOpacity).setStroke()
         path.lineWidth = 3
         path.stroke()
       }
