@@ -20,6 +20,7 @@ final class CaptureWindowController {
   private(set) var isDeviceListInitialized: Bool = false
   private(set) var isProcessing: Bool = false
   var isSavingReview = false
+  var reviewCrops: [UUID: CGRect] = [:]
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var imageCopyID: UUID?
@@ -171,6 +172,7 @@ final class CaptureWindowController {
 
   func finishCaptureReview() async {
     guard isReviewingCapture else { return }
+    reviewCrops = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle
     lastError = nil
@@ -181,6 +183,7 @@ final class CaptureWindowController {
   private func prepareToLeaveReview() -> Bool {
     guard isReviewingCapture else { return true }
     guard confirmDiscardReview?() == true else { return false }
+    reviewCrops = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle
     return true

@@ -113,7 +113,10 @@ struct CaptureWindow: View {
       }
       .focusedSceneValue(\.captureController, controller)
       .background {
-        CaptureReviewCloseGuard(captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : []) {
+        CaptureReviewCloseGuard(
+          captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : [],
+          isSaving: controller.isSavingReview
+        ) {
           try controller.fileStore.discardPreviews(controller.mediaList)
         }
         .frame(width: 0, height: 0)
@@ -461,6 +464,16 @@ struct CaptureWindow: View {
         }
       }
     }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {
+        ScreenshotFailureBanner(
+          failures: controller.screenshotFailures,
+          successfulCaptureCount: controller.mediaList.count,
+          onDismiss: controller.dismissScreenshotFailures
+        )
+        .padding(12)
+      }
+    }
     .environment(\.captureImageCopied, controller.imageCopied)
     .environment(\.colorScheme, .dark)
     .overlay {
@@ -556,19 +569,6 @@ struct CaptureWindow: View {
           .background(.regularMaterial)
           Spacer()
         }
-      }
-
-      if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {
-        VStack {
-          ScreenshotFailureBanner(
-            failures: controller.screenshotFailures,
-            successfulCaptureCount: controller.mediaList.count,
-            onDismiss: controller.dismissScreenshotFailures
-          )
-          Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
       }
     }
     .clipped()

@@ -4,6 +4,18 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum CaptureCropExporter {
+  static func save(_ capture: CaptureMedia, crop: CGRect, to destination: URL) async throws {
+    let staging = destination.deletingLastPathComponent()
+      .appendingPathComponent(".\(UUID().uuidString).\(destination.pathExtension)")
+    defer { try? FileManager.default.removeItem(at: staging) }
+    _ = try await export(capture, crop: crop, to: staging)
+    if FileManager.default.fileExists(atPath: destination.path) {
+      _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
+    } else {
+      try FileManager.default.moveItem(at: staging, to: destination)
+    }
+  }
+
   static func pixelRect(_ crop: CGRect, size: CGSize, alignment: CGFloat = 1) -> CGRect {
     let rect = CaptureCropGeometry.frame(for: crop, in: CGRect(origin: .zero, size: size))
     let left = max(0, floor(rect.minX / alignment) * alignment)

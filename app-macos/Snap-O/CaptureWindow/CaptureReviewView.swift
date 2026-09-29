@@ -9,7 +9,6 @@ struct CaptureReviewView: View {
   @State private var isNaming = false
   @State private var isFinishing = false
   @State private var errorMessage: String?
-  @State private var crops: [UUID: CGRect] = [:]
 
   var body: some View {
     GeometryReader { geometry in
@@ -37,7 +36,7 @@ struct CaptureReviewView: View {
               livePreviewHost: controller,
               capture: capture,
               allowsFileDrag: false,
-              crop: crops[capture.id] ?? CaptureCropGeometry.fullImage
+              crop: controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
             )
             .frame(width: frame.width, height: frame.height)
             .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
@@ -48,8 +47,8 @@ struct CaptureReviewView: View {
           CaptureCropOverlay(
             imageFrame: frame,
             crop: Binding(
-              get: { crops[capture.id] ?? CaptureCropGeometry.fullImage },
-              set: { crops[capture.id] = $0 }
+              get: { controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage },
+              set: { controller.reviewCrops[capture.id] = $0 }
             ),
             isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview
           ) { makeDragItem(capture, frame: $0) }
@@ -73,7 +72,7 @@ struct CaptureReviewView: View {
             deviceID: capture.device.id, capturedAt: capture.media.capturedAt, kind: kind
           )
           try await exports.append(CaptureCropExporter.export(
-            capture, crop: crops[capture.id] ?? CaptureCropGeometry.fullImage, to: destination
+            capture, crop: controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage, to: destination
           ))
         }
         try await history.repository.saveReviewedCaptures(exports, name: name, selectedID: controller.selectedMediaID)
@@ -146,7 +145,7 @@ struct CaptureReviewView: View {
     guard let source = capture.media.url, let kind = capture.media.saveKind else { return nil }
     do {
       let destination = try controller.fileStore.makeUniqueDragDestination(capturedAt: capture.media.capturedAt, kind: kind)
-      let crop = crops[capture.id] ?? CaptureCropGeometry.fullImage
+      let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
       if capture.media.isImage {
         _ = try CaptureCropExporter.exportImage(at: source, crop: crop, to: destination)
         let item = NSDraggingItem(pasteboardWriter: destination as NSURL)

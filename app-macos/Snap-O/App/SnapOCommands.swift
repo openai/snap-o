@@ -88,8 +88,9 @@ struct SnapOCommands: Commands {
           return
         }
         guard
-          let capture = captureController?.currentCapture,
-          let url = capture.media.url,
+          let controller = captureController,
+          let capture = controller.currentCapture,
+          capture.media.url != nil,
           let saveKind = capture.media.saveKind
         else { return }
         let savePanel = NSSavePanel()
@@ -101,19 +102,24 @@ struct SnapOCommands: Commands {
         savePanel.directoryURL = SaveLocation.defaultDirectory(for: saveKind)
 
         if savePanel.runModal() == .OK, let dest = savePanel.url {
-          do {
-            try FileManager.default.copyItem(at: url, to: dest)
-            SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: saveKind)
-          } catch {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Unable to Save File"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
+          let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
+          controller.isSavingReview = true
+          Task {
+            defer { controller.isSavingReview = false }
+            do {
+              try await CaptureCropExporter.save(capture, crop: crop, to: dest)
+              SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: saveKind)
+            } catch {
+              let alert = NSAlert()
+              alert.alertStyle = .warning
+              alert.messageText = "Unable to Save File"
+              alert.informativeText = error.localizedDescription
+              alert.runModal()
+            }
           }
         }
       }
-      .disabled(captureController?.currentCapture?.media.url == nil && historyActions == nil)
+      .disabled(historyActions == nil && (captureController?.currentCapture?.media.url == nil || captureController?.isSavingReview == true))
       .keyboardShortcut("s")
     }
     if let captureController {

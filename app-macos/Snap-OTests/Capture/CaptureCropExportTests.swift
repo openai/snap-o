@@ -34,6 +34,8 @@ struct CaptureCropExportTests {
     let result = try await CaptureCropExporter.export(capture, crop: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), to: destination)
     #expect(result.media.size == CGSize(width: 40, height: 40))
     #expect(result.id == capture.id)
+    try Data([9]).write(to: destination)
+    try await CaptureCropExporter.save(capture, crop: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), to: destination)
     #expect(try Data(contentsOf: source) == original)
     let image = try CaptureCropExporter.image(at: destination, crop: CaptureCropGeometry.fullImage)
     let color = try sample(image)
@@ -53,6 +55,8 @@ struct CaptureCropExportTests {
     let crop = rotated ? CGRect(x: 0, y: 0.5, width: 1, height: 0.5) : CGRect(x: 0.5, y: 0, width: 0.5, height: 1)
     let result = try await CaptureCropExporter.export(makeCapture(source, size: size, video: true), crop: crop, to: destination)
     #expect(result.media.size == CGSize(width: 32, height: 32))
+    try Data([9]).write(to: destination)
+    try await CaptureCropExporter.save(makeCapture(source, size: size, video: true), crop: crop, to: destination)
     #expect(try Data(contentsOf: source) == original)
     let asset = AVURLAsset(url: destination)
     #expect(try await asset.load(.duration).seconds >= 0.25)
@@ -83,6 +87,25 @@ struct CaptureCropExportTests {
       }
     }
     #expect(try Data(contentsOf: destination) == bytes)
+  }
+
+  @Test
+  func failedSavePreservesExistingDestination() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("missing.png")
+    let destination = root.appendingPathComponent("existing.png")
+    let original = Data([1, 2, 3])
+    try original.write(to: destination)
+    await #expect(throws: (any Error).self) {
+      try await CaptureCropExporter.save(
+        makeCapture(source, size: CGSize(width: 80, height: 40), video: false),
+        crop: CGRect(x: 0, y: 0, width: 0.5, height: 1), to: destination
+      )
+    }
+    #expect(try Data(contentsOf: destination) == original)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path) == ["existing.png"])
   }
 
   private func sample(_ image: CGImage) throws -> (UInt8, UInt8, UInt8) {
