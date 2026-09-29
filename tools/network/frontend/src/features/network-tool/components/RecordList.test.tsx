@@ -43,16 +43,30 @@ beforeEach(() => {
 afterEach(() => {
   act(() => renderPreact(null, container));
   container.remove();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   vi.unstubAllGlobals();
 });
 
-function render(visibleRecords = records, initialId: string | null = recordId(records[0])) {
-  act(() => renderPreact(<Harness records={visibleRecords} initialId={initialId} />, container));
+function render(visibleRecords = records, initialId: string | null = recordId(records[0]), sortNewestFirst = false) {
+  act(() =>
+    renderPreact(
+      <Harness records={visibleRecords} initialId={initialId} sortNewestFirst={sortNewestFirst} />,
+      container
+    )
+  );
   return container.querySelector<HTMLDivElement>('[role="listbox"]')!;
 }
 
-function Harness({ records: visibleRecords, initialId }: { records: RequestRecord[]; initialId: string | null }) {
+function Harness({
+  records: visibleRecords,
+  initialId,
+  sortNewestFirst
+}: {
+  records: RequestRecord[];
+  initialId: string | null;
+  sortNewestFirst: boolean;
+}) {
   const [selectedId, setSelectedId] = useState(initialId);
   return (
     <>
@@ -60,6 +74,7 @@ function Harness({ records: visibleRecords, initialId }: { records: RequestRecor
       <RecordList
         records={visibleRecords}
         allRecords={records}
+        sortNewestFirst={sortNewestFirst}
         placeholder={null}
         selectedRecordId={selectedId}
         onSelect={(id) => {
@@ -110,6 +125,11 @@ function mockListLayout(list: HTMLElement, bottomPadding = 0) {
       }
     }
   });
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this === list) return new DOMRect(0, 0, 240, clientHeight);
+    const index = Array.from(list.children).indexOf(this);
+    return new DOMRect(0, index * 44 - scrollTop, 240, 44);
+  });
   return (height: number) => {
     act(() => {
       clientHeight = height;
@@ -126,6 +146,74 @@ function scrollList(list: HTMLElement, top: number) {
 }
 
 describe("network request autoscroll", () => {
+  it("follows the top in newest-first order and preserves the visible request while paused", () => {
+    const newestFirst = [...records].reverse();
+    const list = render(newestFirst, recordId(records[0]), true);
+    mockListLayout(list);
+    scrollList(list, 0);
+    const filter = container.querySelector("input")!;
+    filter.focus();
+
+    const fourth = [request("fourth"), ...newestFirst];
+    render(fourth, null, true);
+    expect(list.scrollTop).toBe(0);
+    expectSelected(list, "first");
+    expect(document.activeElement).toBe(filter);
+
+    scrollList(list, 20);
+    const anchor = list.children[0];
+    const offset = anchor.getBoundingClientRect().top;
+    const fifth = [request("fifth"), ...fourth];
+    render(fifth, null, true);
+    expect(anchor.getBoundingClientRect().top).toBe(offset);
+    expect(list.scrollTop).toBe(64);
+
+    // Retention replaces the oldest call without changing the number of rows.
+    render([request("sixth"), ...fifth.slice(0, -1)], null, true);
+    expect(anchor.getBoundingClientRect().top).toBe(offset);
+    expect(list.scrollTop).toBe(108);
+
+    scrollList(list, 0);
+    render([request("seventh"), ...fifth.slice(0, -1)], null, true);
+    expect(list.scrollTop).toBe(0);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("switches the followed edge with sorting and keeps a paused request in view", () => {
+    const calls = [...records, request("fourth"), request("fifth")];
+    const list = render(calls);
+    mockListLayout(list);
+    scrollList(list, list.scrollHeight);
+
+    render([...calls].reverse(), null, true);
+    expect(list.scrollTop).toBe(0);
+    render(calls);
+    expect(list.scrollTop).toBe(132);
+
+    scrollList(list, 20);
+    const anchor = list.firstElementChild!;
+    render([...calls].reverse(), null, true);
+    // The old first row moves to the end; clamping keeps it visible.
+    expect(list.scrollTop).toBe(132);
+    expect(anchor.getBoundingClientRect().top).toBe(44);
+    render([request("sixth"), ...[...calls].reverse()], null, true);
+    expect(anchor.getBoundingClientRect().top).toBe(44);
+  });
+
+  it.each(["Home", "ArrowUp"])("resumes newest-first following when %s reaches the first row", (key) => {
+    const newestFirst = [...records].reverse();
+    const list = render(newestFirst, recordId(records[1]), true);
+    mockListLayout(list, 12);
+    scrollList(list, list.scrollHeight);
+
+    press(list, key);
+    expectSelected(list, "third");
+    expect(list.scrollTop).toBe(0);
+    render([request("fourth"), ...newestFirst], null, true);
+    expect(list.scrollTop).toBe(0);
+    expectSelected(list, "third");
+  });
+
   it.each(["End", "ArrowDown"])("resumes following when %s reaches the last row with bottom padding", (key) => {
     const list = render(records, recordId(records[1]));
     mockListLayout(list, 12);

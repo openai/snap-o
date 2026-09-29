@@ -10,6 +10,7 @@ export function Sidebar({
   hiddenRequestCount,
   records,
   allRecords,
+  sortNewestFirst,
   placeholder,
   selectedRecordId,
   client,
@@ -22,6 +23,7 @@ export function Sidebar({
   hiddenRequestCount: number;
   records: ToolRecord[];
   allRecords: ToolRecord[];
+  sortNewestFirst: boolean;
   placeholder: string | null;
   selectedRecordId: string | null;
   client: NetworkClient;
@@ -40,6 +42,7 @@ export function Sidebar({
       <RecordList
         records={records}
         allRecords={allRecords}
+        sortNewestFirst={sortNewestFirst}
         placeholder={placeholder}
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}

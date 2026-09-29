@@ -8,9 +8,12 @@ import { copyCurl, exportAsHar } from "../lib/exportActions";
 import { exclusionFilterForUrl } from "../lib/exclusionFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
+type ScrollAnchor = { row: Element; offset: number };
+
 export function RecordList({
   records,
   allRecords,
+  sortNewestFirst,
   placeholder,
   selectedRecordId,
   onSelect,
@@ -20,6 +23,7 @@ export function RecordList({
 }: {
   records: ToolRecord[];
   allRecords: ToolRecord[];
+  sortNewestFirst: boolean;
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect(id: string): void;
@@ -29,45 +33,50 @@ export function RecordList({
 }): JSX.Element {
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
-  const followBottomRef = useRef(true);
-  const lastRecord = records.at(-1);
-  const lastRecordId = lastRecord == null ? null : recordId(lastRecord);
+  const followNewestRef = useRef(true);
+  const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const selectedIndex = records.findIndex((record) => recordId(record) === selectedRecordId);
   const [menu, setMenu] = useState<(ContextMenuState & { keyboard: boolean }) | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
   const updateScrollState = useCallback(() => {
     const list = listRef.current;
     if (list == null || list.clientHeight === 0) return;
-    // Allow for fractional scroll positions at the bottom.
-    followBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
+    // Allow for fractional scroll positions at either edge.
+    const distance = sortNewestFirst ? list.scrollTop : list.scrollHeight - list.clientHeight - list.scrollTop;
+    followNewestRef.current = distance <= 1;
+    scrollAnchorRef.current = followNewestRef.current ? null : getScrollAnchor(list);
     setShowTopFade(list.scrollTop > 0);
-  }, []);
+  }, [sortNewestFirst]);
 
-  useLayoutEffect(() => {
+  const restoreScrollPosition = useCallback(() => {
     const list = listRef.current;
     if (list == null) {
-      followBottomRef.current = true;
+      followNewestRef.current = true;
+      scrollAnchorRef.current = null;
       setShowTopFade(false);
       return;
     }
     if (list.clientHeight === 0) return;
-    // Use the position from before new rows increased the scroll height.
-    if (followBottomRef.current) list.scrollTop = list.scrollHeight;
+    const anchor = scrollAnchorRef.current;
+    if (followNewestRef.current) {
+      list.scrollTop = sortNewestFirst ? 0 : list.scrollHeight;
+    } else if (anchor != null && list.contains(anchor.row)) {
+      // Keep the same request in view when rows are prepended or reordered.
+      list.scrollTop += anchor.row.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.offset;
+    }
     updateScrollState();
-  }, [lastRecordId, records.length, placeholder, updateScrollState]);
+  }, [sortNewestFirst, updateScrollState]);
+
+  useLayoutEffect(restoreScrollPosition, [records, placeholder, restoreScrollPosition]);
 
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list == null) return;
-    // Resizing can reach the bottom without firing a scroll event.
-    const observer = new ResizeObserver(() => {
-      if (list.clientHeight === 0) return;
-      if (followBottomRef.current) list.scrollTop = list.scrollHeight;
-      updateScrollState();
-    });
+    // Resizing can reach the newest edge without firing a scroll event.
+    const observer = new ResizeObserver(restoreScrollPosition);
     observer.observe(list);
     return () => observer.disconnect();
-  }, [placeholder, updateScrollState]);
+  }, [placeholder, restoreScrollPosition]);
 
   const selectRecord = useCallback(
     (id: string) => {
@@ -137,9 +146,9 @@ export function RecordList({
     const id = recordId(records[nextIndex]);
     if (id !== selectedRecordId) selectRecord(id);
     const list = listRef.current;
-    if (list != null && nextIndex === records.length - 1) {
-      // Include trailing padding so reaching the last row resumes following.
-      list.scrollTop = list.scrollHeight;
+    if (list != null && nextIndex === (sortNewestFirst ? 0 : records.length - 1)) {
+      // Include trailing padding so reaching the newest row resumes following.
+      list.scrollTop = sortNewestFirst ? 0 : list.scrollHeight;
     } else {
       list?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
     }
@@ -204,6 +213,20 @@ export function RecordList({
       {menu == null ? null : <ContextMenu menu={menu} autoFocus={menu.keyboard} onClose={closeContextMenu} />}
     </div>
   );
+}
+
+function getScrollAnchor(list: HTMLElement): ScrollAnchor | null {
+  const top = list.getBoundingClientRect().top;
+  let start = 0;
+  let end = list.children.length;
+  // Find the first visible row without measuring every request on each scroll.
+  while (start < end) {
+    const middle = Math.floor((start + end) / 2);
+    if (list.children[middle].getBoundingClientRect().bottom <= top) start = middle + 1;
+    else end = middle;
+  }
+  const row = list.children.item(start);
+  return row == null ? null : { row, offset: row.getBoundingClientRect().top - top };
 }
 
 function RecordRow({
