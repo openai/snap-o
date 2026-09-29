@@ -82,6 +82,82 @@ function expectSelected(list: HTMLElement, label: string) {
   expect(list.querySelectorAll('[aria-selected="true"]')).toHaveLength(1);
 }
 
+// jsdom has no layout. Model row height and the browser's scroll position clamping.
+function mockListLayout(list: HTMLElement) {
+  let scrollTop = 0;
+  Object.defineProperties(list, {
+    clientHeight: { get: () => 88 },
+    scrollHeight: { get: () => Math.max(88, list.children.length * 44) },
+    scrollTop: {
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.max(0, Math.min(value, list.scrollHeight - list.clientHeight));
+      }
+    }
+  });
+}
+
+function scrollList(list: HTMLElement, top: number) {
+  act(() => {
+    list.scrollTop = top;
+    list.dispatchEvent(new Event("scroll"));
+  });
+}
+
+describe("network request autoscroll", () => {
+  it("follows new calls at the bottom, pauses above it, and resumes on return", () => {
+    const list = render();
+    mockListLayout(list);
+    const filter = container.querySelector("input")!;
+    filter.focus();
+    scrollList(list, 43.5);
+
+    const fourth = [...records, request("fourth")];
+    render(fourth);
+    expect(list.scrollTop).toBe(88);
+    expectSelected(list, "first");
+    expect(document.activeElement).toBe(filter);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(container.querySelector(".record-list-top-fade")?.classList.contains("visible")).toBe(true);
+
+    scrollList(list, 20);
+    const fifth = [...fourth, request("fifth")];
+    render(fifth);
+    expect(list.scrollTop).toBe(20);
+
+    scrollList(list, list.scrollHeight);
+    render([...fifth, request("sixth")]);
+    expect(list.scrollTop).toBe(176);
+  });
+
+  it("keeps following when a short list first overflows and after clearing it", () => {
+    const list = render([], null);
+    mockListLayout(list);
+    render(records.slice(0, 2));
+    expect(list.scrollTop).toBe(0);
+    render(records);
+    expect(list.scrollTop).toBe(44);
+
+    scrollList(list, 0);
+    render([]);
+    render(records);
+    expect(list.scrollTop).toBe(44);
+  });
+
+  it("follows new calls when retention removes old calls without changing the count", () => {
+    const list = render();
+    mockListLayout(list);
+    scrollList(list, list.scrollHeight);
+    // Removing the first row can move the viewport before the new row is appended.
+    list.scrollTop = 0;
+
+    render([...records.slice(1), request("fourth")]);
+
+    expect(list.scrollTop).toBe(44);
+    expect(list.lastElementChild?.textContent).toContain("fourth");
+  });
+});
+
 describe("network request keyboard selection", () => {
   it("owns focus after a click and moves selection instead of scrolling", () => {
     const list = render();

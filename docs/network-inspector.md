@@ -256,6 +256,8 @@ Right-click a request to add its host to the exclusion filter. Exclusion filters
 
 Use the arrow keys to move between requests. Server-Sent Events show whether the stream is pending, streaming, closed, or offline. When a response body is unavailable, Snap-O explains whether it is no longer retained or is not cached on this Mac. If loading fails while connected, click **Retry**.
 
+The request list follows new calls while you are at the bottom. Scroll up to pause automatic scrolling, then return to the bottom to resume. Your selected request stays selected.
+
 ### Intercept requests {#python-overrides}
 
 Use `snapo-network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.

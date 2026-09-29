@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type ToolRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -29,9 +29,32 @@ export function RecordList({
 }): JSX.Element {
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  const followBottomRef = useRef(true);
+  const lastRecord = records.at(-1);
+  const lastRecordId = lastRecord == null ? null : recordId(lastRecord);
   const selectedIndex = records.findIndex((record) => recordId(record) === selectedRecordId);
   const [menu, setMenu] = useState<(ContextMenuState & { keyboard: boolean }) | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
+  const updateScrollState = useCallback(() => {
+    const list = listRef.current;
+    if (list == null) return;
+    // Allow for fractional scroll positions at the bottom.
+    followBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
+    setShowTopFade(list.scrollTop > 0);
+  }, []);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list == null) {
+      followBottomRef.current = true;
+      setShowTopFade(false);
+      return;
+    }
+    // Use the position from before new rows increased the scroll height.
+    if (followBottomRef.current) list.scrollTop = list.scrollHeight;
+    updateScrollState();
+  }, [lastRecordId, records.length, placeholder, updateScrollState]);
+
   const selectRecord = useCallback(
     (id: string) => {
       // WebKit does not always focus buttons on click. Keep keyboard ownership on the list.
@@ -57,6 +80,7 @@ export function RecordList({
     const row = listRef.current?.children.item(selectedIndex);
     if (record == null || row == null) return false;
     row.scrollIntoView({ block: "nearest" });
+    updateScrollState();
     const { left, bottom } = row.getBoundingClientRect();
     openContextMenu(record, left, bottom, true);
     return true;
@@ -99,6 +123,7 @@ export function RecordList({
     const id = recordId(records[nextIndex]);
     if (id !== selectedRecordId) selectRecord(id);
     listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+    updateScrollState();
   };
   const handleContextMenu = useCallback(
     (record: ToolRecord, event: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
@@ -138,7 +163,7 @@ export function RecordList({
             event.stopPropagation();
           }
         }}
-        onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
+        onScroll={updateScrollState}
       >
         {records.map((record, index) => {
           const id = recordId(record);
@@ -159,13 +184,6 @@ export function RecordList({
       {menu == null ? null : <ContextMenu menu={menu} autoFocus={menu.keyboard} onClose={closeContextMenu} />}
     </div>
   );
-}
-
-function handleRecordListScroll(
-  event: JSX.TargetedEvent<HTMLDivElement>,
-  setShowTopFade: (value: boolean) => void
-): void {
-  setShowTopFade(event.currentTarget.scrollTop > 0);
 }
 
 function RecordRow({
