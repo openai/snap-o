@@ -9,22 +9,41 @@ struct CaptureReviewView: View {
   @State private var isNaming = false
   @State private var isFinishing = false
   @State private var errorMessage: String?
+  @State private var crops: [UUID: CGRect] = [:]
 
   var body: some View {
     GeometryReader { geometry in
       if let capture = controller.currentCapture {
         let frame = CaptureReviewLayout.mediaFrame(in: geometry.size, aspectRatio: capture.media.aspectRatio)
         ZStack(alignment: .topLeading) {
-          Color(white: 0.12)
+          Color(white: 0.24)
           reviewToolbar
             .frame(height: CaptureReviewLayout.toolbarHeight)
             .padding(.horizontal, CaptureReviewLayout.edgeSpacing)
             .padding(.vertical, CaptureReviewLayout.toolbarSpacing)
-          CaptureMediaView(fileStore: controller.fileStore, livePreviewHost: controller, capture: capture)
-            .frame(width: frame.width, height: frame.height)
-            .position(x: frame.midX, y: frame.midY)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: frame)
-            .zIndex(1)
+          CaptureMediaView(
+            fileStore: controller.fileStore,
+            livePreviewHost: controller,
+            capture: capture,
+            allowsFileDrag: false,
+            crop: crops[capture.id] ?? CaptureCropGeometry.fullImage
+          )
+          .frame(width: frame.width, height: frame.height)
+          .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+          .position(x: frame.midX, y: frame.midY)
+          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: frame)
+          .zIndex(1)
+          CaptureCropOverlay(
+            imageFrame: frame,
+            crop: Binding(
+              get: { crops[capture.id] ?? CaptureCropGeometry.fullImage },
+              set: { crops[capture.id] = $0 }
+            ),
+            isVideo: capture.media.isVideo,
+            isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview
+          ) { makeDragItem(capture, frame: $0) }
+            .id(capture.id)
+            .zIndex(2)
         }
       }
     }
@@ -35,7 +54,18 @@ struct CaptureReviewView: View {
         controller.isSavingReview = true
         defer { controller.isSavingReview = false }
         let captures = controller.mediaList
-        try await history.repository.saveReviewedCaptures(captures, name: name, selectedID: controller.selectedMediaID)
+        var exports: [CaptureMedia] = []
+        defer { try? controller.fileStore.discardPreviews(exports) }
+        for capture in captures {
+          guard let kind = capture.media.saveKind else { continue }
+          let destination = controller.fileStore.makePreviewDestination(
+            deviceID: capture.device.id, capturedAt: capture.media.capturedAt, kind: kind
+          )
+          try await exports.append(CaptureCropExporter.export(
+            capture, crop: crops[capture.id] ?? CaptureCropGeometry.fullImage, to: destination
+          ))
+        }
+        try await history.repository.saveReviewedCaptures(exports, name: name, selectedID: controller.selectedMediaID)
         // The durable copy is complete; temporary-file cleanup must not cause a duplicate save.
         try? controller.fileStore.discardPreviews(captures)
         isNaming = false
@@ -43,7 +73,7 @@ struct CaptureReviewView: View {
         await controller.finishCaptureReview()
       }
     }
-    .alert("Could Not Discard Captures", isPresented: Binding(
+    .alert("Capture Error", isPresented: Binding(
       get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
     )) {
       Button("OK") { errorMessage = nil }
@@ -98,6 +128,29 @@ struct CaptureReviewView: View {
       Task { await controller.finishCaptureReview() }
     } catch {
       errorMessage = error.localizedDescription
+    }
+  }
+
+  private func makeDragItem(_ capture: CaptureMedia, frame: CGRect) -> NSDraggingItem? {
+    guard let source = capture.media.url, let kind = capture.media.saveKind else { return nil }
+    do {
+      let destination = try controller.fileStore.makeUniqueDragDestination(capturedAt: capture.media.capturedAt, kind: kind)
+      let crop = crops[capture.id] ?? CaptureCropGeometry.fullImage
+      if capture.media.isImage {
+        _ = try CaptureCropExporter.exportImage(at: source, crop: crop, to: destination)
+        let item = NSDraggingItem(pasteboardWriter: destination as NSURL)
+        item.setDraggingFrame(frame, contents: NSImage(contentsOf: destination))
+        return item
+      }
+      // A pending file promise must survive discarding or saving the current review.
+      try FileManager.default.copyItem(at: source, to: destination)
+      let snapshot = CaptureMedia(id: capture.id, device: capture.device, media: .video(url: destination, data: capture.media.common))
+      let item = NSDraggingItem(pasteboardWriter: CaptureCropFilePromise(capture: snapshot, crop: crop))
+      item.setDraggingFrame(frame, contents: NSWorkspace.shared.icon(forFile: source.path))
+      return item
+    } catch {
+      errorMessage = error.localizedDescription
+      return nil
     }
   }
 }

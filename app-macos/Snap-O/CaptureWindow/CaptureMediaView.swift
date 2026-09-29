@@ -6,6 +6,8 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
   let fileStore: FileStore
   let livePreviewHost: Host
   let capture: CaptureMedia
+  var allowsFileDrag = true
+  var crop = CaptureCropGeometry.fullImage
 
   var body: some View {
     GeometryReader { proxy in
@@ -16,12 +18,15 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
             url: url,
             exportFilename: FileStore.exportFilename(
               capturedAt: capture.media.capturedAt, kind: .image, name: history.name(for: capture.id)
-            )
+            ),
+            allowsFileDrag: allowsFileDrag,
+            crop: crop
           ) { makeTempDragFile() }
 
         case .video(let url, _):
           VideoCaptureView(
-            url: url
+            url: url,
+            allowsFileDrag: allowsFileDrag
           ) { makeTempDragFile() }
 
         case .livePreview:
