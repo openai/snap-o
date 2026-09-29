@@ -51,6 +51,42 @@ internal class EventBuffer(
 
     fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
 
+    fun bodySearchSnapshot(requestIds: List<String>): List<SearchableRequest> {
+        val requests = records.filterIsInstance<RequestWillBeSent>().associateBy { it.id }
+        val responses = records.filterIsInstance<ResponseReceived>().associateBy { it.id }
+        val finished = records.filterIsInstance<ResponseFinished>().associateBy { it.id }
+        return requestIds.map { id ->
+            val request = requests[id]
+            val response = responses[id]
+            val end = finished[id]
+            val requestBody = findRequestBody(id)
+            val responseBody = findResponseBody(id)
+            SearchableRequest(
+                id,
+                SearchableBody(
+                    requestBody,
+                    request != null && (
+                        !request.hasBody ||
+                            (requestBody != null && (request.bodyTruncatedBytes ?: 0) == 0L)
+                        ),
+                    request?.headers?.any {
+                        it.name.equals("content-encoding", true) && it.value.equals("gzip", true)
+                    } == true,
+                ),
+                SearchableBody(
+                    responseBody,
+                    response != null && (
+                        request?.method.equals("HEAD", true) || response.code in listOf(204, 304) ||
+                            (
+                                end != null && (end.bodyTruncatedBytes ?: response.bodyTruncatedBytes ?: 0) == 0L &&
+                                    (responseBody != null || end.bodySize == 0L)
+                                )
+                        ),
+                ),
+            )
+        }
+    }
+
     fun updateLatestRequestBody(
         requestId: String,
         body: String?,

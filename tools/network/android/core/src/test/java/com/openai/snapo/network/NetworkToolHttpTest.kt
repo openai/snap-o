@@ -30,6 +30,34 @@ import java.util.concurrent.TimeUnit
 
 class NetworkToolHttpTest {
     @Test
+    fun `body search checks queries and returns matches`() {
+        Fixture(
+            NetworkToolHttp(bodySearch = { query ->
+                assertEquals(listOf("one"), query.requestIds)
+                BodySearchReply(
+                    listOf(
+                        RequestBodySearchMatch(
+                            "one",
+                            BodySearchMatch(emptyList(), true),
+                            BodySearchMatch(listOf("tbo"), true, "tbo")
+                        )
+                    )
+                )
+            })
+        ).use { server ->
+            val response = server.request("/network/search", "POST", """{"requestIds":["one"],"terms":["tbo"]}""")
+            assertEquals(200, response.statusCode())
+            assertTrue(response.body().contains("tbo"))
+            assertEquals(400, server.request("/network/search", "POST", "{}").statusCode())
+            assertEquals(
+                400,
+                server.request("/network/search", "POST", """{"requestIds":[],"terms":["tbo"]}""").statusCode()
+            )
+            assertEquals(405, server.request("/network/search").statusCode())
+        }
+    }
+
+    @Test
     fun `network owns its protocol endpoint`() {
         val (status, body) = request("/network/protocol")
         assertEquals("HTTP/1.1 200 OK", status)

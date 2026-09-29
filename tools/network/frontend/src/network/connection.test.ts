@@ -137,3 +137,27 @@ describe("direct Network HTTP and SSE connection", () => {
     );
   });
 });
+
+it("posts literal body searches and rejects invalid snippets and older servers", async () => {
+  const { connection, fetchRequest } = setup(() => snapshot());
+  const query = { requestIds: ["one"], terms: ["needle"] };
+  const match = {
+    requestId: "one",
+    request: { terms: [], complete: true },
+    response: { terms: ["needle"], complete: true, snippet: "a needle" }
+  };
+  fetchRequest.mockResolvedValueOnce(Response.json({ results: [match] }));
+  await expect(connection.searchBodies(query, new AbortController().signal)).resolves.toEqual({ results: [match] });
+  expect(fetchRequest).toHaveBeenLastCalledWith(
+    "/api/network/search",
+    expect.objectContaining({ method: "POST", body: JSON.stringify(query) })
+  );
+  fetchRequest.mockResolvedValueOnce(
+    Response.json({ results: [{ ...match, response: { ...match.response, snippet: {} } }] })
+  );
+  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toThrow(
+    "Invalid body search response"
+  );
+  fetchRequest.mockResolvedValueOnce(new Response("missing", { status: 404 }));
+  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toThrow("404");
+});

@@ -11,6 +11,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
+| `POST /network/search` | Matching search terms and short text samples from stored request and response bodies. |
 | `POST /interception` | Register routes; return `201`, the runner URL in `Location`, and its owning SSE stream. |
 | `PUT /interception/{runnerId}/routes` | Replace a runner's routes. |
 | `POST /interception/{runnerId}/exchanges/{exchangeId}` | Decide a paused exchange. |
@@ -94,3 +95,41 @@ The [history](v2/history.jsonl) fixture remains valid for the current protocol; 
 ### HTTP routing defaults
 
 Unknown paths return `404` for every method. A known path with an unsupported method returns `405`. Expired interception runners still return `410` on matching interception routes.
+
+### Body search
+
+`POST /network/search` takes JSON with `requestIds` and `terms` arrays. Use request IDs from the connected Android process.
+
+- Include 1–64 different request IDs, each at most 512 characters long.
+- Include 1–64 search terms, each 1–256 characters long.
+- Terms match plain text, not regular expressions. Matching ignores letter case.
+
+Invalid queries return `400`. Android runs at most two body searches at once; further searches return `429`.
+
+```json
+{"requestIds":["request-1"],"terms":["needle"]}
+```
+
+The response has one result for each request ID. It includes a result even when the body is missing:
+
+```json
+{"results":[{"requestId":"request-1","request":{"terms":[],"complete":true},"response":{"terms":["needle"],"complete":false,"snippet":"a needle in the captured response"}}]}
+```
+
+Each result has separate `request` and `response` fields:
+
+- `terms` lists the matching search terms in lowercase.
+- `complete` is true when the search covered the whole body, including a known empty body.
+- `snippet`, when present, contains up to 160 characters of text around a match.
+
+A missing or partial body cannot prove that a term is absent. The same is true for bodies still arriving, binary bodies, and bodies over the search limit. These results have `complete: false`.
+
+Search reads stored text; it never fetches a body from the network. It also reads gzip request bodies, with an 8 MiB limit after decompression. Plain text search reads at most 8,388,608 UTF-16 code units.
+
+Clients combine matches from metadata and the request and response bodies. Different search terms can match different parts of a request. An excluded term in any part hides the request. Queries with excluded terms show a request only after both bodies have been fully searched.
+
+The Mac also searches bodies in its local cache. It combines results using both the process identity and request ID. This lets it find older bodies, including those Android has removed from its cache. Saved exclusion filters search only metadata.
+
+Selecting a match fetches the body through the existing body-read endpoints, unless it is already cached. Android may remove the body from its cache between search and selection.
+
+The protocol version stays at **2** because this endpoint adds a feature without breaking existing calls. Existing Mac and Python clients keep using their current endpoints. Older protocol-2 servers return `404` for body search. The frontend then searches cached bodies. The Tweaks protocol does not change.

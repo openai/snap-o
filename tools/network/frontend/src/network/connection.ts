@@ -1,3 +1,4 @@
+import type { BodySearchQuery, BodySearchReply } from "./body-search";
 import type { ToolConnection } from "@snap-o/tool-host";
 import { readText } from "../http";
 import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamClosed } from "./bridge-types";
@@ -83,6 +84,42 @@ export class NetworkConnection {
         : undefined
     ]);
     this.checkOpen();
+    return result;
+  }
+
+  async searchBodies(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply> {
+    this.checkOpen();
+    const response = await this.transport.fetch(this.url("network/search"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.any([signal, this.abort.signal, this.connection.signal, AbortSignal.timeout(30_000)]),
+      cache: "no-store",
+      redirect: "error"
+    });
+    if (!response.ok) throw new Error(`Body search failed (${response.status}).`);
+    const result = JSON.parse(await readText(response, 2 * 1024 * 1024)) as BodySearchReply;
+    if (
+      !result ||
+      !Array.isArray(result.results) ||
+      result.results.some(
+        (r) =>
+          !r ||
+          typeof r.requestId !== "string" ||
+          [r.request, r.response].some(
+            (body) =>
+              !body ||
+              (body.snippet != null && (typeof body.snippet !== "string" || body.snippet.length > 160)) ||
+              typeof body.complete !== "boolean" ||
+              !Array.isArray(body.terms) ||
+              body.terms.some((term) => typeof term !== "string" || !input.terms.includes(term))
+          )
+      )
+    ) {
+      throw new Error("Invalid body search response.");
+    }
+    this.checkOpen();
+    signal.throwIfAborted();
     return result;
   }
 

@@ -1,6 +1,7 @@
+import { BodySearchContext, SearchablePayload } from "./SearchablePayload";
 import type { JSX, ComponentChildren } from "preact";
 import { Check, Copy, Download } from "lucide-preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useContext, useEffect, useMemo, useState } from "preact/hooks";
 import type { ToolContentClient } from "../../../network/client";
 import {
   bodyMetadata as payloadMetadata,
@@ -51,15 +52,17 @@ export function PayloadView({
   prettyInitiallyExpanded?: boolean;
   embedded?: boolean;
 }): JSX.Element {
+  const queryText = useContext(BodySearchContext);
   const defaultPretty = payload.prettyText != null;
   const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
   const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.displayText;
+  const paged = queryText.trim().length > 0 || displayText.length > 32_768;
   const jsonRoot = useMemo(
     () =>
-      pretty && payload.jsonFormat === "single" && payload.prettyText != null
+      !paged && pretty && payload.jsonFormat === "single" && payload.prettyText != null
         ? parseJsonNode(payload.prettyText)
         : null,
-    [payload.jsonFormat, payload.prettyText, pretty]
+    [payload.jsonFormat, payload.prettyText, pretty, paged]
   );
   const copyFeedback = useCopyFeedback(client, displayText);
   const hasToggle = showsToggle && payload.prettyText != null;
@@ -83,7 +86,9 @@ export function PayloadView({
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
       <div className="payload-scroll">
-        {jsonRoot == null ? (
+        {paged ? (
+          <SearchablePayload text={displayText} queryText={queryText} controls={controls} />
+        ) : jsonRoot == null ? (
           controls == null ? (
             <pre>{displayText}</pre>
           ) : (

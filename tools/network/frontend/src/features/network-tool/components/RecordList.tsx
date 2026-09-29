@@ -1,3 +1,4 @@
+import type { BodySearchMatches } from "../../../network/body-search";
 import type { JSX } from "preact";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
@@ -12,6 +13,7 @@ type ScrollAnchor = { row: Element; offset: number };
 
 export function RecordList({
   records,
+  bodyMatches,
   allRecords,
   sortNewestFirst,
   placeholder,
@@ -22,6 +24,7 @@ export function RecordList({
   isConnected = true
 }: {
   records: ToolRecord[];
+  bodyMatches?: BodySearchMatches;
   allRecords: ToolRecord[];
   sortNewestFirst: boolean;
   placeholder: string | null;
@@ -200,6 +203,7 @@ export function RecordList({
             <RecordRow
               key={id}
               id={id}
+              snippet={bodyMatches?.get(id)?.request.snippet ?? bodyMatches?.get(id)?.response.snippet}
               optionId={`${listId}-${index}`}
               record={record}
               selected={selectedRecordId === id}
@@ -232,6 +236,7 @@ function getScrollAnchor(list: HTMLElement): ScrollAnchor | null {
 function RecordRow({
   id,
   optionId,
+  snippet,
   record,
   selected,
   onSelect,
@@ -239,6 +244,7 @@ function RecordRow({
 }: {
   id: string;
   optionId: string;
+  snippet?: string | null;
   record: ToolRecord;
   selected: boolean;
   onSelect(id: string): void;
@@ -260,12 +266,13 @@ function RecordRow({
         <span className="record-main">
           <span className="record-primary">{path.primary}</span>
           <span className="record-secondary">{path.secondary}</span>
+          {snippet ? <span className="record-secondary record-snippet">{snippet}</span> : null}
         </span>
         <span className="record-method">{record.method}</span>
         <StatusView record={record} />
       </button>
     );
-  }, [id, optionId, record, selected, onSelect, onContextMenu]);
+  }, [id, optionId, snippet, record, selected, onSelect, onContextMenu]);
 }
 
 export function sidebarContextMenuItems(

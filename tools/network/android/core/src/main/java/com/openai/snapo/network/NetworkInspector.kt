@@ -32,6 +32,10 @@ class NetworkInspectorServer internal constructor(
         snapshotProvider = ::snapshotMessages,
         commandHandler = ::handleCommand,
         interception = interception,
+        bodySearch = { query ->
+            val snapshot = bufferLock.withLock { eventBuffer.bodySearchSnapshot(query.requestIds) }
+            searchBodies(snapshot, query.terms)
+        },
     )
 
     fun start(): Boolean = transport.start(app, config.allowRelease)
