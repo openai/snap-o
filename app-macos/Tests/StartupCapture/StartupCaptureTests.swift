@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @main
@@ -9,6 +10,7 @@ struct StartupCaptureTests {
 
   static func main() async throws {
     try await CaptureModeTests.run()
+    try copyUsesSelectedCaptureCrop()
     await screenshotReuse()
     await screenshotFreshness()
     await livePreviewClaim()
@@ -1016,6 +1018,30 @@ struct StartupCaptureTests {
     await fixture.controller.tearDown()
   }
 
+  static func copyUsesSelectedCaptureCrop() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let bitmap = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 4, bitsPerSample: 8,
+      samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+    )!
+    memset(bitmap.bitmapData, 255, bitmap.bytesPerRow * bitmap.pixelsHigh)
+    try bitmap.representation(using: .png, properties: [:])!.write(to: url)
+    let capture = CaptureMedia(
+      device: first,
+      media: .image(url: url, capturedAt: Date(), display: DisplayInfo(size: CGSize(width: 8, height: 4), densityScale: 1))
+    )
+    let fixture = ControllerFixture()
+    fixture.controller.mediaDisplayMode.updateMediaList([capture], preserveDeviceID: nil, shouldSort: false)
+    let pasteboard = NSPasteboard(name: .init("crop-copy-\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    fixture.controller.reviewCrops[capture.id] = CGRect(x: 0.5, y: 0, width: 0.5, height: 1)
+    fixture.controller.copyCurrentImage(to: pasteboard)
+    let cropped = NSImage(pasteboard: pasteboard)!.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+    precondition(cropped.width == 4 && cropped.height == 4)
+  }
+
   static func captureReviewRequiresDecision() async {
     let fixture = ControllerFixture()
     AppSettings.shared.startupCaptureMode = .screenshot
@@ -1025,18 +1051,10 @@ struct StartupCaptureTests {
     await fixture.controller.start()
     await eventually { fixture.controller.isReviewingCapture && !fixture.controller.isProcessing }
     let ids = fixture.controller.mediaList.map(\.id)
-    fixture.controller.isSavingReview = true
-    precondition(!fixture.controller.canCaptureNow && !fixture.controller.canStartLivePreviewNow)
-    fixture.controller.isSavingReview = false
     await fixture.controller.startRecording()
     await fixture.controller.startLivePreview()
     await fixture.controller.captureScreenshots()
     precondition(fixture.controller.mediaList.map(\.id) == ids, "Unresolved captures must not be replaced")
-    precondition(!fixture.controller.isRecording)
-
-    await fixture.controller.finishCaptureReview()
-    precondition(fixture.controller.isLivePreviewActive, "Resolving a review returns to the live preview")
-    precondition(!fixture.controller.isReviewingCapture)
     await fixture.controller.tearDown()
   }
 

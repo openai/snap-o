@@ -19,6 +19,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/CaptureWindow/LivePreviewConnection.swift \
   Snap-O/LivePreview/LivePreviewThumbnail.swift \
   Snap-O/CaptureWindow/CaptureSnapshotController.swift \
+  Snap-O/CaptureWindow/CaptureCropGeometry.swift \
   Tests/Support/TestGate.swift Tests/Support/DeviceManagerFake.swift \
   Tests/CaptureSupport/TestSupport.swift Tests/CaptureMode/CaptureModeTests.swift \
   Tests/StartupCapture/StartupCaptureTests.swift \

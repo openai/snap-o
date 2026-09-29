@@ -46,6 +46,9 @@ enum CaptureCropExporter {
 
   static func export(_ capture: CaptureMedia, crop: CGRect, to destination: URL) async throws -> CaptureMedia {
     guard let source = capture.media.url else { throw CocoaError(.fileReadUnsupportedScheme) }
+    guard !FileManager.default.fileExists(atPath: destination.path) else {
+      throw CocoaError(.fileWriteFileExists)
+    }
     let size: CGSize
     do {
       if crop == CaptureCropGeometry.fullImage {

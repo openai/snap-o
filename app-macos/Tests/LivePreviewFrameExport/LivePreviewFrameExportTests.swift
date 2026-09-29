@@ -6,14 +6,6 @@ import Foundation
 import OSLog
 import VideoToolbox
 
-enum MediaSaveKind {
-  case image
-  case video
-  var fileExtension: String {
-    "png"
-  }
-}
-
 enum SnapOLog {
   static let storage = Logger(subsystem: "Snap-O.FrameExportTests", category: "storage")
   static let ui = Logger(subsystem: "Snap-O.FrameExportTests", category: "ui")

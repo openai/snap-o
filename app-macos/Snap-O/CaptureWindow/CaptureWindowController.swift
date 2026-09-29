@@ -503,13 +503,20 @@ final class CaptureWindowController {
     mediaDisplayMode.tearDown()
   }
 
-  func copyCurrentImage() {
+  func copyCurrentImage(to pasteboard: NSPasteboard = .general) {
     guard let capture = currentCapture,
           case .image(let url, _) = capture.media,
-          let image = NSImage(contentsOf: url)
+          var image = NSImage(contentsOf: url)
     else { return }
-    NSPasteboard.general.clearContents()
-    if NSPasteboard.general.writeObjects([image]) {
+    if let crop = reviewCrops[capture.id], crop != CaptureCropGeometry.fullImage {
+      guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+            let cropped = source.cropping(to: CaptureCropGeometry.frame(
+              for: crop, in: CGRect(x: 0, y: 0, width: source.width, height: source.height)
+            ).integral) else { return }
+      image = NSImage(cgImage: cropped, size: CGSize(width: cropped.width, height: cropped.height))
+    }
+    pasteboard.clearContents()
+    if pasteboard.writeObjects([image]) {
       imageCopied()
     }
   }

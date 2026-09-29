@@ -5,27 +5,37 @@ import Testing
 @Suite("Capture video keyboard focus", .serialized)
 @MainActor
 struct CaptureVideoPlayerTests {
-  @Test
-  func customPlaybackKeysRespectModifiers() throws {
+  @Test(arguments: [(UInt16(123), -1), (UInt16(124), 1)])
+  func arrowKeysStepOneFrame(input: (UInt16, Int)) throws {
     let player = CaptureVideoPlayer.PlayerView()
     var steps: [Int] = []
-    var toggles = 0
     player.stepFrame = { steps.append($0) }
+    _ = try player.handlePlaybackKey(keyEvent(input.0))
+    #expect(steps == [input.1])
+  }
+
+  @Test
+  func spaceTogglesPlayback() throws {
+    let player = CaptureVideoPlayer.PlayerView()
+    var toggles = 0
     player.togglePlayback = { toggles += 1 }
-    func event(_ code: UInt16, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
-      try #require(NSEvent.keyEvent(
-        with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
-        windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
-        isARepeat: false, keyCode: code
-      ))
-    }
-    #expect(player.acceptsFirstResponder)
-    #expect(try player.handlePlaybackKey(event(123)))
-    #expect(try player.handlePlaybackKey(event(124)))
-    #expect(try player.handlePlaybackKey(event(49)))
-    #expect(try !player.handlePlaybackKey(event(123, modifiers: .command)))
-    #expect(steps == [-1, 1])
+    _ = try player.handlePlaybackKey(keyEvent(49))
     #expect(toggles == 1)
+  }
+
+  @Test
+  func commandArrowRemainsAvailableToOtherShortcuts() throws {
+    let player = CaptureVideoPlayer.PlayerView()
+    player.stepFrame = { _ in Issue.record("Command-arrow must not step playback") }
+    #expect(try !player.handlePlaybackKey(keyEvent(123, modifiers: .command)))
+  }
+
+  private func keyEvent(_ code: UInt16, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+    try #require(NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+      windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+      isARepeat: false, keyCode: code
+    ))
   }
 
   @Test
