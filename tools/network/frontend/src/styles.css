@@ -944,12 +944,6 @@ pre {
   font: inherit;
 }
 
-.payload-text-block {
-  display: block;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .paged-payload mark {
   background: var(--search-highlight);
   color: inherit;
