@@ -81,6 +81,28 @@ class BodySearchTest {
         assertFalse(evicted.response.complete)
     }
 
+    @Test
+    fun `parses gzip aliases and header lists consistently`() {
+        listOf("gzip", "x-gzip", " X-GZip ; level=1", "identity, x-gzip", "identity\nx-gzip").forEach {
+            assertTrue(hasGzipContentEncoding(listOf(Header("Content-Encoding", it))))
+        }
+        assertFalse(hasGzipContentEncoding(listOf(Header("Content-Encoding", "br"))))
+    }
+
+    @Test
+    fun `request events carry explicit truncation metadata`() {
+        listOf(null, 0L, 4L).forEach { truncated ->
+            val event = RequestWillBeSent(
+                id = "one", tWallMs = 1L, tMonoNs = 1L, method = "POST",
+                url = "https://example.test/", hasBody = true, body = "éééééé",
+                bodyEncoding = null, bodyTruncatedBytes = truncated, bodySize = 10L,
+            )
+            val message = event.toCdpMessage(null)
+            val params = ProtocolJson.decodeFromJsonElement(CdpRequestWillBeSentParams.serializer(), message.params!!)
+            assertEquals(truncated, params.request.postDataTruncatedBytes)
+        }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `limits requests per search`() {
         BodySearchQuery(List(65) { "$it" }, listOf("tbo")).validate()

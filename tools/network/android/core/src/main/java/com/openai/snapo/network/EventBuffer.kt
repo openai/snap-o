@@ -69,9 +69,7 @@ internal class EventBuffer(
                         !request.hasBody ||
                             (requestBody != null && (request.bodyTruncatedBytes ?: 0) == 0L)
                         ),
-                    request?.headers?.any {
-                        it.name.equals("content-encoding", true) && it.value.equals("gzip", true)
-                    } == true,
+                    request?.headers?.let(::hasGzipContentEncoding) == true,
                 ),
                 SearchableBody(
                     responseBody,

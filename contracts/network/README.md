@@ -124,7 +124,7 @@ Each result has separate `request` and `response` fields:
 
 A missing or partial body cannot prove that a term is absent. The same is true for bodies still arriving, binary bodies, and bodies over the search limit. These results have `complete: false`.
 
-Search reads stored text; it never fetches a body from the network. It also reads gzip request bodies, with an 8 MiB limit after decompression. Plain text search reads at most 8,388,608 UTF-16 code units.
+Search reads stored text; it never fetches a body from the network. It also reads gzip and x-gzip request bodies, with an 8 MiB limit after decompression. Plain text search reads at most 8,388,608 UTF-16 code units.
 
 Clients combine matches from metadata and the request and response bodies. Different search terms can match different parts of a request. An excluded term in any part hides the request. Queries with excluded terms show a request only after both bodies have been fully searched.
 
@@ -133,3 +133,5 @@ The Mac also searches bodies in its local cache. It combines results using both 
 Selecting a match fetches the body through the existing body-read endpoints, unless it is already cached. Android may remove the body from its cache between search and selection.
 
 The protocol version stays at **2** because this endpoint adds a feature without breaking existing calls. Existing Mac and Python clients keep using their current endpoints. Older protocol-2 servers return `404` for body search. The frontend then searches cached bodies. The Tweaks protocol does not change.
+
+Request events include the optional `request.postDataTruncatedBytes` field. Zero means the full request body was captured; a positive value counts omitted bytes. A missing value means truncation is unknown. Decoding can change the byte count. Use capture metadata to decide whether the body is complete. This field is an additive change to protocol 2; older clients can ignore it.

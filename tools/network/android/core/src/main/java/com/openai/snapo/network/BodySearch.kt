@@ -120,3 +120,8 @@ private fun decodeSearchBody(body: CapturedBody, gzip: Boolean): String? {
         ).decode(ByteBuffer.wrap(decoded)).toString()
     }.getOrNull()
 }
+
+internal fun hasGzipContentEncoding(headers: List<Header>): Boolean = headers
+    .filter { it.name.equals("content-encoding", true) }
+    .flatMap { it.value.split(',', '\n') }
+    .any { it.substringBefore(';').trim().lowercase(Locale.ROOT) in listOf("gzip", "x-gzip") }
