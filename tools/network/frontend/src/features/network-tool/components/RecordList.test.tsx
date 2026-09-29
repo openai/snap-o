@@ -14,6 +14,7 @@ const client = { copyText } as unknown as NetworkClient;
 const onSelect = vi.fn();
 const onAddExclusionFilter = vi.fn();
 const scrollIntoView = vi.fn();
+const resizeCallbacks = new Set<() => void>();
 let container: HTMLDivElement;
 
 beforeEach(() => {
@@ -22,6 +23,19 @@ beforeEach(() => {
   onAddExclusionFilter.mockClear();
   copyText.mockClear();
   scrollIntoView.mockClear();
+  resizeCallbacks.clear();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly callback: () => void) {}
+      observe() {
+        resizeCallbacks.add(this.callback);
+      }
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
+    }
+  );
   container = document.createElement("div");
   document.body.append(container);
 });
@@ -85,9 +99,10 @@ function expectSelected(list: HTMLElement, label: string) {
 // jsdom has no layout. Model row height and the browser's scroll position clamping.
 function mockListLayout(list: HTMLElement) {
   let scrollTop = 0;
+  let clientHeight = 88;
   Object.defineProperties(list, {
-    clientHeight: { get: () => 88 },
-    scrollHeight: { get: () => Math.max(88, list.children.length * 44) },
+    clientHeight: { get: () => clientHeight },
+    scrollHeight: { get: () => Math.max(clientHeight, list.children.length * 44) },
     scrollTop: {
       get: () => scrollTop,
       set: (value: number) => {
@@ -95,6 +110,12 @@ function mockListLayout(list: HTMLElement) {
       }
     }
   });
+  return (height: number) => {
+    act(() => {
+      clientHeight = height;
+      for (const callback of resizeCallbacks) callback();
+    });
+  };
 }
 
 function scrollList(list: HTMLElement, top: number) {
@@ -155,6 +176,24 @@ describe("network request autoscroll", () => {
 
     expect(list.scrollTop).toBe(44);
     expect(list.lastElementChild?.textContent).toContain("fourth");
+  });
+
+  it("resumes when resizing makes the whole list visible without a scroll event", () => {
+    const list = render();
+    const resizeList = mockListLayout(list);
+    scrollList(list, 0);
+    resizeList(0);
+    resizeList(100);
+    const fourth = [...records, request("fourth")];
+    render(fourth);
+    expect(list.scrollTop).toBe(0);
+
+    resizeList(176);
+    render([...fourth, request("fifth")]);
+
+    expect(list.scrollTop).toBe(44);
+    resizeList(88);
+    expect(list.scrollTop).toBe(132);
   });
 });
 

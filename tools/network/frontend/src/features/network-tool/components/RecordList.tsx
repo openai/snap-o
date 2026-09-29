@@ -37,7 +37,7 @@ export function RecordList({
   const [showTopFade, setShowTopFade] = useState(false);
   const updateScrollState = useCallback(() => {
     const list = listRef.current;
-    if (list == null) return;
+    if (list == null || list.clientHeight === 0) return;
     // Allow for fractional scroll positions at the bottom.
     followBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
     setShowTopFade(list.scrollTop > 0);
@@ -50,10 +50,24 @@ export function RecordList({
       setShowTopFade(false);
       return;
     }
+    if (list.clientHeight === 0) return;
     // Use the position from before new rows increased the scroll height.
     if (followBottomRef.current) list.scrollTop = list.scrollHeight;
     updateScrollState();
   }, [lastRecordId, records.length, placeholder, updateScrollState]);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list == null) return;
+    // Resizing can reach the bottom without firing a scroll event.
+    const observer = new ResizeObserver(() => {
+      if (list.clientHeight === 0) return;
+      if (followBottomRef.current) list.scrollTop = list.scrollHeight;
+      updateScrollState();
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [placeholder, updateScrollState]);
 
   const selectRecord = useCallback(
     (id: string) => {
