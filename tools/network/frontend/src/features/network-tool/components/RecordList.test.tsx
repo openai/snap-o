@@ -97,12 +97,12 @@ function expectSelected(list: HTMLElement, label: string) {
 }
 
 // jsdom has no layout. Model row height and the browser's scroll position clamping.
-function mockListLayout(list: HTMLElement) {
+function mockListLayout(list: HTMLElement, bottomPadding = 0) {
   let scrollTop = 0;
   let clientHeight = 88;
   Object.defineProperties(list, {
     clientHeight: { get: () => clientHeight },
-    scrollHeight: { get: () => Math.max(clientHeight, list.children.length * 44) },
+    scrollHeight: { get: () => Math.max(clientHeight, list.children.length * 44 + bottomPadding) },
     scrollTop: {
       get: () => scrollTop,
       set: (value: number) => {
@@ -126,6 +126,24 @@ function scrollList(list: HTMLElement, top: number) {
 }
 
 describe("network request autoscroll", () => {
+  it.each(["End", "ArrowDown"])("resumes following when %s reaches the last row with bottom padding", (key) => {
+    const list = render(records, recordId(records[1]));
+    mockListLayout(list, 12);
+    // Revealing the last row leaves the list's trailing padding below the viewport.
+    vi.spyOn(list.lastElementChild!, "scrollIntoView").mockImplementation(() => {
+      list.scrollTop = list.scrollHeight - list.clientHeight - 12;
+    });
+    scrollList(list, 0);
+
+    press(list, key);
+
+    expectSelected(list, "third");
+    expect(list.scrollTop).toBe(56);
+    render([...records, request("fourth")]);
+    expect(list.scrollTop).toBe(100);
+    expectSelected(list, "third");
+  });
+
   it("follows new calls at the bottom, pauses above it, and resumes on return", () => {
     const list = render();
     mockListLayout(list);
@@ -211,12 +229,12 @@ describe("network request keyboard selection", () => {
 
     expect(press(list, "ArrowDown").defaultPrevented).toBe(true);
     expectSelected(list, "third");
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
-    expect(scrollIntoView.mock.instances.at(-1)).toBe(options[2]);
     expect(document.activeElement).toBe(list);
 
     expect(press(list, "ArrowUp").defaultPrevented).toBe(true);
     expectSelected(list, "second");
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
+    expect(scrollIntoView.mock.instances.at(-1)).toBe(options[1]);
   });
 
   it("uses the current filtered and sorted order", () => {

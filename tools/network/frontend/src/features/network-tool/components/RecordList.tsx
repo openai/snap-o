@@ -136,7 +136,13 @@ export function RecordList({
     event.preventDefault();
     const id = recordId(records[nextIndex]);
     if (id !== selectedRecordId) selectRecord(id);
-    listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (list != null && nextIndex === records.length - 1) {
+      // Include trailing padding so reaching the last row resumes following.
+      list.scrollTop = list.scrollHeight;
+    } else {
+      list?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+    }
     updateScrollState();
   };
   const handleContextMenu = useCallback(
