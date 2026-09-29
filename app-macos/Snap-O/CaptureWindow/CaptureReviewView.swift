@@ -18,7 +18,7 @@ struct CaptureReviewView: View {
           in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo
         )
         ZStack(alignment: .topLeading) {
-          Color(white: 0.24)
+          CapturePaneStyle.background
           reviewToolbar
             .frame(height: CaptureReviewLayout.toolbarHeight)
             .padding(.horizontal, CaptureReviewLayout.edgeSpacing)

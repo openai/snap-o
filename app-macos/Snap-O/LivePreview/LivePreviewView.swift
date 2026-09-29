@@ -213,7 +213,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   private func updateDisplayLayerBackgroundColor() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      displayLayer.backgroundColor = NSColor.unemphasizedSelectedContentBackgroundColor.cgColor
+      displayLayer.backgroundColor = NSColor.clear.cgColor
     }
   }
 
