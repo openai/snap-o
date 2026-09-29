@@ -1,40 +1,13 @@
+import { bodyCoverage, requestBodyCoverage, type BodyCoverage } from "./body-coverage";
 import { decodeRequestBody } from "./body-decoding";
 import type { RequestRecord, ToolRecord } from "./cdp";
 import { requestRecordKey } from "./cdp";
 import type { NetworkClient } from "./client";
 import type { ToolConnection } from "@snap-o/tool-host";
 
-export class BodySearchHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`Body search failed (${status}).`);
-  }
-}
-
-export interface BodySearchMatch {
-  terms: string[];
-  complete: boolean;
-  snippet?: string | null;
-}
-export interface RequestBodySearchMatch {
-  requestId: string;
-  request: BodySearchMatch;
-  response: BodySearchMatch;
-}
-export interface BodySearchQuery {
-  requestIds: string[];
-  terms: string[];
-}
-export interface BodySearchReply {
-  results: RequestBodySearchMatch[];
-}
+import { yieldSearch, type BodySearchMatch, type RequestBodySearchMatch } from "./remote-body-search";
 export type BodySearchMatches = ReadonlyMap<string, RequestBodySearchMatch>;
 export const emptyBodySearchMatches: BodySearchMatches = new Map();
-
-export async function yieldSearch(signal: AbortSignal, delay = 0): Promise<void> {
-  signal.throwIfAborted();
-  await new Promise<void>((resolve) => setTimeout(resolve, delay));
-  signal.throwIfAborted();
-}
 
 // Overlap text chunks to find phrases that span two chunks.
 export async function searchBodyText(
@@ -84,25 +57,34 @@ export async function searchLocalBodies(
         );
   const requestText = decoded?.kind === "text" ? decoded.text : null;
   const responseText = record.responseBodyBase64Encoded ? null : record.responseBody;
-  const request =
-    requestText == null
-      ? { terms: [], complete: record.requestHasPostData === false || record.requestBodySize === 0 }
-      : await searchBodyText(requestText, terms, signal);
-  // Missing or partial uploads cannot prove that an excluded term is absent.
-  if (requestText != null) request.complete = record.requestBodyTruncatedBytes === 0;
-  const response =
-    responseText == null
-      ? {
-          terms: [],
-          complete:
-            record.method === "HEAD" ||
-            record.encodedDataLength === 0 ||
-            (record.status.kind === "success" && [204, 304].includes(record.status.code))
-        }
-      : await searchBodyText(responseText, terms, signal);
-  if (responseText != null)
-    response.complete = record.endedAt != null && (record.responseBodyTruncatedBytes ?? 0) === 0;
-  return { requestId: record.requestId, request, response };
+  const requestCoverage = requestBodyCoverage(
+    record.requestBody != null,
+    record.requestBodySize === 0 ? false : record.requestHasPostData,
+    record.requestBodyTruncatedBytes
+  );
+  const responseCoverage = bodyCoverage(
+    record.responseBody != null,
+    record.method === "HEAD" ||
+      record.encodedDataLength === 0 ||
+      (record.status.kind === "success" && [204, 304].includes(record.status.code)),
+    record.endedAt != null && (record.responseBodyTruncatedBytes ?? 0) === 0
+  );
+  return {
+    requestId: record.requestId,
+    request: await searchCoveredBody(requestText, requestCoverage, terms, signal),
+    response: await searchCoveredBody(responseText ?? null, responseCoverage, terms, signal)
+  };
+}
+
+async function searchCoveredBody(
+  text: string | null,
+  coverage: BodyCoverage,
+  terms: string[],
+  signal: AbortSignal
+): Promise<BodySearchMatch> {
+  if (text == null) return { terms: [], complete: coverage === "absent" };
+  const match = await searchBodyText(text, terms, signal);
+  return { ...match, complete: coverage === "complete" };
 }
 
 export function mergeBodyMatches(
@@ -179,33 +161,18 @@ export async function searchCaptureBodies(
       (r) =>
         r.processId === connection.processIdentity && !cache.get(requestRecordKey(r.processId, r.requestId))?.remote
     );
-    for (let i = 0; i < current.length; ) {
+    const accept = (reply: { results: RequestBodySearchMatch[] }) => {
       signal.throwIfAborted();
-      const batch = current.slice(i, i + 32);
-      try {
-        const reply = await client.searchBodies({ requestIds: batch.map((r) => r.requestId), terms }, signal);
-        signal.throwIfAborted();
-        const ids = new Set(batch.map((r) => r.requestId));
-        for (const result of reply.results) {
-          if (!ids.has(result.requestId)) continue;
-          const key = requestRecordKey(connection.processIdentity, result.requestId);
-          const local = matches.get(key);
-          if (local) matches.set(key, mergeBodyMatches(local, result));
-          const entry = cache.get(key);
-          if (entry) entry.remote = result;
-        }
-        publish(new Map(matches));
-        i += batch.length;
-      } catch (error) {
-        signal.throwIfAborted();
-        const retryable =
-          error instanceof BodySearchHttpError
-            ? error.status === 408 || error.status === 429 || error.status >= 500
-            : error instanceof TypeError || (error instanceof DOMException && error.name === "TimeoutError");
-        if (!retryable) break;
-        await yieldSearch(signal, 500);
+      for (const result of reply.results) {
+        const key = requestRecordKey(connection.processIdentity, result.requestId);
+        const entry = cache.get(key);
+        if (!entry) continue;
+        entry.remote = result;
+        matches.set(key, mergeBodyMatches(entry.local, result));
       }
-    }
+      publish(new Map(matches));
+    };
+    await client.searchBodies({ requestIds: current.map((r) => r.requestId), terms }, signal, accept);
   }
   return matches;
 }

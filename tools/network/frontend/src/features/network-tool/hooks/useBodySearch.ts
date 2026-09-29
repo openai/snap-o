@@ -5,10 +5,10 @@ import type { ToolRecord } from "../../../network/cdp";
 import {
   emptyBodySearchMatches,
   searchCaptureBodies,
-  yieldSearch,
   type BodySearchCache,
   type BodySearchMatches
 } from "../../../network/body-search";
+import { validBodySearchTerms, yieldSearch } from "../../../network/remote-body-search";
 import { parseNetworkSearchQuery } from "../lib/search";
 
 export function useBodySearch(
@@ -35,7 +35,7 @@ export function useBodySearch(
     connection,
     matches: emptyBodySearchMatches
   });
-  const invalid = terms.length > 64 || terms.some((term) => term.length > 256);
+  const invalid = !validBodySearchTerms(terms);
 
   useEffect(() => {
     if (key === "[]" || invalid) return;

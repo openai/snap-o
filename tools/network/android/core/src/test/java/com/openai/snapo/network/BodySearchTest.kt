@@ -13,10 +13,14 @@ class BodySearchTest {
             listOf(
                 SearchableRequest(
                     "one",
-                    SearchableBody(CapturedBody("CLIENT token", null), true),
-                    SearchableBody(CapturedBody("server tbo token", null), false),
+                    SearchableBody(CapturedBody("CLIENT token", null), BodyCoverage.Complete),
+                    SearchableBody(CapturedBody("server tbo token", null), BodyCoverage.Incomplete),
                 ),
-                SearchableRequest("missing", SearchableBody(null, false), SearchableBody(null, true)),
+                SearchableRequest(
+                    "missing",
+                    SearchableBody(null, BodyCoverage.Incomplete),
+                    SearchableBody(null, BodyCoverage.Absent)
+                ),
             ),
             listOf("client", "tbo", "missing"),
         )
@@ -31,7 +35,7 @@ class BodySearchTest {
 
     @Test
     fun `does not search binary base64 as text`() = runBlocking {
-        val result = searchResponse(SearchableBody(CapturedBody("dGJv", "base64"), true), "dGJv")
+        val result = searchResponse(SearchableBody(CapturedBody("dGJv", "base64"), BodyCoverage.Complete), "dGJv")
         assertTrue(result.terms.isEmpty())
         assertFalse(result.complete)
     }
@@ -86,13 +90,25 @@ class BodySearchTest {
     }
 
     @Test
-    fun `request events carry explicit truncation metadata`() {
+    fun `request completeness requires explicit zero truncation`() = runBlocking {
         listOf(null, 0L, 4L).forEach { truncated ->
             val event = request("éééééé").copy(bodyTruncatedBytes = truncated, bodySize = 10L)
             val message = event.toCdpMessage(null)
             val params = ProtocolJson.decodeFromJsonElement(CdpRequestWillBeSentParams.serializer(), message.params!!)
             assertEquals(truncated, params.request.postDataTruncatedBytes)
+            val buffer = EventBuffer(NetworkInspectorConfig())
+            buffer.append(event)
+            val match = searchBodies(buffer.bodySearchSnapshot(listOf("one")), listOf("missing")).results.single()
+            assertEquals(truncated == 0L, match.request.complete)
         }
+    }
+
+    @Test
+    fun `missing and contradictory body metadata stays incomplete`() {
+        assertEquals(BodyCoverage.Absent, requestBodyCoverage(false, false, null))
+        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(false, null, null))
+        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(false, true, 0))
+        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(true, false, null))
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -106,7 +122,7 @@ class BodySearchTest {
     )
 
     private suspend fun searchResponse(body: SearchableBody, term: String) = searchBodies(
-        listOf(SearchableRequest("one", SearchableBody(null, true), body)),
+        listOf(SearchableRequest("one", SearchableBody(null, BodyCoverage.Absent), body)),
         listOf(term),
     ).results.single().response
 }

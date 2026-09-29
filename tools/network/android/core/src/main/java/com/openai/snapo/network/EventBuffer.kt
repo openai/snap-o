@@ -66,10 +66,7 @@ internal class EventBuffer(
                 id,
                 SearchableBody(
                     requestBody,
-                    request != null && (
-                        !request.hasBody ||
-                            (requestBody != null && (request.bodyTruncatedBytes ?: 0) == 0L)
-                        ),
+                    requestBodyCoverage(requestBody != null, request?.hasBody, request?.bodyTruncatedBytes),
                     request?.headers?.let(::hasGzipContentEncoding) == true,
                     BodyContentType.parse(
                         request?.headers?.firstOrNull {
@@ -79,13 +76,14 @@ internal class EventBuffer(
                 ),
                 SearchableBody(
                     responseBody,
-                    response != null && (
-                        request?.method.equals("HEAD", true) || response.code in listOf(204, 304) ||
-                            (
-                                end != null && (end.bodyTruncatedBytes ?: response.bodyTruncatedBytes ?: 0) == 0L &&
-                                    (responseBody != null || end.bodySize == 0L)
-                                )
-                        ),
+                    bodyCoverage(
+                        available = responseBody != null,
+                        absent = response != null && (
+                            request?.method.equals("HEAD", true) ||
+                                response.code in listOf(204, 304) || end?.bodySize == 0L
+                            ),
+                        complete = end != null && (end.bodyTruncatedBytes ?: response?.bodyTruncatedBytes ?: 0) == 0L,
+                    ),
                 ),
             )
         }

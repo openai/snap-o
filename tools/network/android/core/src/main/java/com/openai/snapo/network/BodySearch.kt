@@ -43,7 +43,7 @@ internal data class BodySearchReply(val results: List<RequestBodySearchMatch>)
 
 internal data class SearchableBody(
     val body: CapturedBody?,
-    val complete: Boolean,
+    val coverage: BodyCoverage,
     val gzip: Boolean = false,
     val charset: Charset = Charsets.UTF_8,
 )
@@ -73,7 +73,7 @@ internal suspend fun searchBodies(snapshot: List<SearchableRequest>, terms: List
 private const val MaxSearchCharacters = 8 * 1024 * 1024
 
 private suspend fun searchBody(source: SearchableBody, terms: List<String>): BodySearchMatch {
-    val captured = source.body ?: return BodySearchMatch(emptyList(), source.complete)
+    val captured = source.body ?: return BodySearchMatch(emptyList(), source.coverage == BodyCoverage.Absent)
     val decoded = decodeSearchBody(captured, source.gzip, source.charset) ?: return BodySearchMatch(emptyList(), false)
     val text = decoded.take(MaxSearchCharacters)
     val normalized = text.lowercase(Locale.ROOT)
@@ -89,7 +89,7 @@ private suspend fun searchBody(source: SearchableBody, terms: List<String>): Bod
     }
     return BodySearchMatch(
         terms = matches,
-        complete = source.complete && decoded.length <= MaxSearchCharacters,
+        complete = source.coverage == BodyCoverage.Complete && decoded.length <= MaxSearchCharacters,
         snippet = if (firstOffset < 0) {
             null
         } else {

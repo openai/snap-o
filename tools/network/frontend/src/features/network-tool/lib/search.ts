@@ -1,4 +1,4 @@
-import type { RequestBodySearchMatch } from "../../../network/body-search";
+import type { RequestBodySearchMatch } from "../../../network/remote-body-search";
 import {
   matchesKeywordSearchDocument,
   parseKeywordSearchQuery,

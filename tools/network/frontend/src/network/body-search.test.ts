@@ -1,18 +1,17 @@
+import { searchRemoteBodies, BodySearchHttpError, type BodySearchReply } from "./remote-body-search";
 import { request } from "./body-test-fixtures";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ToolConnection } from "@snap-o/tool-host";
 import type { ToolRecord } from "./cdp";
 import { requestRecordKey } from "./cdp";
 import type { NetworkClient } from "./client";
 import {
-  BodySearchHttpError,
   mergeBodyMatches,
   searchBodyText,
   searchCaptureBodies,
   searchLocalBodies,
   type BodySearchCache,
-  type BodySearchMatches,
-  type BodySearchReply
+  type BodySearchMatches
 } from "./body-search";
 import { filterRecords } from "../features/network-tool/lib/records";
 
@@ -41,7 +40,15 @@ function search(
   return searchCaptureBodies(
     records,
     options.terms ?? ["needle"],
-    { searchBodies } as NetworkClient,
+    {
+      searchBodies: (query, signal, publish) =>
+        searchRemoteBodies(
+          query,
+          signal,
+          async (batch, signal) => Response.json(await searchBodies!(batch, signal)),
+          publish
+        )
+    } as NetworkClient,
     connection,
     options.signal ?? signal(),
     options.publish ?? (() => {}),
@@ -49,52 +56,7 @@ function search(
   );
 }
 
-afterEach(() => vi.useRealTimers());
-
 describe("body search", () => {
-  it.each([
-    new BodySearchHttpError(429),
-    new BodySearchHttpError(503),
-    new TypeError("Network request failed"),
-    new DOMException("Request timed out", "TimeoutError")
-  ])("retries the same batch after a temporary failure: %s", async (error) => {
-    vi.useFakeTimers();
-    const record = request();
-    const searchBodies = vi
-      .fn()
-      .mockRejectedValueOnce(error)
-      .mockResolvedValue(reply(["needle"]));
-    const publish = vi.fn();
-    const pending = search([record], searchBodies, { publish });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(searchBodies).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(500);
-    const matches = await pending;
-    expect(searchBodies).toHaveBeenCalledTimes(2);
-    expect(searchBodies.mock.calls[1]).toEqual(searchBodies.mock.calls[0]);
-    expect(filterRecords([record], "needle", false, [], matches)).toEqual([record]);
-    expect(filterRecords([record], "needle", false, [], publish.mock.lastCall![0])).toEqual([record]);
-  });
-
-  it("stops retrying when the query is canceled", async () => {
-    vi.useFakeTimers();
-    const abort = new AbortController();
-    const searchBodies = vi.fn().mockRejectedValue(new BodySearchHttpError(429));
-    const pending = search([request()], searchBodies, { signal: abort.signal });
-    const rejected = expect(pending).rejects.toThrow();
-    await vi.advanceTimersByTimeAsync(0);
-    abort.abort();
-    await vi.advanceTimersByTimeAsync(500);
-    await rejected;
-    expect(searchBodies).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([400, 404])("does not retry HTTP %i", async (status) => {
-    const searchBodies = vi.fn().mockRejectedValue(new BodySearchHttpError(status));
-    await search([request()], searchBodies);
-    expect(searchBodies).toHaveBeenCalledTimes(1);
-  });
-
   it("finds a phrase across chunks and can cancel a long search", async () => {
     const text = "x".repeat(16_380) + "hello world";
     expect((await searchBodyText(text, ["hello world"], signal())).terms).toEqual(["hello world"]);

@@ -1,5 +1,5 @@
 import { searchHighlightRanges, type KeywordSearchQuery, type SearchHighlightRange } from "./keyword-search";
-import { yieldSearch } from "./body-search";
+import { yieldSearch } from "./remote-body-search";
 
 export async function findPayloadMatches(
   text: string,
