@@ -1,4 +1,4 @@
-import type { BodySearchQuery, BodySearchReply } from "./body-search";
+import { BodySearchHttpError, type BodySearchQuery, type BodySearchReply } from "./body-search";
 import type { ToolConnection } from "@snap-o/tool-host";
 import { readText } from "../http";
 import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamClosed } from "./bridge-types";
@@ -97,7 +97,7 @@ export class NetworkConnection {
       cache: "no-store",
       redirect: "error"
     });
-    if (!response.ok) throw new Error(`Body search failed (${response.status}).`);
+    if (!response.ok) throw new BodySearchHttpError(response.status);
     const result = JSON.parse(await readText(response, 2 * 1024 * 1024)) as BodySearchReply;
     if (
       !result ||

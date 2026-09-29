@@ -159,5 +159,5 @@ it("posts literal body searches and rejects invalid snippets and older servers",
     "Invalid body search response"
   );
   fetchRequest.mockResolvedValueOnce(new Response("missing", { status: 404 }));
-  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toThrow("404");
+  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toMatchObject({ status: 404 });
 });

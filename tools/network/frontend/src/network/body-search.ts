@@ -3,6 +3,12 @@ import { requestRecordKey } from "./cdp";
 import type { NetworkClient } from "./client";
 import type { ToolConnection } from "@snap-o/tool-host";
 
+export class BodySearchHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Body search failed (${status}).`);
+  }
+}
+
 export interface BodySearchMatch {
   terms: string[];
   complete: boolean;
@@ -204,7 +210,7 @@ export async function searchCaptureBodies(
       (r) =>
         r.processId === connection.processIdentity && !cache.get(requestRecordKey(r.processId, r.requestId))?.remote
     );
-    for (let i = 0; i < current.length; i += 32) {
+    for (let i = 0; i < current.length; ) {
       signal.throwIfAborted();
       const batch = current.slice(i, i + 32);
       try {
@@ -220,9 +226,15 @@ export async function searchCaptureBodies(
           if (entry) entry.remote = result;
         }
         publish(new Map(matches));
-      } catch {
+        i += batch.length;
+      } catch (error) {
         signal.throwIfAborted();
-        break;
+        const retryable =
+          error instanceof BodySearchHttpError
+            ? error.status === 408 || error.status === 429 || error.status >= 500
+            : error instanceof TypeError || (error instanceof DOMException && error.name === "TimeoutError");
+        if (!retryable) break;
+        await yieldSearch(signal, 500);
       }
     }
   }
