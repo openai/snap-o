@@ -29,7 +29,7 @@ final class AppRuntime {
       }
     }
     let captureCoordinator = CaptureCoordinator()
-    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore, history: captureHistory.repository)
+    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
     let startRecording: RecordingService.StartRecording = { deviceID, bugReport in
       if EmulatorGRPCEndpoint.isEmulator(deviceID) || bugReport {
         let session = try await adbService.exec().startScreenrecord(deviceID: deviceID, bugReport: bugReport)
@@ -41,7 +41,6 @@ final class AppRuntime {
       adb: adbService,
       fileStore: fileStore,
       coordinator: captureCoordinator,
-      history: captureHistory.repository,
       startRecording: startRecording
     )
     let livePreview = LivePreviewService(adb: adbService, coordinator: captureCoordinator)

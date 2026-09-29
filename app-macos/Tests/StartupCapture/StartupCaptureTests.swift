@@ -47,6 +47,7 @@ struct StartupCaptureTests {
     await tearDownDuringQueuedCommand(recordsVideo: false)
     await disconnectDuringQueuedCommand()
     await commandAfterPreparedPreviewReady()
+    await captureReviewRequiresDecision()
     await cancelledQueuedCommand()
     await commandDuringAutomaticPreview(recordsVideo: true, previewReadyFirst: true)
     await commandDuringAutomaticPreview(recordsVideo: false, previewReadyFirst: true)
@@ -997,6 +998,7 @@ struct StartupCaptureTests {
     await fixture.displayGate.open()
     await fixture.controller.start()
     await eventually { !fixture.controller.isProcessing && fixture.controller.canStartRecordingNow }
+    fixture.controller.confirmDiscardReview = { true }
     await fixture.readyGate.open()
     await fixture.stopGate.open()
     await fixture.controller.startRecording()
@@ -1011,6 +1013,30 @@ struct StartupCaptureTests {
     await finishGate.open()
     await stop.value
     precondition(!fixture.controller.isRecording && fixture.controller.isLivePreviewActive)
+    await fixture.controller.tearDown()
+  }
+
+  static func captureReviewRequiresDecision() async {
+    let fixture = ControllerFixture()
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    await fixture.controller.start()
+    await eventually { fixture.controller.isReviewingCapture && !fixture.controller.isProcessing }
+    let ids = fixture.controller.mediaList.map(\.id)
+    fixture.controller.isSavingReview = true
+    precondition(!fixture.controller.canCaptureNow && !fixture.controller.canStartLivePreviewNow)
+    fixture.controller.isSavingReview = false
+    await fixture.controller.startRecording()
+    await fixture.controller.startLivePreview()
+    await fixture.controller.captureScreenshots()
+    precondition(fixture.controller.mediaList.map(\.id) == ids, "Unresolved captures must not be replaced")
+    precondition(!fixture.controller.isRecording)
+
+    await fixture.controller.finishCaptureReview()
+    precondition(fixture.controller.isLivePreviewActive, "Resolving a review returns to the live preview")
+    precondition(!fixture.controller.isReviewingCapture)
     await fixture.controller.tearDown()
   }
 

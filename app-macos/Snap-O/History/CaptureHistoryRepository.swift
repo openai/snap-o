@@ -32,6 +32,46 @@ actor CaptureHistoryRepository {
     return snapshot
   }
 
+  /// Publish a reviewed batch only after every file and its metadata are durable.
+  func saveReviewedCaptures(_ captures: [CaptureMedia], name: String, selectedID: UUID?) throws {
+    loadIfNeeded()
+    guard let first = captures.first, first.media.saveKind != nil else { return }
+    let kind: CaptureHistoryEntry.Kind = first.media.isImage ? .image : .video
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    var entry = CaptureHistoryEntry(
+      id: UUID(), kind: kind, capturedAt: first.media.capturedAt, completedAt: Date(), items: [],
+      name: trimmedName.isEmpty ? nil : trimmedName
+    )
+    let staging = root.appendingPathComponent(".\(entry.id.uuidString).partial", isDirectory: true)
+    let destination = root.appendingPathComponent(entry.id.uuidString, isDirectory: true)
+    do {
+      try manager.createDirectory(at: staging, withIntermediateDirectories: true)
+      for capture in captures {
+        guard let source = capture.media.url,
+              capture.media.isImage == first.media.isImage else {
+          throw CocoaError(.fileReadUnsupportedScheme)
+        }
+        let item = try CaptureHistoryEntry.Item(
+          id: UUID(), deviceID: capture.device.id, deviceName: capture.device.displayTitle,
+          captureID: capture.id, width: capture.media.size.width, height: capture.media.size.height,
+          densityScale: capture.media.densityScale.map(Double.init),
+          byteCount: Int64(source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+        )
+        try manager.copyItem(at: source, to: staging.appendingPathComponent("\(item.id.uuidString).\(kind.fileExtension)"))
+        entry.items.append(item)
+        if capture.id == selectedID { entry.capturePaneSelectionID = item.id }
+      }
+      try JSONEncoder().encode(entry).write(to: staging.appendingPathComponent("capture.json"), options: .atomic)
+      try manager.moveItem(at: staging, to: destination)
+      entries.append(entry)
+      publish()
+      prune()
+    } catch {
+      try? manager.removeItem(at: staging)
+      throw error
+    }
+  }
+
   func begin(kind: CaptureHistoryEntry.Kind, devices: [Device], at date: Date = Date()) -> UUID? {
     loadIfNeeded()
     guard !devices.isEmpty else { return nil }

@@ -19,6 +19,7 @@ final class CaptureWindowController {
 
   private(set) var isDeviceListInitialized: Bool = false
   private(set) var isProcessing: Bool = false
+  var isSavingReview = false
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var imageCopyID: UUID?
@@ -34,6 +35,7 @@ final class CaptureWindowController {
   @ObservationIgnored private var initialCaptureWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
+  @ObservationIgnored var confirmDiscardReview: (() -> Bool)?
 
   init(
     captureServices: CaptureServices,
@@ -159,7 +161,29 @@ final class CaptureWindowController {
   }
 
   var canCaptureNow: Bool {
-    !isTornDown && !isProcessing && !isRecording && !isStoppingLivePreview && hasDevices
+    !isTornDown && !isProcessing && !isSavingReview && !isRecording && !isStoppingLivePreview && hasDevices
+  }
+
+  var isReviewingCapture: Bool {
+    guard case .displaying = mode else { return false }
+    return !isRecording && !mediaList.isEmpty
+  }
+
+  func finishCaptureReview() async {
+    guard isReviewingCapture else { return }
+    mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+    mode = .idle
+    lastError = nil
+    screenshotFailures = []
+    await startLivePreview()
+  }
+
+  private func prepareToLeaveReview() -> Bool {
+    guard isReviewingCapture else { return true }
+    guard confirmDiscardReview?() == true else { return false }
+    mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+    mode = .idle
+    return true
   }
 
   var canStartRecordingNow: Bool {
@@ -240,6 +264,7 @@ final class CaptureWindowController {
       guard await waitForInitialCaptureSetup() else { return }
     }
     guard canCaptureNow else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
@@ -277,6 +302,7 @@ final class CaptureWindowController {
 
   func startRecording() async {
     guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     let recordsBugReport = AppSettings.shared.recordAsBugReport
     let needsPreview = !isLivePreviewActive && !recordsBugReport
@@ -358,6 +384,7 @@ final class CaptureWindowController {
       }
       if !isProcessing, knownDevices.contains(where: { $0.id == deviceID }) {
         await startLivePreview(preferredDeviceID: deviceID)
+        guard isLivePreviewActive else { return }
         selectDevice(id: deviceID)
         return
       }
@@ -373,6 +400,7 @@ final class CaptureWindowController {
 
   func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil, allowRecording: Bool = false) async {
     guard canStartLivePreviewNow || (allowRecording && isRecording && !isLivePreviewActive && !isTornDown) else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil

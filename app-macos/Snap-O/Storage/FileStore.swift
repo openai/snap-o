@@ -41,6 +41,19 @@ final class FileStore: Sendable {
     return directory.appendingPathComponent(filename)
   }
 
+  func discardPreviews(_ captures: [CaptureMedia]) throws {
+    let root = baseDir.resolvingSymlinksInPath().standardizedFileURL.path + "/"
+    for capture in captures {
+      guard let url = capture.media.url else { continue }
+      let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+      // Never remove history entries or externally supplied files through draft cleanup.
+      guard path.hasPrefix(root) else { continue }
+      if FileManager.default.fileExists(atPath: path) {
+        try FileManager.default.removeItem(at: url)
+      }
+    }
+  }
+
   func makeDragDestination(capturedAt: Date, kind: MediaSaveKind) -> URL {
     makeDestination(prefix: "Snap-O", date: capturedAt, kind: kind)
   }

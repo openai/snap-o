@@ -163,7 +163,7 @@ private struct PreviewSelectionBoundsKey: PreferenceKey {
   }
 }
 
-private struct VideoPreviewThumbnail: View {
+struct VideoPreviewThumbnail: View {
   let url: URL
 
   @State private var thumbnail: NSImage?

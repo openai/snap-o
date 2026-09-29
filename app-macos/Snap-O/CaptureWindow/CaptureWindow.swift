@@ -76,6 +76,12 @@ struct CaptureWindow: View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
       .task {
+        controller.confirmDiscardReview = { [weak controller] in
+          guard let controller else { return false }
+          return CaptureReviewCloseGuard.confirmReplacement {
+            try controller.fileStore.discardPreviews(controller.mediaList)
+          }
+        }
         await controller.start()
       }
       .task(id: controller.mediaList.map(\.id)) {
@@ -106,6 +112,12 @@ struct CaptureWindow: View {
         }
       }
       .focusedSceneValue(\.captureController, controller)
+      .background {
+        CaptureReviewCloseGuard(captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : []) {
+          try controller.fileStore.discardPreviews(controller.mediaList)
+        }
+        .frame(width: 0, height: 0)
+      }
       .alert("Capture History", isPresented: Binding(
         get: { history.errorMessage != nil },
         set: { if !$0 { Task { await history.repository.clearError() } } }
@@ -159,35 +171,16 @@ struct CaptureWindow: View {
       )
   }
 
-  private var captureHistoryEntry: CaptureHistoryEntry? {
-    guard !controller.isLivePreviewActive, !controller.isRecording,
-          let captureID = controller.currentCapture?.id else { return nil }
-    return history.entries.first { $0.items.contains { $0.captureID == captureID } }
-  }
-
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
-    let entry = captureHistoryEntry
-    return CapturePaneTitle(
-      entry: entry,
-      deviceTitle: controller.isLivePreviewActive ? nil : controller.currentCaptureDeviceTitle,
-      fallbackTitle: controller.isLivePreviewActive
-        ? controller.currentCaptureDeviceTitle ?? ""
-        : controller.isRecording ? "Recording" : "Snap-O",
-      openDeviceManager: { openWindow(id: "device-manager") },
-      rename: { name in
-        guard let entry else { return }
-        Task { await history.repository.rename(entry.id, to: name) }
-      }
-    )
+    return CapturePaneTitle(title: controller.currentCaptureDeviceTitle ?? "Snap-O") {
+      openWindow(id: "device-manager")
+    }
   }
 
   private func navigationTitle(for layout: WorkspaceLayout) -> String {
     switch layout {
     case .capture:
-      if let entry = captureHistoryEntry {
-        return [entry.displayName, controller.currentCaptureDeviceTitle].compactMap(\.self).joined(separator: " — ")
-      }
       return controller.navigationTitle
     case .tool, .both:
       guard let model = toolSession.model,
@@ -459,8 +452,14 @@ struct CaptureWindow: View {
     controller: CaptureWindowController,
     layout: WorkspaceLayout
   ) -> some View {
-    CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
-      captureContent(controller: controller)
+    Group {
+      if controller.isReviewingCapture {
+        CaptureReviewView(controller: controller)
+      } else {
+        CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
+          captureContent(controller: controller)
+        }
+      }
     }
     .environment(\.captureImageCopied, controller.imageCopied)
     .overlay {

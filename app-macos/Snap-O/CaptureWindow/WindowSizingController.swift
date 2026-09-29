@@ -65,6 +65,14 @@ struct WindowSizingController: NSViewRepresentable {
 
   @MainActor
   final class Coordinator: NSObject, NSWindowDelegate {
+    func window(_ window: NSWindow, willPositionSheet sheet: NSWindow, using rect: NSRect) -> NSRect {
+      CaptureSheetAnchor.attachmentRect(in: window, sheet: sheet) ?? rect
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+      CaptureReviewCloseGuard.confirmDiscard(in: sender)
+    }
+
     private struct LayoutSnapshot {
       let frame: NSRect
       let workspaceSize: CGSize
