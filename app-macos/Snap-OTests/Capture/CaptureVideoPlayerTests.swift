@@ -6,6 +6,29 @@ import Testing
 @MainActor
 struct CaptureVideoPlayerTests {
   @Test
+  func customPlaybackKeysRespectModifiers() throws {
+    let player = CaptureVideoPlayer.PlayerView()
+    var steps: [Int] = []
+    var toggles = 0
+    player.stepFrame = { steps.append($0) }
+    player.togglePlayback = { toggles += 1 }
+    func event(_ code: UInt16, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+      try #require(NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+        windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+        isARepeat: false, keyCode: code
+      ))
+    }
+    #expect(player.acceptsFirstResponder)
+    #expect(try player.handlePlaybackKey(event(123)))
+    #expect(try player.handlePlaybackKey(event(124)))
+    #expect(try player.handlePlaybackKey(event(49)))
+    #expect(try !player.handlePlaybackKey(event(123, modifiers: .command)))
+    #expect(steps == [-1, 1])
+    #expect(toggles == 1)
+  }
+
+  @Test
   func focusLeavesTheWholePlayer() throws {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),

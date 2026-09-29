@@ -4,7 +4,6 @@ import SwiftUI
 struct CaptureCropOverlay: NSViewRepresentable {
   let imageFrame: CGRect
   @Binding var crop: CGRect
-  let isVideo: Bool
   let isEnabled: Bool
   let makeDragItem: (CGRect) -> NSDraggingItem?
 
@@ -15,7 +14,6 @@ struct CaptureCropOverlay: NSViewRepresentable {
   func updateNSView(_ view: CropView, context: Context) {
     view.imageFrame = imageFrame
     view.crop = crop
-    view.isVideo = isVideo
     view.isEnabled = isEnabled
     view.cropChanged = { crop = $0 }
     view.makeDragItem = makeDragItem
@@ -28,7 +26,6 @@ struct CaptureCropOverlay: NSViewRepresentable {
 
     var imageFrame = CGRect.zero
     var crop = CaptureCropGeometry.fullImage
-    var isVideo = false
     var isEnabled = true
     var cropChanged: ((CGRect) -> Void)?
     var makeDragItem: ((CGRect) -> NSDraggingItem?)?
@@ -80,8 +77,6 @@ struct CaptureCropOverlay: NSViewRepresentable {
         return cropFrame.contains(local) ? self : nil
       }
       if handle(at: local) != nil { return self }
-      // Keep the native playback controls usable until they move below the preview.
-      if isVideo, local.y > imageFrame.maxY - 40 { return nil }
       return cropFrame.contains(local) ? self : nil
     }
 

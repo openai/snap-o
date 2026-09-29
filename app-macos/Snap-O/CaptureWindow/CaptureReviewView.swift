@@ -14,32 +14,43 @@ struct CaptureReviewView: View {
   var body: some View {
     GeometryReader { geometry in
       if let capture = controller.currentCapture {
-        let frame = CaptureReviewLayout.mediaFrame(in: geometry.size, aspectRatio: capture.media.aspectRatio)
+        let frame = CaptureReviewLayout.mediaFrame(
+          in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo
+        )
         ZStack(alignment: .topLeading) {
           Color(white: 0.24)
           reviewToolbar
             .frame(height: CaptureReviewLayout.toolbarHeight)
             .padding(.horizontal, CaptureReviewLayout.edgeSpacing)
             .padding(.vertical, CaptureReviewLayout.toolbarSpacing)
-          CaptureMediaView(
-            fileStore: controller.fileStore,
-            livePreviewHost: controller,
-            capture: capture,
-            allowsFileDrag: false,
-            crop: crops[capture.id] ?? CaptureCropGeometry.fullImage
-          )
-          .frame(width: frame.width, height: frame.height)
-          .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
-          .position(x: frame.midX, y: frame.midY)
-          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: frame)
-          .zIndex(1)
+          if case .video(let url, _) = capture.media {
+            CaptureReviewVideo(
+              url: url,
+              mediaFrame: frame,
+              controlsFrame: CaptureReviewLayout.playbackFrame(in: geometry.size, mediaFrame: frame)
+            )
+            .id(capture.id)
+            .zIndex(1)
+          } else {
+            CaptureMediaView(
+              fileStore: controller.fileStore,
+              livePreviewHost: controller,
+              capture: capture,
+              allowsFileDrag: false,
+              crop: crops[capture.id] ?? CaptureCropGeometry.fullImage
+            )
+            .frame(width: frame.width, height: frame.height)
+            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+            .position(x: frame.midX, y: frame.midY)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: frame)
+            .zIndex(1)
+          }
           CaptureCropOverlay(
             imageFrame: frame,
             crop: Binding(
               get: { crops[capture.id] ?? CaptureCropGeometry.fullImage },
               set: { crops[capture.id] = $0 }
             ),
-            isVideo: capture.media.isVideo,
             isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview
           ) { makeDragItem(capture, frame: $0) }
             .id(capture.id)

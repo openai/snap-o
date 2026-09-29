@@ -136,7 +136,7 @@ private struct CaptureFileDrag: ViewModifier {
   }
 }
 
-private func markPerfMilestones() {
+func markPerfMilestones() {
   Perf.end(.captureRequest, finalLabel: "snapshot rendered")
   Perf.end(.recordingRender, finalLabel: "video rendered")
   Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
