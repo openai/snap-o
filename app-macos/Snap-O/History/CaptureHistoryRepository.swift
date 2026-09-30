@@ -310,6 +310,12 @@ actor CaptureHistoryRepository {
         retention = saved
       }
       for directory in try manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+        let name = directory.lastPathComponent
+        if name.hasPrefix("."), name.hasSuffix(".partial"),
+           UUID(uuidString: String(name.dropFirst().dropLast(".partial".count))) != nil {
+          do { try manager.removeItem(at: directory) } catch { report(error) }
+          continue
+        }
         guard let id = UUID(uuidString: directory.lastPathComponent) else { continue }
         do {
           let data = try Data(contentsOf: directory.appendingPathComponent("capture.json"))

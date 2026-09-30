@@ -27,15 +27,24 @@ final class CaptureCropFilePromise: NSFilePromiseProvider, NSFilePromiseProvider
     writePromiseTo url: URL,
     completionHandler: @escaping (Error?) -> Void
   ) {
-    // AppKit permits asynchronous completion but does not annotate this callback Sendable.
-    nonisolated(unsafe) let completion = completionHandler
+    let completion = Completion(handler: completionHandler)
     Task { [capture, crop] in
       do {
         _ = try await CaptureCropExporter.export(capture, crop: crop, to: url)
-        completion(nil)
+        await completion.call(nil)
       } catch {
-        completion(error)
+        await completion.call(error)
       }
+    }
+  }
+
+  /// AppKit's callback lacks Sendable; invoke it only on its requested main queue.
+  private struct Completion: @unchecked Sendable {
+    let handler: (Error?) -> Void
+
+    @MainActor
+    func call(_ error: Error?) {
+      handler(error)
     }
   }
 }

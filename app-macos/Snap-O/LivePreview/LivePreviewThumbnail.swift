@@ -17,6 +17,10 @@ final class LivePreviewThumbnail {
 
   func cacheLiveFrame() {
     guard let pixelBuffer = videoRenderer?.displayedPixelBuffer() else { return }
+    cacheLiveFrame(pixelBuffer)
+  }
+
+  func cacheLiveFrame(_ pixelBuffer: CVPixelBuffer) {
     let source = CIImage(cvPixelBuffer: pixelBuffer)
     let scale = min(1, max(pixelSize.width / source.extent.width, pixelSize.height / source.extent.height))
     let scaled = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))

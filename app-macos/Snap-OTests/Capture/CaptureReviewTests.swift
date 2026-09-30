@@ -59,6 +59,27 @@ struct CaptureReviewTests {
   }
 
   @Test
+  func loadingRemovesAbandonedSave() async throws {
+    try await withRepository { repository, _ in
+      let staging = repository.root.appendingPathComponent(".\(UUID().uuidString).partial")
+      try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+      try Data([1, 2, 3]).write(to: staging.appendingPathComponent("capture.mp4"))
+      _ = await repository.currentSnapshot()
+      #expect(!FileManager.default.fileExists(atPath: staging.path))
+    }
+  }
+
+  @Test
+  func loadingPreservesUnrelatedHiddenDirectory() async throws {
+    try await withRepository { repository, _ in
+      let directory = repository.root.appendingPathComponent(".other.partial")
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      _ = await repository.currentSnapshot()
+      #expect(FileManager.default.fileExists(atPath: directory.path))
+    }
+  }
+
+  @Test
   func discardPreservesExternalFiles() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
