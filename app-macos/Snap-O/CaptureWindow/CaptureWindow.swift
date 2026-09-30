@@ -472,6 +472,13 @@ struct CaptureWindow: View {
           onDismiss: controller.dismissScreenshotFailures
         )
         .padding(12)
+      } else if controller.isReviewingCapture, let error = controller.lastError {
+        CaptureFailureBanner(
+          title: "Capture incomplete",
+          messages: [error],
+          onDismiss: controller.dismissScreenshotFailures
+        )
+        .padding(12)
       }
     }
     .environment(\.captureImageCopied, controller.imageCopied)
