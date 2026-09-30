@@ -105,14 +105,16 @@ struct CaptureCropOverlay: NSViewRepresentable {
 
     override func mouseDown(with event: NSEvent) {
       let point = convert(event.locationInWindow, from: nil)
+      let handle = handle(at: point)
       isExporting = event.modifierFlags.contains(.command)
+        || (crop == CaptureCropGeometry.fullImage && handle == nil)
       guard !isExporting || cropFrame.contains(point) else {
         origin = nil
         return
       }
       origin = point
       initialCrop = crop
-      activeHandle = origin.flatMap { handle(at: $0) }
+      activeHandle = handle
     }
 
     override func mouseDragged(with event: NSEvent) {
