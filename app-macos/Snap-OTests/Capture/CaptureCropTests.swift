@@ -95,6 +95,24 @@ struct CaptureCropTests {
   }
 
   @Test @MainActor
+  func pendingExportPreventsDraggingButStillAllowsResizing() throws {
+    let view = makeView()
+    view.crop = CaptureCropGeometry.fullImage
+    view.allowsFileDrag = false
+    var requests = 0
+    view.makeDragItem = { _ in requests += 1
+      return nil
+    }
+    try view.mouseDown(with: event(.leftMouseDown, x: 200))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 240))
+    try view.mouseUp(with: event(.leftMouseUp, x: 240))
+    #expect(requests == 0)
+    try view.mouseDown(with: event(.leftMouseDown, x: 0))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 40))
+    #expect(view.crop == CGRect(x: 0.1, y: 0, width: 0.9, height: 1))
+  }
+
+  @Test @MainActor
   func commandDragDoesNotMoveCrop() throws {
     let view = makeView()
     let original = view.crop

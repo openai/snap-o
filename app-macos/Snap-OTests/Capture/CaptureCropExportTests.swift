@@ -125,6 +125,47 @@ struct CaptureCropExportTests {
     #expect(try Data(contentsOf: destination) == original)
   }
 
+  @Test(arguments: [false, true]) @MainActor
+  func videoDragProvidesAFileAndMatchingPreview(cropped: Bool) async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = FileStore(baseDir: root)
+    defer { store.purgeExistingFiles() }
+    let source = store.makePreviewDestination(deviceID: "test", capturedAt: Date(), kind: .video)
+    try await makeVideo(at: source, rotated: false)
+    let capture = makeCapture(source, size: CGSize(width: 64, height: 32), video: true)
+    let crop = cropped ? CGRect(x: 0.5, y: 0, width: 0.5, height: 1) : CaptureCropGeometry.fullImage
+    let request = CaptureReviewDragExport.Request(capture: capture, crop: crop)
+    let exporter = CaptureReviewDragExport()
+    await exporter.prepare(request, fileStore: store)
+
+    let frame = CGRect(x: 10, y: 20, width: cropped ? 160 : 320, height: 160)
+    let item = try #require(exporter.draggingItem(for: request, frame: frame))
+    let exported = try #require(item.item as? URL)
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    #expect(pasteboard.writeObjects([exported as NSURL]))
+    #expect(pasteboard.string(forType: .fileURL) == exported.absoluteString)
+    #expect(exported.pathExtension == "mp4")
+    #expect(item.draggingFrame == frame)
+
+    let preview = try #require(item.imageComponentsProvider?().first?.contents as? NSImage)
+    let image = try #require(preview.cgImage(forProposedRect: nil, context: nil, hints: nil))
+    #expect(image.width == (cropped ? 32 : 64))
+    #expect(image.height == 32)
+    if cropped {
+      let color = try sample(image)
+      #expect(color.2 > 220 && color.0 < 30)
+    } else {
+      #expect(try Data(contentsOf: exported) == Data(contentsOf: source))
+    }
+
+    try store.discardPreviews([capture])
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: exported.path))
+    #expect(!exporter.isPreparing)
+    #expect(exporter.errorMessage == nil)
+  }
+
   private func sample(_ image: CGImage) throws -> (UInt8, UInt8, UInt8) {
     let context = try #require(CGContext(
       data: nil,

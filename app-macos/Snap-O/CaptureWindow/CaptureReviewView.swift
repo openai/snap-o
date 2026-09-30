@@ -7,10 +7,13 @@ struct CaptureReviewView: View {
   @State private var isNaming = false
   @State private var isFinishing = false
   @State private var errorMessage: String?
+  @State private var dragExport = CaptureReviewDragExport()
 
   var body: some View {
     GeometryReader { geometry in
       if let capture = controller.currentCapture {
+        let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
+        let dragRequest = CaptureReviewDragExport.Request(capture: capture, crop: crop)
         let frame = CaptureReviewLayout.mediaFrame(
           in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo
         )
@@ -47,14 +50,22 @@ struct CaptureReviewView: View {
               get: { controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage },
               set: { controller.reviewCrops[capture.id] = $0 }
             ),
-            isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview
+            isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview,
+            allowsFileDrag: !capture.media.isVideo || dragExport.isReady(for: dragRequest)
           ) { makeDragItem(capture, frame: $0) }
             .id(capture.id)
             .zIndex(2)
         }
+        .task(id: dragRequest) {
+          await dragExport.prepare(dragRequest, fileStore: controller.fileStore)
+        }
       }
     }
     .background(CaptureSheetAnchor(isPresented: isNaming))
+    .onDisappear { dragExport.stop() }
+    .onChange(of: dragExport.errorMessage) { _, message in
+      if let message { errorMessage = message }
+    }
     .sheet(isPresented: $isNaming) {
       CaptureSaveSheet { name in
         controller.isSavingReview = true
@@ -120,6 +131,13 @@ struct CaptureReviewView: View {
         Spacer(minLength: 0)
       }
 
+      if dragExport.isPreparing {
+        ProgressView()
+          .controlSize(.small)
+          .help("Preparing recording for dragging")
+          .accessibilityLabel("Preparing recording for dragging")
+      }
+
       Button { isNaming = true } label: {
         Image(systemName: "checkmark")
           .font(SnapOToolbarStyle.iconFont)
@@ -156,12 +174,7 @@ struct CaptureReviewView: View {
         item.setDraggingFrame(frame, contents: NSImage(contentsOf: destination))
         return item
       }
-      // A pending file promise must survive discarding or saving the current review.
-      let destination = try controller.fileStore.makeDragCopy(of: source, capturedAt: capture.media.capturedAt, kind: kind)
-      let snapshot = CaptureMedia(id: capture.id, device: capture.device, media: .video(url: destination, data: capture.media.common))
-      let item = NSDraggingItem(pasteboardWriter: CaptureCropFilePromise(capture: snapshot, crop: crop))
-      item.setDraggingFrame(frame, contents: NSWorkspace.shared.icon(forFile: source.path))
-      return item
+      return dragExport.draggingItem(for: .init(capture: capture, crop: crop), frame: frame)
     } catch {
       errorMessage = error.localizedDescription
       return nil

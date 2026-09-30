@@ -5,6 +5,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
   let imageFrame: CGRect
   @Binding var crop: CGRect
   let isEnabled: Bool
+  var allowsFileDrag = true
   let makeDragItem: (CGRect) -> NSDraggingItem?
 
   func makeNSView(context: Context) -> CropView {
@@ -15,6 +16,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     view.imageFrame = imageFrame
     view.crop = crop
     view.isEnabled = isEnabled
+    view.allowsFileDrag = allowsFileDrag
     view.cropChanged = { crop = $0 }
     view.makeDragItem = makeDragItem
     view.needsDisplay = true
@@ -32,6 +34,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     }
 
     var isEnabled = true
+    var allowsFileDrag = true
     var cropChanged: ((CGRect) -> Void)?
     var makeDragItem: ((CGRect) -> NSDraggingItem?)?
     private var origin: CGPoint?
@@ -147,6 +150,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
       guard let origin, imageFrame.width > 0, imageFrame.height > 0 else { return }
       let point = convert(event.locationInWindow, from: nil)
       if isExporting {
+        guard allowsFileDrag else { return }
         guard hypot(point.x - origin.x, point.y - origin.y) >= 3 else { return }
         self.origin = nil
         guard let item = makeDragItem?(cropFrame) else {
