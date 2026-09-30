@@ -1,12 +1,37 @@
 package com.openai.snapo.network
 
-internal enum class BodyCoverage { Absent, Incomplete, Complete }
+internal enum class BodyCoverage { Absent, Incomplete, Complete, Unavailable }
 
-internal fun bodyCoverage(available: Boolean, absent: Boolean, complete: Boolean): BodyCoverage = when {
-    available -> if (complete) BodyCoverage.Complete else BodyCoverage.Incomplete
-    absent -> BodyCoverage.Absent
+internal fun requestBodyCoverage(
+    request: RequestWillBeSent?,
+    body: CapturedBody?,
+    end: ResponseFinished? = null,
+    failure: RequestFailed? = null,
+): BodyCoverage = when {
+    body != null -> if (request?.bodyTruncatedBytes == 0L) BodyCoverage.Complete else BodyCoverage.Incomplete
+    request?.hasBody == false || request?.bodySize == 0L -> BodyCoverage.Absent
+    end != null || failure != null -> BodyCoverage.Unavailable
     else -> BodyCoverage.Incomplete
 }
 
-internal fun requestBodyCoverage(available: Boolean, hasBody: Boolean?, truncatedBytes: Long?): BodyCoverage =
-    bodyCoverage(available, hasBody == false, truncatedBytes == 0L)
+@Suppress("CyclomaticComplexMethod")
+internal fun responseBodyCoverage(
+    request: RequestWillBeSent?,
+    response: ResponseReceived?,
+    end: ResponseFinished?,
+    failure: RequestFailed?,
+    body: CapturedBody?,
+): BodyCoverage = when {
+    body != null -> if (end != null && failure == null &&
+        (end.bodyTruncatedBytes ?: response?.bodyTruncatedBytes ?: 0) == 0L
+    ) {
+        BodyCoverage.Complete
+    } else {
+        BodyCoverage.Incomplete
+    }
+    failure != null && response == null -> BodyCoverage.Absent
+    request?.method.equals("HEAD", true) ||
+        response?.code in listOf(204, 304) || end?.bodySize == 0L -> BodyCoverage.Absent
+    end != null || failure != null -> BodyCoverage.Unavailable
+    else -> BodyCoverage.Incomplete
+}

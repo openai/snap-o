@@ -1,4 +1,5 @@
-import { bodyCoverage, requestBodyCoverage, type BodyCoverage } from "./body-coverage";
+import { findTextMatches } from "./text-matcher";
+import { responseBodyCoverage, requestBodyCoverage, type BodyCoverage } from "./body-coverage";
 import { decodeRequestBody } from "./body-decoding";
 import type { RequestRecord, ToolRecord } from "./cdp";
 import { requestRecordKey } from "./cdp";
@@ -26,13 +27,14 @@ export async function searchBodyText(
       await yieldSearch(signal);
       deadline = performance.now() + 4;
     }
-    const chunk = text.slice(start, start + 16_384 + overlap).toLowerCase();
-    for (const term of terms) {
-      if (found.has(term)) continue;
-      const offset = chunk.indexOf(term);
-      if (offset < 0) continue;
-      found.add(term);
-      snippet ??= text.slice(Math.max(0, start + offset - 40), start + offset + 120);
+    const chunk = text.slice(start, start + 16_384 + overlap);
+    for (const match of findTextMatches(
+      chunk,
+      terms.filter((term) => !found.has(term)),
+      1
+    )) {
+      found.add(match.term);
+      snippet ??= text.slice(Math.max(0, start + match.start - 40), start + match.start + 120);
     }
     if (found.size === terms.length) break;
   }
@@ -57,18 +59,8 @@ export async function searchLocalBodies(
         );
   const requestText = decoded?.kind === "text" ? decoded.text : null;
   const responseText = record.responseBodyBase64Encoded ? null : record.responseBody;
-  const requestCoverage = requestBodyCoverage(
-    record.requestBody != null,
-    record.requestBodySize === 0 ? false : record.requestHasPostData,
-    record.requestBodyTruncatedBytes
-  );
-  const responseCoverage = bodyCoverage(
-    record.responseBody != null,
-    record.method === "HEAD" ||
-      record.encodedDataLength === 0 ||
-      (record.status.kind === "success" && [204, 304].includes(record.status.code)),
-    record.endedAt != null && (record.responseBodyTruncatedBytes ?? 0) === 0
-  );
+  const requestCoverage = requestBodyCoverage(record);
+  const responseCoverage = responseBodyCoverage(record);
   return {
     requestId: record.requestId,
     request: await searchCoveredBody(requestText, requestCoverage, terms, signal),
@@ -126,6 +118,7 @@ function sameSearchSource(a: RequestRecord, b: RequestRecord): boolean {
     a.responseBodyTruncatedBytes === b.responseBodyTruncatedBytes &&
     a.endedAt === b.endedAt &&
     a.encodedDataLength === b.encodedDataLength &&
+    a.hasReceivedResponse === b.hasReceivedResponse &&
     a.status === b.status
   );
 }

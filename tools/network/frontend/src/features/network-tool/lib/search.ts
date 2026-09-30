@@ -1,3 +1,4 @@
+import { findTextMatches } from "../../../network/text-matcher";
 import type { RequestBodySearchMatch } from "../../../network/remote-body-search";
 import {
   matchesKeywordSearchDocument,
@@ -22,9 +23,11 @@ export function matchesNetworkSearch(
 ): boolean {
   const document = searchDocumentForRecord(record);
   if (body === undefined || record.kind !== "request") return matchesKeywordSearchDocument(document, query);
-  const text = document.parts.join("\n").toLowerCase();
-  const terms = new Set([...(body?.request.terms ?? []), ...(body?.response.terms ?? [])]);
-  const contains = (term: string) => terms.has(term) || text.includes(term);
+  const metadataTerms = [...findTextMatches(document.parts.join("\n"), [...query.includes, ...query.excludes], 1)].map(
+    (match) => match.term
+  );
+  const terms = new Set([...metadataTerms, ...(body?.request.terms ?? []), ...(body?.response.terms ?? [])]);
+  const contains = (term: string) => terms.has(term);
   if (!query.includes.every(contains) || query.excludes.some(contains)) return false;
   // Missing bodies cannot prove that an excluded term is absent.
   return query.excludes.length === 0 || (body?.request.complete === true && body.response.complete);

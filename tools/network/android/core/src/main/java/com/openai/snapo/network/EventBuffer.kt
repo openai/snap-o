@@ -56,6 +56,7 @@ internal class EventBuffer(
         val requests = records.filterIsInstance<RequestWillBeSent>().associateBy { it.id }
         val responses = records.filterIsInstance<ResponseReceived>().associateBy { it.id }
         val finished = records.filterIsInstance<ResponseFinished>().associateBy { it.id }
+        val failures = records.filterIsInstance<RequestFailed>().associateBy { it.id }
         return requestIds.map { id ->
             val request = requests[id]
             val response = responses[id]
@@ -66,7 +67,7 @@ internal class EventBuffer(
                 id,
                 SearchableBody(
                     requestBody,
-                    requestBodyCoverage(requestBody != null, request?.hasBody, request?.bodyTruncatedBytes),
+                    requestBodyCoverage(request, requestBody, end, failures[id]),
                     request?.headers?.let(::hasGzipContentEncoding) == true,
                     BodyContentType.parse(
                         request?.headers?.firstOrNull {
@@ -76,14 +77,7 @@ internal class EventBuffer(
                 ),
                 SearchableBody(
                     responseBody,
-                    bodyCoverage(
-                        available = responseBody != null,
-                        absent = response != null && (
-                            request?.method.equals("HEAD", true) ||
-                                response.code in listOf(204, 304) || end?.bodySize == 0L
-                            ),
-                        complete = end != null && (end.bodyTruncatedBytes ?: response?.bodyTruncatedBytes ?: 0) == 0L,
-                    ),
+                    responseBodyCoverage(request, response, end, failures[id], responseBody),
                 ),
             )
         }

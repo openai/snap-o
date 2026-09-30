@@ -76,12 +76,12 @@ private suspend fun searchBody(source: SearchableBody, terms: List<String>): Bod
     val captured = source.body ?: return BodySearchMatch(emptyList(), source.coverage == BodyCoverage.Absent)
     val decoded = decodeSearchBody(captured, source.gzip, source.charset) ?: return BodySearchMatch(emptyList(), false)
     val text = decoded.take(MaxSearchCharacters)
-    val normalized = text.lowercase(Locale.ROOT)
+    val matcher = TextMatcher(text)
     val matches = mutableListOf<String>()
     var firstOffset = -1
     for (term in terms) {
         yield()
-        val offset = normalized.indexOf(term)
+        val offset = matcher.find(term)
         if (offset >= 0) {
             matches.add(term)
             if (firstOffset < 0) firstOffset = offset

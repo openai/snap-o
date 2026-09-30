@@ -104,11 +104,34 @@ class BodySearchTest {
     }
 
     @Test
-    fun `missing and contradictory body metadata stays incomplete`() {
-        assertEquals(BodyCoverage.Absent, requestBodyCoverage(false, false, null))
-        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(false, null, null))
-        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(false, true, 0))
-        assertEquals(BodyCoverage.Incomplete, requestBodyCoverage(true, false, null))
+    fun `response coverage follows the request lifecycle`() = runBlocking {
+        val response = ResponseReceived(id = "one", tWallMs = 2, tMonoNs = 2, code = 200)
+        val failed = RequestFailed(id = "one", tWallMs = 3, tMonoNs = 3, errorKind = "io")
+        val end = ResponseFinished(id = "one", tWallMs = 3, tMonoNs = 3)
+        val scenarios = listOf(
+            emptyList<NetworkEventRecord>() to false,
+            listOf(failed) to true,
+            listOf(response, failed) to false,
+            listOf(response.copy(body = "prefix"), failed) to false,
+            listOf(response.copy(body = "full"), end) to true,
+            listOf(response.copy(body = "prefix"), end.copy(bodyTruncatedBytes = 4)) to false,
+        )
+        for ((events, complete) in scenarios) {
+            val buffer = EventBuffer(NetworkInspectorConfig())
+            buffer.append(request("").copy(hasBody = false, body = null))
+            events.forEach(buffer::append)
+            val match = searchBodies(buffer.bodySearchSnapshot(listOf("one")), listOf("missing")).results.single()
+            assertEquals(events.toString(), complete, match.response.complete)
+        }
+    }
+
+    @Test
+    fun `unicode matching keeps source offsets for snippets`() = runBlocking {
+        val text = "İ".repeat(100) + "abc" + "x".repeat(200)
+        assertEquals(100, TextMatcher(text).find("abc"))
+        val match = searchResponse(SearchableBody(CapturedBody(text, null), BodyCoverage.Complete), "abc")
+        assertEquals(listOf("abc"), match.terms)
+        assertTrue(match.snippet!!.contains("abc"))
     }
 
     @Test(expected = IllegalArgumentException::class)
