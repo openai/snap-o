@@ -135,7 +135,11 @@ export async function searchCaptureBodies(
   const matches = new Map<string, RequestBodySearchMatch>();
   const requests = records.filter((r): r is RequestRecord => r.kind === "request");
   const keys = new Set(requests.map((record) => requestRecordKey(record.processId, record.requestId)));
-  for (const key of cache.keys()) if (!keys.has(key)) cache.delete(key);
+  for (const [key, entry] of cache) {
+    if (!keys.has(key)) cache.delete(key);
+    // Keep existing rows visible while changed bodies are scanned.
+    else matches.set(key, entry.remote ? mergeBodyMatches(entry.local, entry.remote) : entry.local);
+  }
   for (let i = 0; i < requests.length; i++) {
     const record = requests[i];
     signal.throwIfAborted();
@@ -143,6 +147,7 @@ export async function searchCaptureBodies(
     let entry = cache.get(key);
     if (!entry || !sameSearchSource(entry.source, record)) {
       entry = { source: record, local: await searchLocalBodies(record, terms, signal) };
+      signal.throwIfAborted();
       cache.set(key, entry);
     }
     matches.set(key, entry.remote ? mergeBodyMatches(entry.local, entry.remote) : entry.local);

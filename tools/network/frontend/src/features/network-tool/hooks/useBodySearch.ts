@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { ToolConnection } from "@snap-o/tool-host";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
@@ -8,7 +8,7 @@ import {
   type BodySearchCache,
   type BodySearchMatches
 } from "../../../network/body-search";
-import { validBodySearchTerms, yieldSearch } from "../../../network/remote-body-search";
+import { validBodySearchTerms } from "../../../network/remote-body-search";
 import { parseNetworkSearchQuery } from "../lib/search";
 
 export function useBodySearch(
@@ -22,10 +22,9 @@ export function useBodySearch(
     return [...new Set([...query.includes, ...query.excludes])];
   }, [searchText]);
   const key = JSON.stringify(terms);
-  const latestRef = useRef(records);
-  useEffect(() => {
-    latestRef.current = records;
-  }, [records]);
+  // Reset cached results only when the query or data source changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cache = useMemo<BodySearchCache>(() => new Map(), [key, client, connection]);
   const [state, setState] = useState<{
     key: string;
     connection: ToolConnection | null;
@@ -41,31 +40,19 @@ export function useBodySearch(
     if (key === "[]" || invalid) return;
     const abort = new AbortController();
     const tokens = JSON.parse(key) as string[];
-    const run = async () => {
-      const cache: BodySearchCache = new Map();
-      let previous: ToolRecord[] | null = null;
-      while (!abort.signal.aborted) {
-        const snapshot = latestRef.current;
-        if (snapshot !== previous) {
-          previous = snapshot;
-          await searchCaptureBodies(
-            snapshot,
-            tokens,
-            client,
-            connection,
-            abort.signal,
-            (matches) => {
-              if (!abort.signal.aborted) setState({ key, connection, matches });
-            },
-            cache
-          );
-        }
-        await yieldSearch(abort.signal, 500);
-      }
-    };
-    void run().catch(() => {});
+    void searchCaptureBodies(
+      records,
+      tokens,
+      client,
+      connection,
+      abort.signal,
+      (matches) => {
+        if (!abort.signal.aborted) setState({ key, connection, matches });
+      },
+      cache
+    ).catch(() => {});
     return () => abort.abort();
-  }, [key, invalid, client, connection]);
+  }, [records, key, invalid, client, connection, cache]);
 
   if (terms.length === 0) return { matches: undefined, status: null, detail: null };
   if (invalid)
