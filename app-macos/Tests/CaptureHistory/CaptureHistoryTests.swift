@@ -63,10 +63,10 @@ struct CaptureHistoryTests {
     let service = ScreenshotService(adb: ADBService(), fileStore: FileStore(baseDir: root))
     let start = ContinuousClock.now
     let result = await service.capture(for: [firstDevice, secondDevice])
-    precondition(start.duration(to: .now) < .seconds(2), "A stalled device must not hold screenshots for ten seconds")
+    precondition(start.duration(to: .now) < .seconds(3), "A stalled device must not hold screenshots for ten seconds")
     precondition(result.media.map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
     precondition(result.failures.count == 1 && result.failures[0].device.id == secondDevice.id)
-    precondition(result.failures[0].error.localizedDescription.contains("1 second"))
+    precondition(result.failures[0].error.localizedDescription.contains("2 seconds"))
     await service.shutdown()
   }
 

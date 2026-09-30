@@ -8,7 +8,7 @@ struct ScreenshotDeadlineTests {
   func completionCancelsDeadline() async throws {
     let timer = TestSuspension()
     let result = try await ScreenshotDeadline.run(sleep: { duration in
-      #expect(duration == .seconds(1))
+      #expect(duration == .seconds(2))
       try await timer.wait()
     }) { 42 }
     #expect(result == 42)
@@ -21,7 +21,7 @@ struct ScreenshotDeadlineTests {
     let operation = TestSuspension()
     let task = Task {
       try await ScreenshotDeadline.run(sleep: { duration in
-        #expect(duration == .seconds(1))
+        #expect(duration == .seconds(2))
         try await timer.wait()
       }) {
         try await operation.wait()
@@ -33,7 +33,7 @@ struct ScreenshotDeadlineTests {
       try await task.value
       Issue.record("Expected screenshot timeout")
     } catch ADBError.requestTimedOut(let message) {
-      #expect(message == "Screenshot capture timed out after 1 second")
+      #expect(message == "Screenshot capture timed out after 2 seconds")
     }
     #expect(operation.wasCancelled)
   }
