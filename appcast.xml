@@ -8,6 +8,19 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 13.0.0</title>
+        <description sparkle:format="markdown"><![CDATA[- Review and crop screenshots or recordings before saving them to Capture History or dragging a copy into another app.
+- Use ⇧⌘V to both start and stop recording.
+- Android tool builds recover automatically from damaged managed Node installations.
+]]></description>
+        <pubDate>Wed, 30 Sep 2026 12:01:56 +0000</pubDate>
+        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20260930.01</sparkle:version>
+        <sparkle:shortVersionString>13.0.0</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/13.0.0/Snap-O.dmg" length="7993471" type="application/octet-stream" sparkle:edSignature="EsKas+3orK8PrNoW/Y8jJ/QDuWNCOiYIC5oIdr0Y0kVaoipoI7Tf9RehOjkS54BduPUsXv0QSAGBTX9nK47YBQ==" />
+    </item>
+
+    <item>
         <title>Snap‑O 12.0.0</title>
         <description sparkle:format="markdown"><![CDATA[- Type, copy, and paste directly in Live Preview.
 - Screen recording now has a live preview so you can continue interacting with the device in Snap-O while you record.
