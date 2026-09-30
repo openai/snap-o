@@ -9,7 +9,7 @@ internal class NetworkToolTransport(
     interception: NetworkInterception,
     bodySearch: suspend (BodySearchQuery) -> BodySearchReply,
 ) : Closeable {
-    private val http = NetworkToolHttp(snapshotProvider, commandHandler, interception, bodySearch)
+    internal val http = NetworkToolHttp(snapshotProvider, commandHandler, interception, bodySearch)
     fun start(context: Context, allowRelease: Boolean): Boolean = http.server.startIfAllowed(
         context,
         releaseMetadataKey = "snapo.network.allow_release",

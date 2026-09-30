@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { ToolConnection } from "@snap-o/tool-host";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
 import {
   emptyBodySearchMatches,
-  searchCaptureBodies,
+  searchLocalCapture,
+  searchAndroidCapture,
+  bodySearchMatches,
   type BodySearchCache,
   type BodySearchMatches
 } from "../../../network/body-search";
@@ -36,23 +38,23 @@ export function useBodySearch(
   });
   const invalid = !validBodySearchTerms(terms);
 
+  const publish = useCallback(
+    () => setState({ key, connection, matches: bodySearchMatches(cache) }),
+    [key, connection, cache]
+  );
   useEffect(() => {
     if (key === "[]" || invalid) return;
     const abort = new AbortController();
-    const tokens = JSON.parse(key) as string[];
-    void searchCaptureBodies(
-      records,
-      tokens,
-      client,
-      connection,
-      abort.signal,
-      (matches) => {
-        if (!abort.signal.aborted) setState({ key, connection, matches });
-      },
-      cache
-    ).catch(() => {});
+    void searchLocalCapture(records, JSON.parse(key), abort.signal, cache, publish).catch(() => {});
     return () => abort.abort();
-  }, [records, key, invalid, client, connection, cache]);
+  }, [records, key, invalid, cache, publish]);
+
+  useEffect(() => {
+    if (key === "[]" || invalid || !connection) return;
+    const abort = new AbortController();
+    void searchAndroidCapture(JSON.parse(key), client, connection, abort.signal, cache, publish).catch(() => {});
+    return () => abort.abort();
+  }, [key, invalid, client, connection, cache, publish]);
 
   if (terms.length === 0) return { matches: undefined, status: null, detail: null };
   if (invalid)

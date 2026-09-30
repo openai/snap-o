@@ -119,6 +119,9 @@ describe("direct Network HTTP and SSE connection", () => {
     expect(events.close).toHaveBeenCalledTimes(1);
     expect(closed).toHaveBeenCalledWith({ streamId: connection.id });
     await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
+    await expect(connection.searchBodies({ requestIds: ["one"], terms: ["needle"] }, signal())).rejects.toMatchObject({
+      name: "AbortError"
+    });
   });
   it("uses the tool URL for body reads and encodes request IDs", async () => {
     const { connection, fetchRequest } = setup(() => snapshot());
@@ -156,55 +159,18 @@ it("posts literal body searches and rejects invalid snippets and older servers",
   fetchRequest.mockResolvedValueOnce(
     Response.json({ results: [{ ...match, response: { ...match.response, snippet: {} } }] })
   );
-  await expect(connection.searchBodies(query, new AbortController().signal)).resolves.toEqual({ results: [] });
+  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toThrow();
   fetchRequest.mockResolvedValueOnce(new Response("missing", { status: 404 }));
-  await expect(connection.searchBodies(query, new AbortController().signal)).resolves.toEqual({ results: [] });
+  await expect(connection.searchBodies(query, new AbortController().signal)).rejects.toThrow();
 });
 
-const query = { requestIds: ["one"], terms: ["needle"] };
 const signal = () => new AbortController().signal;
-
-it.each([429, 503, new TypeError("network"), new DOMException("timeout", "TimeoutError")])(
-  "retries temporary search failure %s",
-  async (error) => {
-    vi.useFakeTimers();
-    const { connection, fetchRequest } = setup(() => snapshot());
-    if (typeof error === "number") fetchRequest.mockResolvedValueOnce(new Response(null, { status: error }));
-    else fetchRequest.mockRejectedValueOnce(error);
-    fetchRequest.mockResolvedValue(Response.json({ results: [] }));
-    const pending = connection.searchBodies(query, signal());
-    await vi.advanceTimersByTimeAsync(500);
-    await pending;
-    expect(fetchRequest).toHaveBeenCalledTimes(2);
-    expect(fetchRequest.mock.calls[1][1]?.body).toEqual(fetchRequest.mock.calls[0][1]?.body);
-  }
-);
-
-it("cancels pending search retries", async () => {
-  vi.useFakeTimers();
-  const { connection, fetchRequest } = setup(() => snapshot());
-  fetchRequest.mockResolvedValue(new Response(null, { status: 429 }));
-  const abort = new AbortController();
-  const rejected = expect(connection.searchBodies(query, abort.signal)).rejects.toThrow();
-  await vi.advanceTimersByTimeAsync(0);
-  abort.abort();
-  await vi.advanceTimersByTimeAsync(500);
-  await rejected;
-  expect(fetchRequest).toHaveBeenCalledTimes(1);
-});
-
-it.each([400, 404])("does not retry search status %s", async (status) => {
-  const { connection, fetchRequest } = setup(() => snapshot());
-  fetchRequest.mockResolvedValue(new Response(null, { status }));
-  expect(await connection.searchBodies(query, signal())).toEqual({ results: [] });
-  expect(fetchRequest).toHaveBeenCalledTimes(1);
-});
 
 it.each(["界", "\u0001"])("fits maximum %s search replies within the size limit", async (character) => {
   const { connection, fetchRequest } = setup(() => snapshot());
   const strings = (count: number, size: number) =>
     Array.from({ length: count }, (_, i) => character.repeat(size - 2) + String(i).padStart(2, "0"));
-  const query = { requestIds: strings(33, 512), terms: strings(64, 256) };
+  const query = { requestIds: strings(8, 512), terms: strings(64, 256) };
   fetchRequest.mockImplementation(async (_, init) => {
     const batch = JSON.parse(init!.body as string);
     const body = { terms: batch.terms, complete: true, snippet: character.repeat(160) };
@@ -212,9 +178,7 @@ it.each(["界", "\u0001"])("fits maximum %s search replies within the size limit
       results: batch.requestIds.map((requestId: string) => ({ requestId, request: body, response: body }))
     });
   });
-  const published = vi.fn();
-  const reply = await connection.searchBodies(query, signal(), published);
-  expect(reply.results).toHaveLength(33);
+  const reply = await connection.searchBodies(query, signal());
+  expect(reply.results).toHaveLength(8);
   expect(reply.results.every((result) => result.response.terms.length === 64)).toBe(true);
-  expect(published.mock.calls.flatMap(([batch]) => batch.results)).toEqual(reply.results);
 });

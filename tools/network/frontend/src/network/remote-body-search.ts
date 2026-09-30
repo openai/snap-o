@@ -52,40 +52,17 @@ export async function yieldSearch(signal: AbortSignal, delay = 0): Promise<void>
 export async function searchRemoteBodies(
   input: BodySearchQuery,
   signal: AbortSignal,
-  sendBatch: (query: BodySearchQuery, signal: AbortSignal) => Promise<Response>,
-  publish: (reply: BodySearchReply) => void = () => {}
+  sendBatch: (query: BodySearchQuery, signal: AbortSignal) => Promise<Response>
 ): Promise<BodySearchReply> {
   if (
     !validBodySearchTerms(input.terms) ||
+    input.requestIds.length > bodySearchLimits.batchSize ||
     input.requestIds.some((id) => !id.length || id.length > bodySearchLimits.requestIdLength)
-  ) {
+  )
     throw new Error("Invalid body search query.");
-  }
-  const results: RequestBodySearchMatch[] = [];
-  const requestIds = [...new Set(input.requestIds)];
-  for (let offset = 0; offset < requestIds.length; ) {
-    signal.throwIfAborted();
-    const batch = { requestIds: requestIds.slice(offset, offset + bodySearchLimits.batchSize), terms: input.terms };
-    let reply: BodySearchReply;
-    try {
-      reply = await readBodySearchReply(await sendBatch(batch, signal), batch);
-    } catch (error) {
-      signal.throwIfAborted();
-      const retryable =
-        error instanceof BodySearchHttpError
-          ? error.status === 408 || error.status === 429 || error.status >= 500
-          : error instanceof TypeError || (error instanceof DOMException && error.name === "TimeoutError");
-      if (!retryable) break;
-      await yieldSearch(signal, bodySearchLimits.retryDelayMs);
-      continue;
-    }
-    signal.throwIfAborted();
-    const accepted = { results: reply.results.filter((result) => batch.requestIds.includes(result.requestId)) };
-    results.push(...accepted.results);
-    publish(accepted);
-    offset += batch.requestIds.length;
-  }
-  return { results };
+  const reply = await readBodySearchReply(await sendBatch(input, signal), input);
+  signal.throwIfAborted();
+  return { results: reply.results.filter((result) => input.requestIds.includes(result.requestId)) };
 }
 
 async function readBodySearchReply(response: Response, input: BodySearchQuery): Promise<BodySearchReply> {

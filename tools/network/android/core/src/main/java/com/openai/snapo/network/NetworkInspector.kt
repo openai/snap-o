@@ -28,7 +28,7 @@ class NetworkInspectorServer internal constructor(
     private val bufferLock = Mutex()
     private val publishLock = Mutex()
     private val eventBuffer = EventBuffer(config)
-    private val transport = NetworkToolTransport(
+    internal val transport = NetworkToolTransport(
         snapshotProvider = ::snapshotMessages,
         commandHandler = ::handleCommand,
         interception = interception,
@@ -85,14 +85,17 @@ class NetworkInspectorServer internal constructor(
         bodyTruncatedBytes: Long?,
         bodySize: Long?,
     ) {
-        bufferLock.withLock {
-            eventBuffer.updateLatestRequestBody(
-                requestId = requestId,
-                body = body,
-                bodyEncoding = bodyEncoding,
-                bodyTruncatedBytes = bodyTruncatedBytes,
-                bodySize = bodySize,
-            )
+        publishLock.withLock {
+            val event = bufferLock.withLock {
+                eventBuffer.updateLatestRequestBody(
+                    requestId = requestId,
+                    body = body,
+                    bodyEncoding = bodyEncoding,
+                    bodyTruncatedBytes = bodyTruncatedBytes,
+                    bodySize = bodySize,
+                )
+            } ?: return@withLock
+            transport.broadcast(event.record.toCdpMessage(requestUrl = null).copy(snapoSequence = event.snapoSequence))
         }
     }
 

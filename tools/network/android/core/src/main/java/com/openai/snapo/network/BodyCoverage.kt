@@ -1,16 +1,13 @@
 package com.openai.snapo.network
 
-internal enum class BodyCoverage { Absent, Incomplete, Complete, Unavailable }
+internal enum class BodyCoverage { Absent, Incomplete, Complete }
 
 internal fun requestBodyCoverage(
     request: RequestWillBeSent?,
     body: CapturedBody?,
-    end: ResponseFinished? = null,
-    failure: RequestFailed? = null,
 ): BodyCoverage = when {
     body != null -> if (request?.bodyTruncatedBytes == 0L) BodyCoverage.Complete else BodyCoverage.Incomplete
     request?.hasBody == false || request?.bodySize == 0L -> BodyCoverage.Absent
-    end != null || failure != null -> BodyCoverage.Unavailable
     else -> BodyCoverage.Incomplete
 }
 
@@ -32,6 +29,5 @@ internal fun responseBodyCoverage(
     failure != null && response == null -> BodyCoverage.Absent
     request?.method.equals("HEAD", true) ||
         response?.code in listOf(204, 304) || end?.bodySize == 0L -> BodyCoverage.Absent
-    end != null || failure != null -> BodyCoverage.Unavailable
     else -> BodyCoverage.Incomplete
 }

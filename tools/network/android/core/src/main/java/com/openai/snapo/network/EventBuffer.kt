@@ -67,7 +67,7 @@ internal class EventBuffer(
                 id,
                 SearchableBody(
                     requestBody,
-                    requestBodyCoverage(request, requestBody, end, failures[id]),
+                    requestBodyCoverage(request, requestBody),
                     request?.headers?.let(::hasGzipContentEncoding) == true,
                     BodyContentType.parse(
                         request?.headers?.firstOrNull {
@@ -89,15 +89,15 @@ internal class EventBuffer(
         bodyEncoding: String?,
         bodyTruncatedBytes: Long?,
         bodySize: Long?,
-    ): Boolean {
+    ): SequencedNetworkEvent? {
         val index = records.indexOfLast { candidate ->
             (candidate as? RequestWillBeSent)?.id == requestId
         }
-        if (index < 0) return false
+        if (index < 0) return null
         if (!body.isNullOrEmpty()) {
             upsertRequestBody(requestId, body, bodyEncoding)
         }
-        val existing = records[index] as? RequestWillBeSent ?: return false
+        val existing = records[index] as? RequestWillBeSent ?: return null
         val updated = existing.copy(
             body = null,
             bodyEncoding = bodyEncoding,
@@ -105,8 +105,10 @@ internal class EventBuffer(
             bodySize = bodySize ?: existing.bodySize,
         )
         replaceRecord(index, existing, updated)
+        val sequence = ++latestSequence
+        sequenceByRecord[updated] = sequence
         trimToByteLimit()
-        return true
+        return SequencedNetworkEvent(sequence, updated)
     }
 
     fun updateLatestResponseBody(

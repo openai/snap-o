@@ -8,7 +8,7 @@ import { matchesNetworkSearch } from "../features/network-tool/lib/search";
 it.each([
   ["waiting", { status: { kind: "pending" }, endedAt: undefined }, "incomplete"],
   ["failed before headers", { status: { kind: "failure" } }, "absent"],
-  ["failed after headers", { status: { kind: "failure" }, hasReceivedResponse: true }, "unavailable"],
+  ["failed after headers", { status: { kind: "failure" }, hasReceivedResponse: true }, "incomplete"],
   [
     "failed during body",
     { status: { kind: "failure" }, hasReceivedResponse: true, responseBody: "prefix" },
@@ -16,7 +16,7 @@ it.each([
   ],
   ["complete", { responseBody: "full" }, "complete"],
   ["truncated", { responseBody: "prefix", responseBodyTruncatedBytes: 4 }, "incomplete"],
-  ["not retained", {}, "unavailable"],
+  ["not retained", {}, "incomplete"],
   ["HEAD", { method: "HEAD" }, "absent"]
 ] satisfies [string, Partial<RequestRecord>, string][])("response coverage: %s", async (_, overrides, coverage) => {
   const record = request("current", overrides);

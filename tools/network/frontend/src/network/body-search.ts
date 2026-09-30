@@ -1,12 +1,18 @@
 import { findTextMatches } from "./text-matcher";
 import { responseBodyCoverage, requestBodyCoverage, type BodyCoverage } from "./body-coverage";
-import { decodeRequestBody } from "./body-decoding";
+import { decodeRequestBody, hasGzipContentEncoding } from "./body-decoding";
 import type { RequestRecord, ToolRecord } from "./cdp";
 import { requestRecordKey } from "./cdp";
 import type { NetworkClient } from "./client";
 import type { ToolConnection } from "@snap-o/tool-host";
 
-import { yieldSearch, type BodySearchMatch, type RequestBodySearchMatch } from "./remote-body-search";
+import {
+  BodySearchHttpError,
+  bodySearchLimits,
+  yieldSearch,
+  type BodySearchMatch,
+  type RequestBodySearchMatch
+} from "./remote-body-search";
 export type BodySearchMatches = ReadonlyMap<string, RequestBodySearchMatch>;
 export const emptyBodySearchMatches: BodySearchMatches = new Map();
 
@@ -97,8 +103,10 @@ export function mergeBodyMatches(
 
 interface CachedBodySearch {
   source: RequestRecord;
-  local: RequestBodySearchMatch;
-  remote?: RequestBodySearchMatch;
+  local?: RequestBodySearchMatch;
+  // Undefined is pending; null is a completed lookup with no result.
+  remote?: RequestBodySearchMatch | null;
+  previous?: RequestBodySearchMatch;
 }
 
 // Reuse results for one query and connection. Remove entries when their records are removed.
@@ -106,71 +114,116 @@ export type BodySearchCache = Map<string, CachedBodySearch>;
 
 function sameSearchSource(a: RequestRecord, b: RequestRecord): boolean {
   return (
-    a.updatedAt === b.updatedAt &&
     a.requestBody === b.requestBody &&
     a.requestBodyEncoding === b.requestBodyEncoding &&
     a.requestBodySize === b.requestBodySize &&
     a.requestBodyTruncatedBytes === b.requestBodyTruncatedBytes &&
     a.requestHasPostData === b.requestHasPostData &&
-    a.requestHeaders === b.requestHeaders &&
+    hasGzipContentEncoding(a.requestHeaders) === hasGzipContentEncoding(b.requestHeaders) &&
+    a.requestHeaders.find((header) => header.name.toLowerCase() === "content-type")?.value ===
+      b.requestHeaders.find((header) => header.name.toLowerCase() === "content-type")?.value &&
     a.responseBody === b.responseBody &&
     a.responseBodyBase64Encoded === b.responseBodyBase64Encoded &&
     a.responseBodyTruncatedBytes === b.responseBodyTruncatedBytes &&
-    a.endedAt === b.endedAt &&
+    (a.endedAt != null) === (b.endedAt != null) &&
     a.encodedDataLength === b.encodedDataLength &&
-    a.hasReceivedResponse === b.hasReceivedResponse &&
-    a.status === b.status
+    Boolean(a.hasReceivedResponse) === Boolean(b.hasReceivedResponse) &&
+    (a.status.kind === "failure") === (b.status.kind === "failure") &&
+    responseBodyCoverage(a) === responseBodyCoverage(b)
   );
 }
 
-export async function searchCaptureBodies(
-  records: ToolRecord[],
-  terms: string[],
-  client: NetworkClient,
-  connection: ToolConnection | null,
-  signal: AbortSignal,
-  publish: (matches: BodySearchMatches) => void,
-  cache: BodySearchCache = new Map()
-): Promise<BodySearchMatches> {
+function entryMatch(entry: CachedBodySearch): RequestBodySearchMatch | undefined {
+  return entry.local && entry.remote
+    ? mergeBodyMatches(entry.local, entry.remote)
+    : (entry.local ?? entry.remote ?? entry.previous);
+}
+
+export function bodySearchMatches(cache: BodySearchCache): BodySearchMatches {
   const matches = new Map<string, RequestBodySearchMatch>();
-  const requests = records.filter((r): r is RequestRecord => r.kind === "request");
-  const keys = new Set(requests.map((record) => requestRecordKey(record.processId, record.requestId)));
   for (const [key, entry] of cache) {
-    if (!keys.has(key)) cache.delete(key);
-    // Keep existing rows visible while changed bodies are scanned.
-    else matches.set(key, entry.remote ? mergeBodyMatches(entry.local, entry.remote) : entry.local);
-  }
-  for (let i = 0; i < requests.length; i++) {
-    const record = requests[i];
-    signal.throwIfAborted();
-    const key = requestRecordKey(record.processId, record.requestId);
-    let entry = cache.get(key);
-    if (!entry || !sameSearchSource(entry.source, record)) {
-      entry = { source: record, local: await searchLocalBodies(record, terms, signal) };
-      signal.throwIfAborted();
-      cache.set(key, entry);
-    }
-    matches.set(key, entry.remote ? mergeBodyMatches(entry.local, entry.remote) : entry.local);
-    if (i % 16 === 15) publish(new Map(matches));
-  }
-  publish(new Map(matches));
-  if (connection && client.searchBodies) {
-    const current = requests.filter(
-      (r) =>
-        r.processId === connection.processIdentity && !cache.get(requestRecordKey(r.processId, r.requestId))?.remote
-    );
-    const accept = (reply: { results: RequestBodySearchMatch[] }) => {
-      signal.throwIfAborted();
-      for (const result of reply.results) {
-        const key = requestRecordKey(connection.processIdentity, result.requestId);
-        const entry = cache.get(key);
-        if (!entry) continue;
-        entry.remote = result;
-        matches.set(key, mergeBodyMatches(entry.local, result));
-      }
-      publish(new Map(matches));
-    };
-    await client.searchBodies({ requestIds: current.map((r) => r.requestId), terms }, signal, accept);
+    const match = entryMatch(entry);
+    if (match) matches.set(key, match);
   }
   return matches;
+}
+
+export async function searchLocalCapture(
+  records: ToolRecord[],
+  terms: string[],
+  signal: AbortSignal,
+  cache: BodySearchCache,
+  publish: () => void
+): Promise<void> {
+  const keys = new Set<string>();
+  // Replace changed entries before awaiting, so old Android replies cannot update them.
+  for (const record of records) {
+    if (record.kind !== "request") continue;
+    const key = requestRecordKey(record.processId, record.requestId);
+    keys.add(key);
+    const previous = cache.get(key);
+    if (!previous || !sameSearchSource(previous.source, record)) {
+      cache.delete(key);
+      cache.set(key, { source: record, previous: previous && entryMatch(previous) });
+    }
+  }
+  for (const key of cache.keys()) if (!keys.has(key)) cache.delete(key);
+  let scanned = 0;
+  for (const entry of cache.values()) {
+    if (entry.local) continue;
+    const local = await searchLocalBodies(entry.source, terms, signal);
+    signal.throwIfAborted();
+    entry.local = local;
+    if (++scanned % 16 === 0) publish();
+  }
+  publish();
+}
+
+export async function searchAndroidCapture(
+  terms: string[],
+  client: NetworkClient,
+  connection: ToolConnection,
+  signal: AbortSignal,
+  cache: BodySearchCache,
+  publish: () => void
+): Promise<void> {
+  if (!client.searchBodies) return;
+  while (!signal.aborted) {
+    const batch = [...cache.entries()]
+      .filter(([, entry]) => entry.source.processId === connection.processIdentity && entry.remote === undefined)
+      .slice(0, bodySearchLimits.batchSize);
+    if (batch.length === 0) {
+      await yieldSearch(signal, bodySearchLimits.retryDelayMs);
+      continue;
+    }
+    // Give other waiting requests a turn before retrying this batch.
+    for (const [key, entry] of batch) {
+      cache.delete(key);
+      cache.set(key, entry);
+    }
+    let results: RequestBodySearchMatch[] = [];
+    try {
+      results = (
+        await client.searchBodies({ requestIds: batch.map(([, entry]) => entry.source.requestId), terms }, signal)
+      ).results;
+    } catch (error) {
+      signal.throwIfAborted();
+      // A stream can reconnect while the query is still active.
+      if (
+        error instanceof TypeError ||
+        ((error instanceof Error || error instanceof DOMException) &&
+          ["AbortError", "TimeoutError"].includes(error.name)) ||
+        (error instanceof BodySearchHttpError && [408, 429].includes(error.status)) ||
+        (error instanceof BodySearchHttpError && error.status >= 500)
+      ) {
+        await yieldSearch(signal, bodySearchLimits.retryDelayMs);
+        continue;
+      }
+    }
+    signal.throwIfAborted();
+    for (const [key, entry] of batch) {
+      if (cache.get(key) === entry) entry.remote = results.find((r) => r.requestId === entry.source.requestId) ?? null;
+    }
+    publish();
+  }
 }

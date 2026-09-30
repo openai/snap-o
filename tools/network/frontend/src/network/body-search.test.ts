@@ -1,140 +1,212 @@
-import { searchRemoteBodies, BodySearchHttpError, type BodySearchReply } from "./remote-body-search";
+import { BodySearchHttpError, type BodySearchQuery } from "./remote-body-search";
 import { request } from "./body-test-fixtures";
-import { describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { ToolConnection } from "@snap-o/tool-host";
-import type { ToolRecord } from "./cdp";
-import { requestRecordKey } from "./cdp";
 import type { NetworkClient } from "./client";
+import { requestRecordKey } from "./cdp";
 import {
   mergeBodyMatches,
   searchBodyText,
-  searchCaptureBodies,
   searchLocalBodies,
-  type BodySearchCache,
-  type BodySearchMatches
+  searchLocalCapture,
+  searchAndroidCapture,
+  bodySearchMatches,
+  type BodySearchCache
 } from "./body-search";
 import { filterRecords } from "../features/network-tool/lib/records";
 
-const connection = { processIdentity: "current", signal: new AbortController().signal } as ToolConnection;
-
+const connection = { processIdentity: "current" } as ToolConnection;
 const signal = () => new AbortController().signal;
-const reply = (terms: string[]): BodySearchReply => ({
-  results: [
-    {
-      requestId: "same-id",
-      request: { terms: [], complete: true },
-      response: { terms, complete: true }
-    }
-  ]
+
+it("finds a phrase across chunks and can cancel a long search", async () => {
+  const text = "x".repeat(16_380) + "hello world";
+  expect((await searchBodyText(text, ["hello world"], signal())).terms).toEqual(["hello world"]);
+  const abort = new AbortController();
+  const pending = searchBodyText("x".repeat(1_000_000), ["missing"], abort.signal);
+  abort.abort();
+  await expect(pending).rejects.toThrow();
 });
-function search(
-  records: ToolRecord[],
-  searchBodies: NetworkClient["searchBodies"],
-  options: {
-    terms?: string[];
-    signal?: AbortSignal;
-    publish?: (matches: BodySearchMatches) => void;
-    cache?: BodySearchCache;
-  } = {}
-) {
-  return searchCaptureBodies(
-    records,
-    options.terms ?? ["needle"],
-    {
-      searchBodies: (query, signal, publish) =>
-        searchRemoteBodies(
-          query,
-          signal,
-          async (batch, signal) => Response.json(await searchBodies!(batch, signal)),
-          publish
-        )
-    } as NetworkClient,
-    connection,
-    options.signal ?? signal(),
-    options.publish ?? (() => {}),
-    options.cache
-  );
-}
 
-describe("body search", () => {
-  it("finds a phrase across chunks and can cancel a long search", async () => {
-    const text = "x".repeat(16_380) + "hello world";
-    expect((await searchBodyText(text, ["hello world"], signal())).terms).toEqual(["hello world"]);
-    const abort = new AbortController();
-    const pending = searchBodyText("x".repeat(1_000_000), ["missing"], abort.signal);
-    abort.abort();
-    await expect(pending).rejects.toThrow();
+it("checks exclusions in both sources and treats missing bodies as unknown", async () => {
+  const record = request("current", { responseBody: "wanted forbidden" });
+  const local = await searchLocalBodies(record, ["wanted", "forbidden"], signal());
+  const remote = {
+    requestId: record.requestId,
+    request: { terms: [], complete: true },
+    response: { terms: ["wanted"], complete: true }
+  };
+  const matches = new Map([[requestRecordKey(record.processId, record.requestId), mergeBodyMatches(local, remote)]]);
+  expect(filterRecords([record], "wanted -forbidden", false, [], matches)).toEqual([]);
+  matches.set(requestRecordKey(record.processId, record.requestId), {
+    ...remote,
+    response: { terms: ["wanted"], complete: false }
   });
+  expect(filterRecords([record], "wanted -missing", false, [], matches)).toEqual([]);
+  expect(filterRecords([record], "wanted", false, [], matches)).toEqual([record]);
+});
 
-  it("combines matches from metadata, older cached bodies, and Android bodies", async () => {
-    const old = request("previous", { responseBody: "archived needle" });
-    const current = request("current", { requestBody: "client", requestHasPostData: true, requestBodySize: 6 });
-    const searchBodies = vi.fn(async () => reply(["server"]));
-    const result = await search([old, current], searchBodies, { terms: ["archived", "client", "server"] });
-    expect(searchBodies.mock.calls).toHaveLength(1);
-    expect(filterRecords([old, current], "archived", false, [], result)).toEqual([old]);
-    expect(filterRecords([old, current], "orders client server", false, [], result)).toEqual([current]);
-    expect(result.get(requestRecordKey("previous", "same-id"))!.response.terms).toEqual(["archived"]);
-  });
-
-  it("checks exclusions in both sources and treats missing bodies as unknown", async () => {
-    const record = request("current", { responseBody: "wanted forbidden" });
-    const local = await searchLocalBodies(record, ["wanted", "forbidden"], signal());
-    const remote = {
-      requestId: record.requestId,
-      request: { terms: [], complete: true },
-      response: { terms: ["wanted"], complete: true }
-    };
-    const matches = new Map([[requestRecordKey(record.processId, record.requestId), mergeBodyMatches(local, remote)]]);
-    expect(filterRecords([record], "wanted -forbidden", false, [], matches)).toEqual([]);
-    matches.set(requestRecordKey(record.processId, record.requestId), {
-      ...remote,
-      response: { terms: ["wanted"], complete: false }
-    });
-    expect(filterRecords([record], "wanted -missing", false, [], matches)).toEqual([]);
-    expect(filterRecords([record], "wanted", false, [], matches)).toEqual([record]);
-  });
-
-  it("preserves cached results if Android lacks body search", async () => {
-    const record = request("previous", { responseBody: "needle" });
-    const current = request();
-    const searchBodies = vi.fn().mockRejectedValue(new BodySearchHttpError(404));
-    const result = await search([record, current], searchBodies);
-    expect(filterRecords([record, current], "needle", false, [], result)).toEqual([record]);
-  });
-
-  it("ignores late Android results after the search is canceled", async () => {
-    const abort = new AbortController();
-    const publish = vi.fn();
-    const searchBodies = vi.fn(async (): Promise<BodySearchReply> => {
-      abort.abort();
-      return { results: [] };
-    });
-    await expect(search([request()], searchBodies, { signal: abort.signal, publish })).rejects.toThrow();
-    expect(publish).toHaveBeenCalledTimes(1);
-  });
-
-  it("reuses unchanged captures and searches again when a body changes", async () => {
-    const record = request();
-    const searchBodies = vi.fn(async () => reply(["needle"]));
+it.each([429, 503, new TypeError("network"), new DOMException("timeout", "TimeoutError"), 404])(
+  "handles Android failure %s without losing local matches",
+  async (failure) => {
     const cache: BodySearchCache = new Map();
-    await search([record], searchBodies, { cache });
+    const abort = new AbortController();
+    const records = [request("old", { responseBody: "needle" }), request()];
     const publish = vi.fn();
-    await search([{ ...record }], searchBodies, { publish, cache });
-    expect(searchBodies).toHaveBeenCalledTimes(1);
-    expect(publish.mock.calls[0][0].get(requestRecordKey("current", record.requestId)).response.terms).toEqual([
-      "needle"
-    ]);
-    await search([{ ...record, responseBody: "needle updated" }], searchBodies, { cache });
-    expect(searchBodies).toHaveBeenCalledTimes(2);
-    await search([], searchBodies, { cache });
-    expect(cache.size).toBe(0);
-  });
+    await searchLocalCapture(records, ["needle"], abort.signal, cache, publish);
+    const searchBodies = vi
+      .fn()
+      .mockRejectedValueOnce(typeof failure === "number" ? new BodySearchHttpError(failure) : failure)
+      .mockResolvedValue({
+        results: [
+          {
+            requestId: "same-id",
+            request: { terms: [], complete: true },
+            response: { terms: ["needle"], complete: true }
+          }
+        ]
+      });
+    const pending = searchAndroidCapture(
+      ["needle"],
+      { searchBodies } as unknown as NetworkClient,
+      connection,
+      abort.signal,
+      cache,
+      publish
+    );
+    const stopped = expect(pending).rejects.toThrow();
+    try {
+      await vi.waitFor(() =>
+        expect(filterRecords(records, "needle", false, [], bodySearchMatches(cache))).toHaveLength(
+          failure === 404 ? 1 : 2
+        )
+      );
+      expect(searchBodies).toHaveBeenCalledTimes(failure === 404 ? 1 : 2);
+    } finally {
+      abort.abort();
+      await stopped;
+    }
+  }
+);
 
-  it("marks cut-off response bodies as partially searched", async () => {
-    const record = request("current", { responseBody: "needle", responseBodyTruncatedBytes: 100 });
-    const result = await searchLocalBodies(record, ["needle"], signal());
-    expect(result.response.terms).toEqual(["needle"]);
-    expect(result.response.complete).toBe(false);
-  });
+it("ignores old replies after a body changes or its row is removed", async () => {
+  const cache: BodySearchCache = new Map();
+  const abort = new AbortController();
+  const publish = vi.fn();
+  const original = request();
+  await searchLocalCapture([original], ["needle"], abort.signal, cache, publish);
+  let reply!: (value: { results: [] }) => void;
+  const searchBodies = vi.fn(
+    () =>
+      new Promise<{ results: [] }>((resolve) => {
+        reply = resolve;
+      })
+  );
+  const pending = searchAndroidCapture(
+    ["needle"],
+    { searchBodies } as unknown as NetworkClient,
+    connection,
+    abort.signal,
+    cache,
+    publish
+  );
+  const stopped = expect(pending).rejects.toThrow();
+  try {
+    await searchLocalCapture([{ ...original, responseBody: "needle" }], ["needle"], abort.signal, cache, publish);
+    reply({ results: [] });
+    await vi.waitFor(() => expect(searchBodies).toHaveBeenCalledTimes(2));
+    expect(bodySearchMatches(cache).get(requestRecordKey("current", "same-id"))?.response.terms).toEqual(["needle"]);
+    await searchLocalCapture([], ["needle"], abort.signal, cache, publish);
+    abort.abort();
+    reply({ results: [] });
+    await stopped;
+    expect(cache.size).toBe(0);
+  } finally {
+    abort.abort();
+    reply({ results: [] });
+  }
+});
+
+it("keeps completed matches through repeated metadata updates", async () => {
+  const cache: BodySearchCache = new Map();
+  const abort = new AbortController();
+  let records = Array.from({ length: 17 }, (_, i) =>
+    request("current", {
+      requestId: String(i),
+      endedAt: undefined,
+      hasReceivedResponse: true,
+      requestHeaders: [{ name: "Content-Type", value: "text/plain" }]
+    })
+  );
+  const publish = vi.fn();
+  const searchBodies = vi.fn(async (query: BodySearchQuery) => ({
+    results: query.requestIds.map((requestId) => ({
+      requestId,
+      request: { terms: [], complete: true },
+      response: { terms: ["needle"], complete: false }
+    }))
+  }));
+  await searchLocalCapture(records, ["needle"], abort.signal, cache, publish);
+  const pending = searchAndroidCapture(
+    ["needle"],
+    { searchBodies } as unknown as NetworkClient,
+    connection,
+    abort.signal,
+    cache,
+    publish
+  );
+  const stopped = expect(pending).rejects.toThrow();
+  try {
+    await vi.waitFor(() => expect(searchBodies).toHaveBeenCalledTimes(3));
+    for (let update = 0; update < 3; update++) {
+      records = records.map((record) => ({
+        ...record,
+        updatedAt: record.updatedAt + 1,
+        streamEventCount: record.streamEventCount + 1,
+        status: { kind: "pending" },
+        requestHeaders: [
+          { name: "content-type", value: "text/plain" },
+          { name: "X-Unrelated", value: String(update) }
+        ]
+      }));
+      await searchLocalCapture(records, ["needle"], abort.signal, cache, publish);
+      expect(filterRecords(records, "needle", false, [], bodySearchMatches(cache))).toHaveLength(17);
+      expect([...cache.values()].every((entry) => entry.remote)).toBe(true);
+    }
+    expect(searchBodies).toHaveBeenCalledTimes(3);
+  } finally {
+    abort.abort();
+    await stopped;
+  }
+});
+
+it.each(["body updates", "temporary failures"])("gives waiting requests a turn during %s", async (change) => {
+  const cache: BodySearchCache = new Map();
+  const abort = new AbortController();
+  let records = Array.from({ length: 9 }, (_, i) => request("current", { requestId: String(i) }));
+  const publish = () => {};
+  const batches: string[][] = [];
+  await searchLocalCapture(records, ["needle"], abort.signal, cache, publish);
+  const searchBodies = async (query: BodySearchQuery) => {
+    batches.push(query.requestIds);
+    if (query.requestIds.includes("8") || batches.length === 3) abort.abort();
+    abort.signal.throwIfAborted();
+    if (change === "temporary failures") throw new TypeError("network");
+    records = records.map((record, i) =>
+      i < 8 ? { ...record, requestBodySize: (record.requestBodySize ?? 0) + 1 } : record
+    );
+    await searchLocalCapture(records, ["needle"], abort.signal, cache, publish);
+    return { results: [] };
+  };
+  await expect(
+    searchAndroidCapture(
+      ["needle"],
+      { searchBodies } as unknown as NetworkClient,
+      connection,
+      abort.signal,
+      cache,
+      publish
+    )
+  ).rejects.toThrow();
+  expect(batches[0]).toHaveLength(8);
+  expect(batches[1]).toContain("8");
 });

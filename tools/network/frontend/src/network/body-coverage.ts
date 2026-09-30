@@ -1,11 +1,11 @@
 import type { RequestRecord } from "./cdp";
 
-export type BodyCoverage = "absent" | "incomplete" | "complete" | "unavailable";
+export type BodyCoverage = "absent" | "incomplete" | "complete";
 
 export function requestBodyCoverage(record: RequestRecord): BodyCoverage {
   if (record.requestBody != null) return record.requestBodyTruncatedBytes === 0 ? "complete" : "incomplete";
   if (record.requestHasPostData === false || record.requestBodySize === 0) return "absent";
-  return record.endedAt == null ? "incomplete" : "unavailable";
+  return "incomplete";
 }
 
 export function responseBodyCoverage(record: RequestRecord): BodyCoverage {
@@ -21,5 +21,5 @@ export function responseBodyCoverage(record: RequestRecord): BodyCoverage {
     (record.status.kind === "failure" && !record.hasReceivedResponse)
   )
     return "absent";
-  return record.endedAt == null ? "incomplete" : "unavailable";
+  return "incomplete";
 }

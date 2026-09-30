@@ -9,11 +9,7 @@ export interface NetworkClient extends ToolContentClient {
   addExclusionFilter(filter: string): void;
   removeExclusionFilter(filter: string): void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
-  searchBodies?(
-    input: BodySearchQuery,
-    signal: AbortSignal,
-    publish?: (reply: BodySearchReply) => void
-  ): Promise<BodySearchReply>;
+  searchBodies?(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply>;
   startStream(input: ToolConnection): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
@@ -67,13 +63,9 @@ class BrowserNetworkClient implements NetworkClient {
     if (!connection) return Promise.reject(new Error("Tool is disconnected."));
     return connection.loadBodies(input);
   }
-  searchBodies(
-    input: BodySearchQuery,
-    signal: AbortSignal,
-    publish?: (reply: BodySearchReply) => void
-  ): Promise<BodySearchReply> {
-    if (!this.active) return Promise.reject(new Error("Tool is disconnected."));
-    return this.active.searchBodies(input, signal, publish);
+  searchBodies(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply> {
+    if (!this.active) return Promise.reject(new DOMException("Tool is disconnected.", "AbortError"));
+    return this.active.searchBodies(input, signal);
   }
 
   async startStream(input: ToolConnection): Promise<StreamStarted> {

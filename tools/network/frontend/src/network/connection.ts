@@ -87,26 +87,18 @@ export class NetworkConnection {
     return result;
   }
 
-  async searchBodies(
-    input: BodySearchQuery,
-    signal: AbortSignal,
-    publish?: (reply: BodySearchReply) => void
-  ): Promise<BodySearchReply> {
-    this.checkOpen();
+  async searchBodies(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply> {
     const activeSignal = AbortSignal.any([signal, this.abort.signal, this.connection.signal]);
-    return searchRemoteBodies(
-      input,
-      activeSignal,
-      (batch, signal) =>
-        this.transport.fetch(this.url("network/search"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(batch),
-          signal: AbortSignal.any([signal, AbortSignal.timeout(bodySearchLimits.timeoutMs)]),
-          cache: "no-store",
-          redirect: "error"
-        }),
-      publish
+    activeSignal.throwIfAborted();
+    return searchRemoteBodies(input, activeSignal, (batch, signal) =>
+      this.transport.fetch(this.url("network/search"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(bodySearchLimits.timeoutMs)]),
+        cache: "no-store",
+        redirect: "error"
+      })
     );
   }
 
