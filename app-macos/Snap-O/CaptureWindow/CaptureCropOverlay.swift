@@ -22,7 +22,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
   }
 
   final class CropView: NSView, NSDraggingSource {
-    private static let handleOutlineWidth: CGFloat = 5
+    private static let handleOutlineWidth: CGFloat = 4
 
     var imageFrame = CGRect.zero
     var crop = CaptureCropGeometry.fullImage {
@@ -179,22 +179,26 @@ struct CaptureCropOverlay: NSViewRepresentable {
         let point = handlePoint(handle)
         let position = handle.position
         let path = NSBezierPath()
+        path.lineCapStyle = .round
         if position.x == 0.5 {
-          path.move(to: CGPoint(x: point.x - 8, y: point.y))
-          path.line(to: CGPoint(x: point.x + 8, y: point.y))
+          path.move(to: CGPoint(x: point.x - 12, y: point.y))
+          path.line(to: CGPoint(x: point.x + 12, y: point.y))
         } else if position.y == 0.5 {
-          path.move(to: CGPoint(x: point.x, y: point.y - 8))
-          path.line(to: CGPoint(x: point.x, y: point.y + 8))
+          path.move(to: CGPoint(x: point.x, y: point.y - 12))
+          path.line(to: CGPoint(x: point.x, y: point.y + 12))
         } else {
-          path.move(to: CGPoint(x: point.x, y: point.y + (position.y == 0 ? 12 : -12)))
-          path.line(to: point)
-          path.line(to: CGPoint(x: point.x + (position.x == 0 ? 12 : -12), y: point.y))
+          let horizontal: CGFloat = position.x == 0 ? 1 : -1
+          let vertical: CGFloat = position.y == 0 ? 1 : -1
+          let end = CGPoint(x: point.x + horizontal * 24, y: point.y)
+          path.move(to: CGPoint(x: point.x, y: point.y + vertical * 24))
+          path.appendArc(from: point, to: end, radius: 2)
+          path.line(to: end)
         }
         NSColor.black.withAlphaComponent(0.6 * handleOpacity).setStroke()
         path.lineWidth = Self.handleOutlineWidth
         path.stroke()
         NSColor.white.withAlphaComponent(handleOpacity).setStroke()
-        path.lineWidth = 3
+        path.lineWidth = 2
         path.stroke()
       }
     }

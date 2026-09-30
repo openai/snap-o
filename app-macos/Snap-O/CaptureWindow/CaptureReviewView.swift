@@ -4,8 +4,6 @@ struct CaptureReviewView: View {
   @Bindable var controller: CaptureWindowController
   @Environment(CaptureHistory.self)
   private var history
-  @Environment(\.accessibilityReduceMotion)
-  private var reduceMotion
   @State private var isNaming = false
   @State private var isFinishing = false
   @State private var errorMessage: String?
@@ -41,7 +39,6 @@ struct CaptureReviewView: View {
             .frame(width: frame.width, height: frame.height)
             .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
             .position(x: frame.midX, y: frame.midY)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: frame)
             .zIndex(1)
           }
           CaptureCropOverlay(
@@ -92,6 +89,14 @@ struct CaptureReviewView: View {
     }
   }
 
+  private var reviewedMediaName: String {
+    let plural = controller.mediaList.count > 1
+    if controller.currentCapture?.media.isVideo == true {
+      return plural ? "Recordings" : "Recording"
+    }
+    return plural ? "Screenshots" : "Screenshot"
+  }
+
   private var reviewToolbar: some View {
     HStack(spacing: 12) {
       Button {
@@ -104,8 +109,8 @@ struct CaptureReviewView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.white)
       .glassEffect(.regular.tint(.white.opacity(0.12)).interactive(), in: Circle())
-      .help("Discard Captures")
-      .accessibilityLabel("Discard captures")
+      .help("Discard \(reviewedMediaName)")
+      .accessibilityLabel("Discard \(reviewedMediaName)")
 
       if controller.mediaList.count > 1 {
         CaptureReviewThumbnails(
@@ -124,8 +129,8 @@ struct CaptureReviewView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.white)
       .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
-      .help("Save Captures to History")
-      .accessibilityLabel("Save captures to history")
+      .help("Save \(reviewedMediaName) to History")
+      .accessibilityLabel("Save \(reviewedMediaName) to History")
     }
     .disabled(isFinishing || controller.isProcessing || controller.isSavingReview)
   }
