@@ -23,12 +23,12 @@ struct IdleOverlayView: View {
         } label: {
           HStack(spacing: 8) {
             Text("Stop Recording")
-            Text("⎋")
+            Text("⇧⌘V")
               .font(.subheadline)
               .foregroundStyle(.secondary)
           }
         }
-        .keyboardShortcut(.cancelAction)
+        .keyboardShortcut("v", modifiers: [.command, .shift])
       } else if !isRecording, !hasDevices, isDeviceListInitialized {
         Text("Waiting for device")
           .foregroundStyle(.gray)

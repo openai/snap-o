@@ -84,7 +84,7 @@ Press `⇧⌘S` to capture a screenshot from all connected Android devices. Use 
 
 ## Record the screen
 
-Press `⇧⌘V` to record the screens of all connected Android devices, and `Esc` to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
+Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
@@ -120,9 +120,8 @@ To remove a group, open it and choose **Delete Capture**. **Clear History…** r
 | Action                    | Shortcut |
 |---------------------------|----------|
 | New screenshot            | `⇧⌘S`    |
-| Start recording           | `⇧⌘V`    |
+| Start / stop recording    | `⇧⌘V`    |
 | Start live preview        | `⇧⌘L`    |
-| Stop recording / preview  | `⎋`      |
 | Open Capture History      | `⌘Y`     |
 | Open Device Manager       | `⇧⌘M`    |
 | Save as                   | `⌘S`     |

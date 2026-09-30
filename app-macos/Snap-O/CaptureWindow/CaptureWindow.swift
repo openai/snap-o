@@ -113,12 +113,6 @@ struct CaptureWindow: View {
       }
       .focusedSceneValue(\.captureController, controller)
       .background {
-        RecordingEscapeHandler(isRecording: controller.isRecording) {
-          Task { await controller.stopRecording() }
-        }
-        .frame(width: 0, height: 0)
-      }
-      .background {
         CaptureReviewCloseGuard(
           captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : [],
           isSaving: controller.isSavingReview

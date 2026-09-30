@@ -63,7 +63,7 @@ struct SnapOCommands: Commands {
         Button("Stop Screen Recording") {
           Task { await captureController?.stopRecording() }
         }
-        .keyboardShortcut(.escape, modifiers: [])
+        .keyboardShortcut("v", modifiers: [.command, .shift])
       } else {
         Button("Start Screen Recording") {
           workspaceController?.revealCapture()
