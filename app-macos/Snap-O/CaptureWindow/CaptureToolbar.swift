@@ -257,8 +257,8 @@ struct CaptureToolbar: View {
       .buttonStyle(.borderedProminent)
       .buttonBorderShape(.capsule)
       .tint(.red)
-      .help("Stop Recording (⎋)")
-      .keyboardShortcut(.escape, modifiers: [])
+      .help("Stop Recording (⇧⌘V)")
+      .keyboardShortcut("v", modifiers: [.command, .shift])
     }
   }
 
