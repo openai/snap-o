@@ -482,7 +482,6 @@ struct CaptureWindow: View {
       }
     }
     .environment(\.captureImageCopied, controller.imageCopied)
-    .environment(\.colorScheme, .dark)
     .overlay {
       CaptureCopyConfirmation(copyID: controller.imageCopyID)
     }
@@ -514,12 +513,13 @@ struct CaptureWindow: View {
     return serial
   }
 
-  private var captureAreaBackground: Color {
-    CapturePaneStyle.background
+  private var captureAreaBackground: some View {
+    CapturePaneBackground()
+      .overlay(Color.black.opacity(0.06).allowsHitTesting(false))
   }
 
   private var captureLetterboxBackground: Color {
-    CapturePaneStyle.background
+    Color.clear
   }
 
   private var toolSidebarBackground: Color {

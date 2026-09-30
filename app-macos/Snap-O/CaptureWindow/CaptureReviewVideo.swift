@@ -54,7 +54,7 @@ private struct CapturePlaybackControls: View {
         in: 0 ... max(playback.duration, 0.01)
       ) { playback.setScrubbing($0) }
         .controlSize(.mini)
-        .tint(.white)
+        .tint(.primary)
         .accessibilityLabel("Playback position")
         .accessibilityValue(CaptureReviewPlayback.timestamp(playback.time))
       Text(CaptureReviewPlayback.timestamp(playback.duration))
@@ -84,10 +84,10 @@ private struct CapturePlaybackControls: View {
     }
     .font(.system(size: 11, weight: .medium).monospacedDigit())
     .buttonStyle(.plain)
-    .foregroundStyle(.white)
+    .foregroundStyle(.primary)
     .padding(.horizontal, 10)
     .frame(maxHeight: .infinity)
-    .background(.black.opacity(0.18), in: Capsule())
+    .background(.primary.opacity(0.08), in: Capsule())
     .disabled(playback.duration <= 0)
     .help(playback.errorMessage ?? "Space to play or pause. Left and Right Arrow to step one frame.")
     .focusable()

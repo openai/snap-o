@@ -15,7 +15,7 @@ struct CaptureReviewView: View {
           in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo
         )
         ZStack(alignment: .topLeading) {
-          CapturePaneStyle.background
+          Color.clear
           reviewToolbar
             .frame(height: CaptureReviewLayout.toolbarHeight)
             .padding(.horizontal, CaptureReviewLayout.edgeSpacing)
@@ -54,7 +54,6 @@ struct CaptureReviewView: View {
         }
       }
     }
-    .environment(\.colorScheme, .dark)
     .background(CaptureSheetAnchor(isPresented: isNaming))
     .sheet(isPresented: $isNaming) {
       CaptureSaveSheet { name in
@@ -107,8 +106,8 @@ struct CaptureReviewView: View {
           .frame(width: 36, height: 36)
       }
       .buttonStyle(.borderless)
-      .foregroundStyle(.white)
-      .glassEffect(.regular.tint(.white.opacity(0.12)).interactive(), in: Circle())
+      .foregroundStyle(.primary)
+      .glassEffect(.regular.interactive(), in: Circle())
       .help("Discard \(reviewedMediaName)")
       .accessibilityLabel("Discard \(reviewedMediaName)")
 

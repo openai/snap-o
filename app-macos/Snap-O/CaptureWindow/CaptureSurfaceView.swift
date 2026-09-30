@@ -1,7 +1,15 @@
 import SwiftUI
 
-enum CapturePaneStyle {
-  static let background = Color(white: 0.24)
+struct CapturePaneBackground: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSVisualEffectView {
+    let view = NSVisualEffectView()
+    view.material = .headerView
+    view.blendingMode = .behindWindow
+    view.state = .followsWindowActiveState
+    return view
+  }
+
+  func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 struct CaptureSurfaceView<Content: View>: View {
@@ -13,7 +21,7 @@ struct CaptureSurfaceView<Content: View>: View {
       let paneAspectRatio = geometry.size.width / max(geometry.size.height, 1)
 
       ZStack {
-        CapturePaneStyle.background
+        Color.clear
         // Keep the media view mounted when the tool changes the sizing policy.
         content()
           .aspectRatio(aspectRatio ?? paneAspectRatio, contentMode: .fit)

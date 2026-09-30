@@ -287,22 +287,13 @@ private final class WindowDividerOverlayView: NSView {
     let pointInWindow = contentView.convert(NSPoint(x: dividerX, y: 0), to: nil)
     let pointInOverlay = convert(pointInWindow, from: nil)
     let alignedX = (pointInOverlay.x * scale).rounded() / scale
-    let captureHeight = max(0, bounds.height - WindowChromeMetrics.totalToolbarHeight)
-
-    NSColor.windowBackgroundColor.setFill()
-    NSRect(
-      x: alignedX - width,
-      y: captureHeight,
-      width: width,
-      height: bounds.height - captureHeight
-    ).fill()
 
     NSColor.white.withAlphaComponent(0.15).setFill()
     NSRect(
       x: alignedX - width,
       y: 0,
       width: width,
-      height: captureHeight
+      height: bounds.height
     ).fill(using: .sourceOver)
 
     NSColor.separatorColor.setFill()

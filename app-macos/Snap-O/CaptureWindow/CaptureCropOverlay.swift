@@ -201,7 +201,9 @@ struct CaptureCropOverlay: NSViewRepresentable {
       let shade = NSBezierPath(rect: imageFrame)
       shade.append(NSBezierPath(rect: cropFrame))
       shade.windingRule = .evenOdd
-      NSColor.black.withAlphaComponent(0.5).setFill()
+      let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+      let veil = isDark ? NSColor.black.withAlphaComponent(0.25) : NSColor.white.withAlphaComponent(0.75)
+      veil.setFill()
       shade.fill()
       for handle in CaptureCropHandle.allCases {
         let point = handlePoint(handle)
