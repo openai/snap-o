@@ -47,7 +47,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
 
   var body: some View {
     ZStack {
-      Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+      Color.clear
       if let renderer = lifecycle.renderer {
         LivePreviewRendererView(
           renderer: renderer,

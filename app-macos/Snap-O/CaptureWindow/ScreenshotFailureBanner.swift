@@ -12,6 +12,16 @@ struct ScreenshotFailureBanner: View {
   }
 
   var body: some View {
+    CaptureFailureBanner(title: title, messages: failures.map(\.message), onDismiss: onDismiss)
+  }
+}
+
+struct CaptureFailureBanner: View {
+  let title: String
+  let messages: [String]
+  let onDismiss: () -> Void
+
+  var body: some View {
     HStack(alignment: .top, spacing: 8) {
       Image(systemName: "exclamationmark.triangle.fill")
         .font(.system(size: 14))
@@ -22,8 +32,8 @@ struct ScreenshotFailureBanner: View {
         Text(title)
           .font(.subheadline.weight(.semibold))
 
-        ForEach(failures, id: \.device.id) { failure in
-          Text(failure.message)
+        ForEach(messages.indices, id: \.self) { index in
+          Text(messages[index])
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

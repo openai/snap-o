@@ -76,6 +76,12 @@ struct CaptureWindow: View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
       .task {
+        controller.confirmDiscardReview = { [weak controller] in
+          guard let controller else { return false }
+          return CaptureReviewCloseGuard.confirmReplacement {
+            try controller.fileStore.discardPreviews(controller.mediaList)
+          }
+        }
         await controller.start()
       }
       .task(id: controller.mediaList.map(\.id)) {
@@ -106,6 +112,15 @@ struct CaptureWindow: View {
         }
       }
       .focusedSceneValue(\.captureController, controller)
+      .background {
+        CaptureReviewCloseGuard(
+          captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : [],
+          isSaving: controller.isSavingReview
+        ) {
+          try controller.fileStore.discardPreviews(controller.mediaList)
+        }
+        .frame(width: 0, height: 0)
+      }
       .alert("Capture History", isPresented: Binding(
         get: { history.errorMessage != nil },
         set: { if !$0 { Task { await history.repository.clearError() } } }
@@ -159,35 +174,16 @@ struct CaptureWindow: View {
       )
   }
 
-  private var captureHistoryEntry: CaptureHistoryEntry? {
-    guard !controller.isLivePreviewActive, !controller.isRecording,
-          let captureID = controller.currentCapture?.id else { return nil }
-    return history.entries.first { $0.items.contains { $0.captureID == captureID } }
-  }
-
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
-    let entry = captureHistoryEntry
-    return CapturePaneTitle(
-      entry: entry,
-      deviceTitle: controller.isLivePreviewActive ? nil : controller.currentCaptureDeviceTitle,
-      fallbackTitle: controller.isLivePreviewActive
-        ? controller.currentCaptureDeviceTitle ?? ""
-        : controller.isRecording ? "Recording" : "Snap-O",
-      openDeviceManager: { openWindow(id: "device-manager") },
-      rename: { name in
-        guard let entry else { return }
-        Task { await history.repository.rename(entry.id, to: name) }
-      }
-    )
+    return CapturePaneTitle(title: controller.currentCaptureDeviceTitle ?? "Snap-O") {
+      openWindow(id: "device-manager")
+    }
   }
 
   private func navigationTitle(for layout: WorkspaceLayout) -> String {
     switch layout {
     case .capture:
-      if let entry = captureHistoryEntry {
-        return [entry.displayName, controller.currentCaptureDeviceTitle].compactMap(\.self).joined(separator: " — ")
-      }
       return controller.navigationTitle
     case .tool, .both:
       guard let model = toolSession.model,
@@ -459,8 +455,31 @@ struct CaptureWindow: View {
     controller: CaptureWindowController,
     layout: WorkspaceLayout
   ) -> some View {
-    CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
-      captureContent(controller: controller)
+    Group {
+      if controller.isReviewingCapture {
+        CaptureReviewView(controller: controller)
+      } else {
+        CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
+          captureContent(controller: controller)
+        }
+      }
+    }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {
+        ScreenshotFailureBanner(
+          failures: controller.screenshotFailures,
+          successfulCaptureCount: controller.mediaList.count,
+          onDismiss: controller.dismissScreenshotFailures
+        )
+        .padding(12)
+      } else if controller.isReviewingCapture, let error = controller.lastError {
+        CaptureFailureBanner(
+          title: "Capture incomplete",
+          messages: [error],
+          onDismiss: controller.dismissScreenshotFailures
+        )
+        .padding(12)
+      }
     }
     .environment(\.captureImageCopied, controller.imageCopied)
     .overlay {
@@ -494,12 +513,13 @@ struct CaptureWindow: View {
     return serial
   }
 
-  private var captureAreaBackground: Color {
-    Color(nsColor: .windowBackgroundColor)
+  private var captureAreaBackground: some View {
+    CapturePaneBackground()
+      .overlay(Color.black.opacity(0.06).allowsHitTesting(false))
   }
 
   private var captureLetterboxBackground: Color {
-    Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+    Color.clear
   }
 
   private var toolSidebarBackground: Color {
@@ -556,19 +576,6 @@ struct CaptureWindow: View {
           .background(.regularMaterial)
           Spacer()
         }
-      }
-
-      if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {
-        VStack {
-          ScreenshotFailureBanner(
-            failures: controller.screenshotFailures,
-            successfulCaptureCount: controller.mediaList.count,
-            onDismiss: controller.dismissScreenshotFailures
-          )
-          Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
       }
     }
     .clipped()

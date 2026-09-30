@@ -288,13 +288,13 @@ private final class WindowDividerOverlayView: NSView {
     let pointInOverlay = convert(pointInWindow, from: nil)
     let alignedX = (pointInOverlay.x * scale).rounded() / scale
 
-    NSColor.windowBackgroundColor.setFill()
+    NSColor.white.withAlphaComponent(0.15).setFill()
     NSRect(
       x: alignedX - width,
       y: 0,
       width: width,
       height: bounds.height
-    ).fill()
+    ).fill(using: .sourceOver)
 
     NSColor.separatorColor.setFill()
     NSRect(

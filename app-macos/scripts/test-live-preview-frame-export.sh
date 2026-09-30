@@ -7,6 +7,8 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
 
 xcrun swiftc -swift-version 6 -parse-as-library \
+  Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift \
+  Snap-O/Models/Media.swift Snap-O/Capture/CaptureMedia.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Storage/SaveLocation.swift \
   Snap-O/LivePreview/LivePreviewFrameExporter.swift \
   Snap-O/LivePreview/LivePreviewThumbnail.swift \

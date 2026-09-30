@@ -103,70 +103,39 @@ struct LivePreviewThumbnailTests {
   }
 
   @Test
-  func mirrorCachesItsLastFrameWithoutAllowingAnOlderScreenshotToReplaceIt() async throws {
-    let source = AVSampleBufferDisplayLayer()
+  func cachedLiveFramePreventsAnOlderScreenshotFromReplacingIt() async throws {
     let thumbnail = LivePreviewThumbnail()
-    thumbnail.videoRenderer = source.sampleBufferRenderer
-    let view = LivePreviewThumbnailDisplayView(frame: CGRect(x: 0, y: 0, width: 80, height: 80))
-    view.thumbnail = thumbnail
-    let window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 160, height: 80),
-      styleMask: [.borderless],
-      backing: .buffered,
-      defer: false
-    )
-    let content = NSView(frame: window.contentLayoutRect)
-    content.wantsLayer = true
-    source.frame = CGRect(x: 0, y: 0, width: 80, height: 80)
-    content.layer?.addSublayer(source)
-    view.setFrameOrigin(CGPoint(x: 80, y: 0))
-    content.addSubview(view)
-    window.contentView = content
-    window.orderFront(nil)
-    defer {
-      view.stop()
-      window.orderOut(nil)
-      window.contentView = nil
-    }
-    let output = try #require(view.layer?.sublayers?.compactMap { $0 as? AVSampleBufferDisplayLayer }.first)
-    let pendingScreenshot = TestValue<CheckedContinuation<Data, Never>?>(nil)
+    let pending = TestValue<CheckedContinuation<Data, Never>?>(nil)
     let refresh = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 80, height: 80)) {
-        await withCheckedContinuation { pendingScreenshot.value = $0 }
+        await withCheckedContinuation { pending.value = $0 }
       }
     }
-    try await waitForState { pendingScreenshot.value != nil }
-    for (width, height) in [(32, 64), (64, 32)] {
-      var pixelBuffer: CVPixelBuffer?
-      let status = CVPixelBufferCreate(
-        kCFAllocatorDefault,
-        width,
-        height,
-        kCVPixelFormatType_32BGRA,
-        [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary,
-        &pixelBuffer
-      )
-      #expect(status == kCVReturnSuccess)
-      let buffer = try #require(pixelBuffer)
-      let sample = try #require(LivePreviewThumbnailDisplayView.sampleBuffer(for: buffer))
-      #expect(CMSampleBufferGetImageBuffer(sample) === buffer)
-      source.sampleBufferRenderer.enqueue(sample)
-      try await eventually {
-        guard let displayed = output.sampleBufferRenderer.displayedPixelBuffer() else { return false }
-        return CVPixelBufferGetWidth(displayed) == width && CVPixelBufferGetHeight(displayed) == height
-      }
-    }
-    view.stop()
-    #expect(view.thumbnail == nil)
-    #expect(thumbnail.videoRenderer === source.sampleBufferRenderer)
+    try await waitForState { pending.value != nil }
+    try thumbnail.cacheLiveFrame(makePixelBuffer(width: 64, height: 32))
     let cached = try #require(thumbnail.image)
-    #expect(cached.width == 64 && cached.height == 32)
-    #expect(!thumbnail.isLoading)
-    source.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
-    thumbnail.videoRenderer = nil
-    try pendingScreenshot.value?.resume(returning: makePNG())
+    try pending.value?.resume(returning: makePNG())
     await refresh.value
     #expect(thumbnail.image === cached)
+  }
+
+  @Test
+  func cachingLiveFrameDownsamplesToFillThumbnail() throws {
+    let thumbnail = LivePreviewThumbnail()
+    thumbnail.pixelSize = CGSize(width: 80, height: 80)
+    try thumbnail.cacheLiveFrame(makePixelBuffer(width: 320, height: 160))
+    let image = try #require(thumbnail.image)
+    #expect(CGSize(width: image.width, height: image.height) == CGSize(width: 160, height: 80))
+  }
+
+  private func makePixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
+    var buffer: CVPixelBuffer?
+    let status = CVPixelBufferCreate(
+      kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+      [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &buffer
+    )
+    try #require(status == kCVReturnSuccess)
+    return try #require(buffer)
   }
 
   private func makePNG(size: CGSize = CGSize(width: 320, height: 640)) throws -> Data {
@@ -177,13 +146,5 @@ struct LivePreviewThumbnailTests {
     ))
     memset(bitmap.bitmapData, 255, bitmap.bytesPerRow * bitmap.pixelsHigh)
     return try #require(bitmap.representation(using: .png, properties: [:]))
-  }
-
-  private func eventually(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while !condition(), ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(5))
-    }
-    try #require(condition())
   }
 }

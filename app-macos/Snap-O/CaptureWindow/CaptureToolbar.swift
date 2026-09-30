@@ -90,7 +90,7 @@ struct CaptureToolbar: View {
     HStack(spacing: 15) {
       captureControls()
 
-      if !controller.isRecording, let progress = controller.captureProgressText {
+      if !controller.isRecording, !controller.isReviewingCapture, let progress = controller.captureProgressText {
         captureProgress(progress)
       }
     }
@@ -229,13 +229,8 @@ struct CaptureToolbar: View {
       CaptureActionToolbarControls(
         screenshot: { Task { await controller.captureScreenshots() } },
         canCaptureNow: controller.canCaptureNow,
-        isShowingScreenshot: !controller.isLivePreviewActive && controller.currentCapture?.media.isImage == true,
         startRecording: { Task { await controller.startRecording() } },
-        canStartRecordingNow: controller.canStartRecordingNow,
-        isShowingRecording: !controller.isLivePreviewActive && controller.currentCapture?.media.isVideo == true,
-        startLivePreview: { Task { await controller.startLivePreview() } },
-        canSelectLivePreview: controller.canSelectLivePreview,
-        isLivePreviewActive: controller.isLivePreviewActive
+        canStartRecordingNow: controller.canStartRecordingNow
       )
     }
   }
@@ -343,13 +338,8 @@ struct CaptureToolbar: View {
 struct CaptureActionToolbarControls: View {
   let screenshot: @MainActor () -> Void
   let canCaptureNow: Bool
-  let isShowingScreenshot: Bool
   let startRecording: @MainActor () -> Void
   let canStartRecordingNow: Bool
-  let isShowingRecording: Bool
-  let startLivePreview: @MainActor () -> Void
-  let canSelectLivePreview: Bool
-  let isLivePreviewActive: Bool
   @Environment(AppSettings.self)
   private var settings
 
@@ -362,7 +352,6 @@ struct CaptureActionToolbarControls: View {
           .labelStyle(.iconOnly)
           .font(SnapOToolbarStyle.iconFont)
           .frame(width: 34, height: 32)
-          .modifier(CaptureSelectionHighlight(isSelected: isShowingScreenshot))
       }
       .help("New Screenshot (⇧⌘S)")
       .disabled(!canCaptureNow)
@@ -376,7 +365,6 @@ struct CaptureActionToolbarControls: View {
           Label("Record", systemImage: "ant.circle")
             .font(SnapOToolbarStyle.iconFont)
             .frame(width: 34, height: 32)
-            .modifier(CaptureSelectionHighlight(isSelected: isShowingRecording))
         } primaryAction: {
           startRecording()
         }
@@ -396,37 +384,13 @@ struct CaptureActionToolbarControls: View {
           Label("Record", systemImage: "record.circle")
             .font(SnapOToolbarStyle.iconFont)
             .frame(width: 34, height: 32)
-            .modifier(CaptureSelectionHighlight(isSelected: isShowingRecording))
         }
         .help("Start Recording (⇧⌘V)")
         .disabled(!canStartRecordingNow)
       }
-
-      Button {
-        startLivePreview()
-      } label: {
-        Label("Live Preview", systemImage: "play.circle")
-          .font(SnapOToolbarStyle.iconFont)
-          .frame(width: 34, height: 32)
-          .modifier(CaptureSelectionHighlight(isSelected: isLivePreviewActive))
-      }
-      .help("Live Preview (⌘⇧L). Command-drag the preview to capture a frame.")
-      .disabled(!canSelectLivePreview)
     }
     .labelStyle(.iconOnly)
     .controlSize(.extraLarge)
     .snapOToolbarGroupStyle()
-  }
-}
-
-private struct CaptureSelectionHighlight: ViewModifier {
-  let isSelected: Bool
-
-  func body(content: Content) -> some View {
-    if isSelected {
-      content.foregroundStyle(.blue)
-    } else {
-      content
-    }
   }
 }

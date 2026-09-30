@@ -6,6 +6,8 @@ struct ImageCaptureView: View {
   let url: URL
   var exportFilename: String?
   var onDelete: (() -> Void)?
+  var allowsFileDrag = true
+  var crop = CaptureCropGeometry.fullImage
   var makeTempDragFile: () -> URL?
 
   @Environment(\.captureImageCopied)
@@ -23,13 +25,13 @@ struct ImageCaptureView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
-        .focusedValue(\.captureImage, nsImage)
+        .focusedValue(\.captureImage, croppedImage(nsImage))
         .onTapGesture { isFocused = true }
         .onExitCommand { isFocused = false }
         .contextMenu {
           Button("Copy Image") {
             NSPasteboard.general.clearContents()
-            if NSPasteboard.general.writeObjects([nsImage]) {
+            if NSPasteboard.general.writeObjects([croppedImage(nsImage)]) {
               imageCopied()
             }
           }
@@ -40,8 +42,9 @@ struct ImageCaptureView: View {
           }
         }
         .accessibilityLabel("Screenshot")
-        .onDrag { dragItemProvider() }
+        .modifier(CaptureFileDrag(isEnabled: allowsFileDrag, provider: dragItemProvider))
         .onAppear { markPerfMilestones() }
+        .onChange(of: crop) { if !allowsFileDrag { isFocused = true } }
     } else {
       Color.black
     }
@@ -57,7 +60,7 @@ struct ImageCaptureView: View {
     guard panel.runModal() == .OK, let destination = panel.url else { return }
 
     do {
-      try Data(contentsOf: url).write(to: destination, options: .atomic)
+      try CaptureCropExporter.saveImage(at: url, crop: crop, to: destination)
       SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: .image)
     } catch {
       let alert = NSAlert()
@@ -66,6 +69,16 @@ struct ImageCaptureView: View {
       alert.informativeText = error.localizedDescription
       alert.runModal()
     }
+  }
+
+  private func croppedImage(_ original: NSImage) -> NSImage {
+    guard crop != CaptureCropGeometry.fullImage,
+          let image = original.cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let cropped = image.cropping(to: CaptureCropExporter.pixelRect(crop, size: CGSize(width: image.width, height: image.height)))
+    else {
+      return original
+    }
+    return NSImage(cgImage: cropped, size: CGSize(width: cropped.width, height: cropped.height))
   }
 
   private func dragItemProvider() -> NSItemProvider {
@@ -81,6 +94,7 @@ struct VideoCaptureView: View {
   let url: URL
   var onFocusChange: (Bool) -> Void = { _ in }
   var onDelete: (() -> Void)?
+  var allowsFileDrag = true
   var makeTempDragFile: () -> URL?
 
   var body: some View {
@@ -95,7 +109,7 @@ struct VideoCaptureView: View {
         Button("Delete…", role: .destructive, action: onDelete)
       }
     }
-    .onDrag { dragItemProvider() }
+    .modifier(CaptureFileDrag(isEnabled: allowsFileDrag, provider: dragItemProvider))
     .onAppear { markPerfMilestones() }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
@@ -109,7 +123,20 @@ struct VideoCaptureView: View {
   }
 }
 
-private func markPerfMilestones() {
+private struct CaptureFileDrag: ViewModifier {
+  let isEnabled: Bool
+  let provider: () -> NSItemProvider
+
+  func body(content: Content) -> some View {
+    if isEnabled {
+      content.onDrag(provider)
+    } else {
+      content
+    }
+  }
+}
+
+func markPerfMilestones() {
   Perf.end(.captureRequest, finalLabel: "snapshot rendered")
   Perf.end(.recordingRender, finalLabel: "video rendered")
   Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")

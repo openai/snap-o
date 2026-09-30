@@ -19,6 +19,8 @@ final class CaptureWindowController {
 
   private(set) var isDeviceListInitialized: Bool = false
   private(set) var isProcessing: Bool = false
+  var isSavingReview = false
+  var reviewCrops: [UUID: CGRect] = [:]
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var imageCopyID: UUID?
@@ -34,6 +36,7 @@ final class CaptureWindowController {
   @ObservationIgnored private var initialCaptureWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
+  @ObservationIgnored var confirmDiscardReview: (() -> Bool)?
 
   init(
     captureServices: CaptureServices,
@@ -159,7 +162,31 @@ final class CaptureWindowController {
   }
 
   var canCaptureNow: Bool {
-    !isTornDown && !isProcessing && !isRecording && !isStoppingLivePreview && hasDevices
+    !isTornDown && !isProcessing && !isSavingReview && !isRecording && !isStoppingLivePreview && hasDevices
+  }
+
+  var isReviewingCapture: Bool {
+    guard case .displaying = mode else { return false }
+    return !isRecording && !mediaList.isEmpty
+  }
+
+  func finishCaptureReview() async {
+    guard isReviewingCapture else { return }
+    reviewCrops = [:]
+    mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+    mode = .idle
+    lastError = nil
+    screenshotFailures = []
+    await startLivePreview()
+  }
+
+  private func prepareToLeaveReview() -> Bool {
+    guard isReviewingCapture else { return true }
+    guard confirmDiscardReview?() == true else { return false }
+    reviewCrops = [:]
+    mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+    mode = .idle
+    return true
   }
 
   var canStartRecordingNow: Bool {
@@ -240,6 +267,7 @@ final class CaptureWindowController {
       guard await waitForInitialCaptureSetup() else { return }
     }
     guard canCaptureNow else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
@@ -277,6 +305,7 @@ final class CaptureWindowController {
 
   func startRecording() async {
     guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     let recordsBugReport = AppSettings.shared.recordAsBugReport
     let needsPreview = !isLivePreviewActive && !recordsBugReport
@@ -358,6 +387,7 @@ final class CaptureWindowController {
       }
       if !isProcessing, knownDevices.contains(where: { $0.id == deviceID }) {
         await startLivePreview(preferredDeviceID: deviceID)
+        guard isLivePreviewActive else { return }
         selectDevice(id: deviceID)
         return
       }
@@ -373,6 +403,7 @@ final class CaptureWindowController {
 
   func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil, allowRecording: Bool = false) async {
     guard canStartLivePreviewNow || (allowRecording && isRecording && !isLivePreviewActive && !isTornDown) else { return }
+    guard prepareToLeaveReview() else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil
@@ -472,13 +503,20 @@ final class CaptureWindowController {
     mediaDisplayMode.tearDown()
   }
 
-  func copyCurrentImage() {
+  func copyCurrentImage(to pasteboard: NSPasteboard = .general) {
     guard let capture = currentCapture,
           case .image(let url, _) = capture.media,
-          let image = NSImage(contentsOf: url)
+          var image = NSImage(contentsOf: url)
     else { return }
-    NSPasteboard.general.clearContents()
-    if NSPasteboard.general.writeObjects([image]) {
+    if let crop = reviewCrops[capture.id], crop != CaptureCropGeometry.fullImage {
+      guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+            let cropped = source.cropping(to: CaptureCropGeometry.frame(
+              for: crop, in: CGRect(x: 0, y: 0, width: source.width, height: source.height)
+            ).integral) else { return }
+      image = NSImage(cgImage: cropped, size: CGSize(width: cropped.width, height: cropped.height))
+    }
+    pasteboard.clearContents()
+    if pasteboard.writeObjects([image]) {
       imageCopied()
     }
   }
