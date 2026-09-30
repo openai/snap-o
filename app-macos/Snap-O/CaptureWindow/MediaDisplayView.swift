@@ -60,7 +60,7 @@ struct ImageCaptureView: View {
     guard panel.runModal() == .OK, let destination = panel.url else { return }
 
     do {
-      _ = try CaptureCropExporter.exportImage(at: url, crop: crop, to: destination)
+      try CaptureCropExporter.saveImage(at: url, crop: crop, to: destination)
       SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: .image)
     } catch {
       let alert = NSAlert()

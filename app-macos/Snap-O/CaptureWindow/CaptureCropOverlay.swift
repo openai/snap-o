@@ -23,6 +23,8 @@ struct CaptureCropOverlay: NSViewRepresentable {
 
   final class CropView: NSView, NSDraggingSource {
     private static let handleOutlineWidth: CGFloat = 4
+    private static let cornerArmLength: CGFloat = 24
+    private static let sideHalfLength: CGFloat = 12
 
     var imageFrame = CGRect.zero
     var crop = CaptureCropGeometry.fullImage {
@@ -73,19 +75,43 @@ struct CaptureCropOverlay: NSViewRepresentable {
     }
 
     private func handle(at point: CGPoint) -> CaptureCropHandle? {
-      CaptureCropHandle.allCases.first { handleRect($0).contains(point) }
+      CaptureCropHandle.allCases.first { handleRects($0).contains { $0.contains(point) } }
     }
 
-    private func handleRect(_ handle: CaptureCropHandle) -> CGRect {
+    private func handleRects(_ handle: CaptureCropHandle) -> [CGRect] {
       let center = handlePoint(handle)
-      return CGRect(x: center.x - 10, y: center.y - 10, width: 20, height: 20)
+      let position = handle.position
+      if position.x == 0.5 {
+        return [CGRect(x: center.x - Self.sideHalfLength, y: center.y, width: Self.sideHalfLength * 2, height: 0)
+          .insetBy(dx: -10, dy: -10)]
+      }
+      if position.y == 0.5 {
+        return [CGRect(x: center.x, y: center.y - Self.sideHalfLength, width: 0, height: Self.sideHalfLength * 2)
+          .insetBy(dx: -10, dy: -10)]
+      }
+      return [
+        CGRect(
+          x: center.x - (position.x == 1 ? Self.cornerArmLength : 0),
+          y: center.y,
+          width: Self.cornerArmLength,
+          height: 0
+        ),
+        CGRect(
+          x: center.x,
+          y: center.y - (position.y == 1 ? Self.cornerArmLength : 0),
+          width: 0,
+          height: Self.cornerArmLength
+        )
+      ].map { $0.insetBy(dx: -10, dy: -10) }
     }
 
     override func resetCursorRects() {
       super.resetCursorRects()
       guard isEnabled else { return }
       for handle in CaptureCropHandle.allCases {
-        addCursorRect(handleRect(handle).intersection(bounds), cursor: handle.resizeCursor)
+        for rect in handleRects(handle) {
+          addCursorRect(rect.intersection(bounds), cursor: handle.resizeCursor)
+        }
       }
     }
 
@@ -183,16 +209,16 @@ struct CaptureCropOverlay: NSViewRepresentable {
         let path = NSBezierPath()
         path.lineCapStyle = .round
         if position.x == 0.5 {
-          path.move(to: CGPoint(x: point.x - 12, y: point.y))
-          path.line(to: CGPoint(x: point.x + 12, y: point.y))
+          path.move(to: CGPoint(x: point.x - Self.sideHalfLength, y: point.y))
+          path.line(to: CGPoint(x: point.x + Self.sideHalfLength, y: point.y))
         } else if position.y == 0.5 {
-          path.move(to: CGPoint(x: point.x, y: point.y - 12))
-          path.line(to: CGPoint(x: point.x, y: point.y + 12))
+          path.move(to: CGPoint(x: point.x, y: point.y - Self.sideHalfLength))
+          path.line(to: CGPoint(x: point.x, y: point.y + Self.sideHalfLength))
         } else {
           let horizontal: CGFloat = position.x == 0 ? 1 : -1
           let vertical: CGFloat = position.y == 0 ? 1 : -1
-          let end = CGPoint(x: point.x + horizontal * 24, y: point.y)
-          path.move(to: CGPoint(x: point.x, y: point.y + vertical * 24))
+          let end = CGPoint(x: point.x + horizontal * Self.cornerArmLength, y: point.y)
+          path.move(to: CGPoint(x: point.x, y: point.y + vertical * Self.cornerArmLength))
           path.appendArc(from: point, to: end, radius: 2)
           path.line(to: end)
         }

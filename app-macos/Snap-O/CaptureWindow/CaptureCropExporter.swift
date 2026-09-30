@@ -9,6 +9,18 @@ enum CaptureCropExporter {
       .appendingPathComponent(".\(UUID().uuidString).\(destination.pathExtension)")
     defer { try? FileManager.default.removeItem(at: staging) }
     _ = try await export(capture, crop: crop, to: staging)
+    try replaceDestination(destination, with: staging)
+  }
+
+  static func saveImage(at source: URL, crop: CGRect, to destination: URL) throws {
+    let staging = destination.deletingLastPathComponent()
+      .appendingPathComponent(".\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: staging) }
+    _ = try exportImage(at: source, crop: crop, to: staging)
+    try replaceDestination(destination, with: staging)
+  }
+
+  private static func replaceDestination(_ destination: URL, with staging: URL) throws {
     if FileManager.default.fileExists(atPath: destination.path) {
       _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
     } else {

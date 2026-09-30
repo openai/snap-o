@@ -49,6 +49,30 @@ struct CaptureCropTests {
   }
 
   @Test @MainActor
+  func cornerArmEndResizesInsteadOfMovingCrop() throws {
+    let view = makeView()
+    try view.mouseDown(with: event(.leftMouseDown, x: 122, y: 302))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 142, y: 282))
+    #expect(view.crop == CGRect(x: 0.3, y: 0.3, width: 0.45, height: 0.45))
+  }
+
+  @Test @MainActor
+  func verticalCornerArmEndResizesInsteadOfMovingCrop() throws {
+    let view = makeView()
+    try view.mouseDown(with: event(.leftMouseDown, x: 98, y: 278))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 118, y: 258))
+    #expect(view.crop == CGRect(x: 0.3, y: 0.3, width: 0.45, height: 0.45))
+  }
+
+  @Test @MainActor
+  func sideAnchorEndResizesInsteadOfMovingCrop() throws {
+    let view = makeView()
+    try view.mouseDown(with: event(.leftMouseDown, x: 212, y: 302))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 212, y: 282))
+    #expect(view.crop == CGRect(x: 0.25, y: 0.3, width: 0.5, height: 0.45))
+  }
+
+  @Test @MainActor
   func uncroppedHandleDragStillResizes() throws {
     let view = makeView()
     view.crop = CaptureCropGeometry.fullImage
@@ -99,9 +123,9 @@ struct CaptureCropTests {
     return view
   }
 
-  private func event(_ type: NSEvent.EventType, x: CGFloat, command: Bool = false) throws -> NSEvent {
+  private func event(_ type: NSEvent.EventType, x: CGFloat, y: CGFloat = 200, command: Bool = false) throws -> NSEvent {
     try #require(NSEvent.mouseEvent(
-      with: type, location: CGPoint(x: x, y: 200), modifierFlags: command ? .command : [],
+      with: type, location: CGPoint(x: x, y: y), modifierFlags: command ? .command : [],
       timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
     ))
   }

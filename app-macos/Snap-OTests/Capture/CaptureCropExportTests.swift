@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 
 struct CaptureCropExportTests {
   @Test
-  func imageExportUsesSelectedPixels() async throws {
+  func imageSaveReplacesDestinationWithSelectedPixels() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -29,8 +29,8 @@ struct CaptureCropExportTests {
     let writer = try #require(CGImageDestinationCreateWithURL(source as CFURL, UTType.png.identifier as CFString, 1, nil))
     try CGImageDestinationAddImage(writer, #require(context.makeImage()), nil)
     try #require(CGImageDestinationFinalize(writer))
-    let capture = makeCapture(source, size: CGSize(width: 80, height: 40), video: false)
-    _ = try await CaptureCropExporter.export(capture, crop: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), to: destination)
+    try Data([9]).write(to: destination)
+    try CaptureCropExporter.saveImage(at: source, crop: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), to: destination)
     let image = try CaptureCropExporter.image(at: destination, crop: CaptureCropGeometry.fullImage)
     let color = try sample(image)
     #expect(color.2 > 240 && color.0 < 15)
@@ -86,8 +86,8 @@ struct CaptureCropExportTests {
     #expect(try Data(contentsOf: destination) == bytes)
   }
 
-  @Test
-  func failedSavePreservesExistingDestination() async throws {
+  @Test(arguments: [true, false])
+  func failedSavePreservesExistingDestination(imageOnly: Bool) async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -96,10 +96,14 @@ struct CaptureCropExportTests {
     let original = Data([1, 2, 3])
     try original.write(to: destination)
     await #expect(throws: (any Error).self) {
-      try await CaptureCropExporter.save(
-        makeCapture(source, size: CGSize(width: 80, height: 40), video: false),
-        crop: CGRect(x: 0, y: 0, width: 0.5, height: 1), to: destination
-      )
+      let crop = CGRect(x: 0, y: 0, width: 0.5, height: 1)
+      if imageOnly {
+        try CaptureCropExporter.saveImage(at: source, crop: crop, to: destination)
+      } else {
+        try await CaptureCropExporter.save(
+          makeCapture(source, size: CGSize(width: 80, height: 40), video: false), crop: crop, to: destination
+        )
+      }
     }
     #expect(try Data(contentsOf: destination) == original)
   }
