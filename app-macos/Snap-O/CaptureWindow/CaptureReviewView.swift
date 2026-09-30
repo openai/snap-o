@@ -149,16 +149,16 @@ struct CaptureReviewView: View {
   private func makeDragItem(_ capture: CaptureMedia, frame: CGRect) -> NSDraggingItem? {
     guard let source = capture.media.url, let kind = capture.media.saveKind else { return nil }
     do {
-      let destination = try controller.fileStore.makeUniqueDragDestination(capturedAt: capture.media.capturedAt, kind: kind)
       let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
       if capture.media.isImage {
+        let destination = try controller.fileStore.makeUniqueDragDestination(capturedAt: capture.media.capturedAt, kind: kind)
         _ = try CaptureCropExporter.exportImage(at: source, crop: crop, to: destination)
         let item = NSDraggingItem(pasteboardWriter: destination as NSURL)
         item.setDraggingFrame(frame, contents: NSImage(contentsOf: destination))
         return item
       }
       // A pending file promise must survive discarding or saving the current review.
-      try FileManager.default.copyItem(at: source, to: destination)
+      let destination = try controller.fileStore.makeDragCopy(of: source, capturedAt: capture.media.capturedAt, kind: kind)
       let snapshot = CaptureMedia(id: capture.id, device: capture.device, media: .video(url: destination, data: capture.media.common))
       let item = NSDraggingItem(pasteboardWriter: CaptureCropFilePromise(capture: snapshot, crop: crop))
       item.setDraggingFrame(frame, contents: NSWorkspace.shared.icon(forFile: source.path))

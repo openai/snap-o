@@ -82,6 +82,12 @@ final class FileStore: Sendable {
     return directory.appendingPathComponent(filename)
   }
 
+  func makeDragCopy(of source: URL, capturedAt: Date, kind: MediaSaveKind, name: String? = nil) throws -> URL {
+    let destination = try makeUniqueDragDestination(capturedAt: capturedAt, kind: kind, name: name)
+    try FileManager.default.copyItem(at: source, to: destination)
+    return destination
+  }
+
   private func makeDestination(prefix: String, date: Date, kind: MediaSaveKind) -> URL {
     try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
 
