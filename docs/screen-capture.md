@@ -1,7 +1,7 @@
 ---
 layout: guide
 title: "Screen capture · Snap-O"
-description: Use Live Preview, take screenshots and recordings, and revisit captures in Snap-O.
+description: Use Live Preview, review and crop screenshots or recordings, and save captures in Snap-O.
 styles:
 - guide.css
 - network-inspector.css
@@ -15,7 +15,7 @@ breadcrumbs:
 
 # Screen capture
 
-Snap-O makes it easier to capture and share Android screens, with instant previews and screenshots or recordings from all connected devices at once. Drag and drop captures into your work, and revisit them later in Capture History.
+Capture screenshots or recordings from all connected Android devices, then review and crop them before sharing. Save the captures you want to keep in Capture History.
 {.lead}
 
 ## Live Preview
@@ -80,27 +80,37 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ## Take a screenshot
 
-Press `⇧⌘S` to capture a screenshot from all connected Android devices. Use `⌘[` and `⌘]` to browse their captures. Press `⇧⌘L` to return to Live Preview.
+Press `⇧⌘S` to capture a screenshot from all connected Android devices. The screenshots open for review. Use the thumbnails or `⌘[` and `⌘]` to switch between devices.
 
 ## Record the screen
 
-Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
+Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
+
+## Review and crop
+
+New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.
+
+Click the checkmark (**Save to History**) to keep all captures in the review with their crops. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
+
+Starting another capture, returning to Live Preview, or closing the window prompts you before discarding unsaved captures.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
-Drag a screenshot or recording from the Capture pane or Capture History into any app that accepts images or video. Dragging shares a copy and leaves the original in history. Use `⌘C` to copy a screenshot to the clipboard.
+Drag a screenshot or recording into any app that accepts images or video. During review, hold Command and drag inside a crop to share the cropped copy; an uncropped capture can be dragged normally. Sharing a copy does not add the capture to history. Click the checkmark if you also want to keep it there.
 
-Choose **Save As…** (`⌘S`) to keep a permanent copy of the selected capture. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when history entries are deleted or expire.
+You can also drag saved captures from Capture History. Their originals remain in history. Use `⌘C` to copy a screenshot to the clipboard.
+
+Choose **Save As…** (`⌘S`) to export the selected capture with its current crop. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.
 
 ## Capture History {#capture-history}
 
-Capture History automatically keeps your recent screenshots and recordings on your Mac. They remain after you close their windows or restart Snap-O, so you can revisit them without the original device connected.
+Capture History keeps the screenshots and recordings you save from review, along with frames shared from Live Preview. They remain on your Mac after you close their windows or restart Snap-O, so you can revisit them without the original device connected.
 
 Open **Window → Capture History** (`⌘Y`) to browse captures by day, newest first.
 
 Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
 
-Captures start as **Untitled**. Click the name in the Capture pane or history preview to rename it. In the history grid, choose **Rename** from the context menu. The name applies to all devices in that capture.
+Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all devices in that capture.
 
 Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or `⌘Delete`, or right-click a selected entry and choose **Delete…**, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
 
