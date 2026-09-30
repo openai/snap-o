@@ -19,9 +19,16 @@ it.each([
 });
 
 it("preserves offsets across chunks and in snippets", async () => {
-  const text = "İ".repeat(4095) + "abc" + "x".repeat(100);
+  const text = "İ".repeat(16_383) + "abc" + "x".repeat(100);
   const query = parseKeywordSearchQuery("abc");
   const result = await findPayloadMatches(text, query, new AbortController().signal);
-  expect(result.ranges).toEqual([{ start: 4095, end: 4098 }]);
+  expect(result.ranges).toEqual([{ start: 16_383, end: 16_386 }]);
   expect((await searchBodyText(text, query.includes, new AbortController().signal)).snippet).toContain("abc");
+});
+
+it("can cancel a large body search", async () => {
+  const abort = new AbortController();
+  const pending = searchBodyText("x".repeat(1_000_000), ["missing"], abort.signal);
+  abort.abort();
+  await expect(pending).rejects.toThrow();
 });

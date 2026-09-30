@@ -98,40 +98,32 @@ Unknown paths return `404` for every method. A known path with an unsupported me
 
 ### Body search
 
-`POST /network/search` takes JSON with `requestIds` and `terms` arrays. Use request IDs from the connected Android process.
-
-- Include 1–64 different request IDs, each at most 512 characters long.
-- Include 1–64 search terms, each 1–256 characters long.
-- Terms match plain text, not regular expressions. Matching ignores letter case.
-
-Invalid queries return `400`. Android runs at most two body searches at once; further searches return `429`.
+`POST /network/search` searches stored bodies for literal terms, ignoring letter case. Request IDs belong to the connected Android process.
 
 ```json
 {"requestIds":["request-1"],"terms":["needle"]}
 ```
 
-The response has one result for each request ID. It includes a result even when the body is missing:
+- Include 1–64 different request IDs, each 1–512 characters long.
+- Include 1–64 terms, each 1–256 characters long.
+- Invalid queries return `400`. At most two searches run at once; further searches return `429`.
+
+The response includes each requested ID, even when its bodies are missing:
 
 ```json
 {"results":[{"requestId":"request-1","request":{"terms":[],"complete":true},"response":{"terms":["needle"],"complete":false,"snippet":"a needle in the captured response"}}]}
 ```
 
-Each result has separate `request` and `response` fields:
+Each `request` and `response` has these fields:
 
-- `terms` lists the matching search terms in lowercase.
-- `complete` is true when the search covered the whole body, including a known empty body.
-- `snippet`, when present, contains up to 160 characters of text around a match.
+- `terms`: matching terms in lowercase.
+- `complete`: whether the whole body was searched, including a known empty body.
+- `snippet`: optional text around a match, at most 160 characters.
 
-A missing or partial body cannot prove that a term is absent. The same is true for bodies still arriving, binary bodies, and bodies over the search limit. These results have `complete: false`.
+Missing, partial, arriving, binary, and oversized bodies have `complete: false`. These results cannot prove that a term is absent. Stored bodies may be removed before a client reads a match.
 
-Search reads stored text; it never fetches a body from the network. It also reads gzip and x-gzip request bodies, with an 8 MiB limit after decompression. Plain text search reads at most 8,388,608 UTF-16 code units.
+Search reads at most 8,388,608 UTF-16 code units of plain text. It also reads gzip and x-gzip request bodies, limited to 8 MiB after decompression.
 
-Clients combine matches from metadata and the request and response bodies. Different search terms can match different parts of a request. An excluded term in any part hides the request. Queries with excluded terms show a request only after both bodies have been fully searched.
+Request events add optional `request.postDataTruncatedBytes`: zero means fully captured; positive values count omitted bytes. Missing values mean unknown. Use this field, not decoded text length, to determine whether a request body is complete.
 
-The Mac also searches bodies in its local cache. It combines results using both the process identity and request ID. This lets it find older bodies, including those Android has removed from its cache. Saved exclusion filters search only metadata.
-
-Selecting a match fetches the body through the existing body-read endpoints, unless it is already cached. Android may remove the body from its cache between search and selection.
-
-The protocol version stays at **2** because this endpoint adds a feature without breaking existing calls. Existing Mac and Python clients keep using their current endpoints. Older protocol-2 servers return `404` for body search. The frontend then searches cached bodies. The Tweaks protocol does not change.
-
-Request events include the optional `request.postDataTruncatedBytes` field. Zero means the full request body was captured; a positive value counts omitted bytes. A missing value means truncation is unknown. Decoding can change the byte count. Use capture metadata to decide whether the body is complete. This field is an additive change to protocol 2; older clients can ignore it.
+Both additions are compatible with protocol **2**. Older servers return `404` for search; clients can still search locally cached bodies.

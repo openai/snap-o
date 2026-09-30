@@ -1,3 +1,4 @@
+import type { BodySearchMatch, RequestBodySearchMatch } from "./remote-body-search";
 import type { RequestRecord } from "./cdp";
 
 export function request(processId = "current", overrides: Partial<RequestRecord> = {}): RequestRecord {
@@ -17,5 +18,13 @@ export function request(processId = "current", overrides: Partial<RequestRecord>
     streamEventCount: 0,
     requestHasPostData: false,
     ...overrides
+  };
+}
+
+export function bodyMatch(requestId = "same-id", response: Partial<BodySearchMatch> = {}): RequestBodySearchMatch {
+  return {
+    requestId,
+    request: { terms: [], complete: true },
+    response: { terms: ["needle"], complete: true, ...response }
   };
 }

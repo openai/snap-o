@@ -72,32 +72,11 @@ class NetworkToolHttpTest {
             assertEquals(listOf("needle"), result.request.terms)
             assertTrue(result.request.complete)
             assertFalse(result.response.complete)
-        }
-    }
-
-    @Test
-    fun `body search checks queries and returns matches`() {
-        Fixture(
-            NetworkToolHttp(bodySearch = { query ->
-                assertEquals(listOf("one"), query.requestIds)
-                BodySearchReply(
-                    listOf(
-                        RequestBodySearchMatch(
-                            "one",
-                            BodySearchMatch(emptyList(), true),
-                            BodySearchMatch(listOf("tbo"), true, "tbo")
-                        )
-                    )
-                )
-            })
-        ).use { server ->
-            val response = server.request("/network/search", "POST", """{"requestIds":["one"],"terms":["tbo"]}""")
             assertEquals(200, response.statusCode())
-            assertTrue(response.body().contains("tbo"))
             assertEquals(400, server.request("/network/search", "POST", "{}").statusCode())
             assertEquals(
                 400,
-                server.request("/network/search", "POST", """{"requestIds":[],"terms":["tbo"]}""").statusCode()
+                server.request("/network/search", "POST", """{"requestIds":[],"terms":["needle"]}""").statusCode()
             )
             assertEquals(405, server.request("/network/search").statusCode())
         }

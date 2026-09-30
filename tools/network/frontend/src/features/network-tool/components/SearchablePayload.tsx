@@ -40,7 +40,9 @@ export function SearchablePayload({
   const ranges = current?.ranges ?? [];
   const start = Math.min(offset, Math.max(0, text.length - 1));
   const end = Math.min(text.length, start + pageSize);
-  const visible = ranges.filter((range) => range.start < end && range.end > start).slice(0, 100);
+  const sectionRanges = ranges.filter((range) => range.start < end && range.end > start);
+  const firstHighlight = Math.max(0, sectionRanges.indexOf(ranges[selected]) - 99);
+  const visible = sectionRanges.slice(firstHighlight, firstHighlight + 100);
   const selectMatch = (index: number) => {
     const match = ranges[index];
     if (!match) return;

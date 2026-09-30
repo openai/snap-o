@@ -1,9 +1,6 @@
 package com.openai.snapo.network
 
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventBufferSequenceTest {
@@ -52,12 +49,9 @@ class EventBufferSequenceTest {
     }
 
     @Test
-    fun `upload completion has a fresh sequence and is searchable before a response`() = runBlocking {
+    fun `request body updates replace the retained event with a fresh sequence`() {
         val buffer = EventBuffer(NetworkInspectorConfig())
         val sequence = buffer.append(request(id = "request", wallTimeMs = 100L).copy(hasBody = true))
-        val before = searchBodies(buffer.bodySearchSnapshot(listOf("request")), listOf("needle"))
-        assertFalse(before.results.single().request.complete)
-        assertTrue(before.results.single().request.terms.isEmpty())
 
         val update = buffer.updateLatestRequestBody(
             requestId = "request",
@@ -70,10 +64,6 @@ class EventBufferSequenceTest {
         assertEquals(sequence + 1, update.snapoSequence)
         assertEquals(update, buffer.sequencedSnapshot().single())
         assertEquals(null, (update.record as RequestWillBeSent).body)
-        val after = searchBodies(buffer.bodySearchSnapshot(listOf("request")), listOf("needle"))
-        assertTrue(after.results.single().request.complete)
-        assertEquals(listOf("needle"), after.results.single().request.terms)
-        assertFalse(after.results.single().response.complete)
         assertEquals(update.snapoSequence + 1, buffer.append(finishedRequest("request", 200L)))
     }
 

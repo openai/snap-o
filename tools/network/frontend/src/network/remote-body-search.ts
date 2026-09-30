@@ -60,12 +60,7 @@ export async function searchRemoteBodies(
     input.requestIds.some((id) => !id.length || id.length > bodySearchLimits.requestIdLength)
   )
     throw new Error("Invalid body search query.");
-  const reply = await readBodySearchReply(await sendBatch(input, signal), input);
-  signal.throwIfAborted();
-  return { results: reply.results.filter((result) => input.requestIds.includes(result.requestId)) };
-}
-
-async function readBodySearchReply(response: Response, input: BodySearchQuery): Promise<BodySearchReply> {
+  const response = await sendBatch(input, signal);
   if (!response.ok) throw new BodySearchHttpError(response.status);
   const result = JSON.parse(await readText(response, bodySearchLimits.replyBytes)) as BodySearchReply;
   if (
@@ -87,5 +82,6 @@ async function readBodySearchReply(response: Response, input: BodySearchQuery): 
     )
   )
     throw new Error("Invalid body search response.");
-  return result;
+  signal.throwIfAborted();
+  return { results: result.results.filter((match) => input.requestIds.includes(match.requestId)) };
 }

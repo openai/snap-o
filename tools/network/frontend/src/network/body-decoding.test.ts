@@ -2,9 +2,8 @@ import { request } from "./body-test-fixtures";
 import { describe, expect, it } from "vitest";
 import { decodeRequestBody } from "./body-decoding";
 import { decodeRequestBodyForDisplay } from "./payload";
-import { searchLocalBodies, mergeBodyMatches } from "./body-search";
-import { createEmptyToolState, reduceCdpMessage, requestRecordKey } from "./cdp";
-import { filterRecords } from "../features/network-tool/lib/records";
+import { searchLocalBodies } from "./body-search";
+import { createEmptyToolState, reduceCdpMessage } from "./cdp";
 
 async function gzip(body: string | Uint8Array): Promise<string> {
   const bytes = typeof body === "string" ? new TextEncoder().encode(body) : new Uint8Array(body);
@@ -26,21 +25,15 @@ function record(body: string, encoding: string, contentEncoding: string) {
 }
 
 describe("shared request body decoding", () => {
-  it.each(["gzip", "x-gzip", " X-GZip ; level=1", "identity, x-gzip", "identity\nx-gzip"])(
-    "uses the same decoding for display and search: %s",
-    async (encoding) => {
-      const body = await gzip("needle");
-      const request = record(body, "base64", encoding);
-      const input = { body, encoding: "base64", headers: request.requestHeaders };
-      expect(await decodeRequestBodyForDisplay(input)).toBe("needle");
-      const matches = await searchLocalBodies(request, ["needle"], signal());
-      expect(matches.request).toMatchObject({ terms: ["needle"], complete: true });
-    }
-  );
-
-  it.each(["ISO-8859-1", '"ISO-8859-1"'])("uses the declared gzip charset: %s", async (charset) => {
-    const body = await gzip(new Uint8Array([99, 97, 102, 233]));
-    const request = record(body, "base64", "gzip");
+  it.each([
+    ["gzip", "utf-8"],
+    ["x-gzip", "ISO-8859-1"],
+    [" X-GZip ; level=1", '"ISO-8859-1"'],
+    ["identity, x-gzip", "utf-8"],
+    ["identity\nx-gzip", "utf-8"]
+  ])("display and search decode %s with charset %s", async (encoding, charset) => {
+    const body = await gzip(charset === "utf-8" ? "café" : new Uint8Array([99, 97, 102, 233]));
+    const request = record(body, "base64", encoding);
     request.requestHeaders.push({ name: "Content-Type", value: `text/plain; charset=${charset}` });
     expect(await decodeRequestBodyForDisplay({ body, encoding: "base64", headers: request.requestHeaders })).toBe(
       "café"
@@ -73,41 +66,23 @@ describe("shared request body decoding", () => {
   });
 
   it.each([undefined, 0, 4])("uses capture metadata instead of UTF-8 length: %s", async (truncatedBytes) => {
-    const state = reduceCdpMessage(
-      createEmptyToolState(),
-      "process",
-      {
-        method: "Network.requestWillBeSent",
-        snapoSequence: 1,
-        params: {
-          requestId: "one",
-          request: {
-            method: "POST",
-            url: "https://example.test/",
-            headers: { "Content-Type": "text/plain; charset=iso-8859-1" },
-            hasPostData: true,
-            postDataLength: 10,
-            postDataTruncatedBytes: truncatedBytes
-          }
+    const state = reduceCdpMessage(createEmptyToolState(), "process", {
+      method: "Network.requestWillBeSent",
+      snapoSequence: 1,
+      params: {
+        requestId: "one",
+        request: {
+          method: "POST",
+          url: "https://example.test/",
+          hasPostData: true,
+          postDataLength: 10,
+          postDataTruncatedBytes: truncatedBytes
         }
-      },
-      1
-    );
-    const request = {
-      ...state.requests.values().next().value!,
-      requestBody: "é".repeat(6),
-      status: { kind: "success" as const, code: 204 }
-    };
-    expect(request.requestBodyTruncatedBytes).toBe(truncatedBytes ?? null);
-    const local = await searchLocalBodies(request, ["missing"], signal());
-    expect(local.request.complete).toBe(truncatedBytes === 0);
-    const merged = mergeBodyMatches(local, {
-      requestId: "one",
-      request: { terms: [], complete: false },
-      response: { terms: [], complete: true }
+      }
     });
-    expect(
-      filterRecords([request], "-missing", false, [], new Map([[requestRecordKey("process", "one"), merged]]))
-    ).toHaveLength(truncatedBytes === 0 ? 1 : 0);
+    const record = { ...state.requests.values().next().value!, requestBody: "é".repeat(6) };
+    expect(record.requestBodyTruncatedBytes).toBe(truncatedBytes ?? null);
+    const match = await searchLocalBodies(record, ["missing"], signal());
+    expect(match.request.complete).toBe(truncatedBytes === 0);
   });
 });

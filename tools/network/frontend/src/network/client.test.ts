@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNetworkClient, type NetworkClient } from "./client";
+import { bodyMatch } from "./body-test-fixtures";
 import { host } from "@snap-o/tool-host";
 import { NetworkStreamController } from "./stream-controller";
 import { createEmptyToolState, reduceCdpMessage } from "./cdp";
@@ -9,6 +10,15 @@ import { filterRecords } from "../features/network-tool/lib/records";
 
 describe("browser network client", () => {
   let client: NetworkClient;
+  let streams: Events[];
+  class Events extends EventTarget {
+    close = vi.fn();
+    constructor(readonly url: string) {
+      super();
+      streams.push(this);
+      queueMicrotask(() => this.dispatchEvent(new Event("open")));
+    }
+  }
   beforeEach(() => {
     const values = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -19,6 +29,8 @@ describe("browser network client", () => {
     localStorage.clear();
     vi.spyOn(host, "addEventListener").mockImplementation(() => {});
     client = createNetworkClient();
+    streams = [];
+    vi.stubGlobal("EventSource", Events);
   });
   afterEach(() => {
     client?.dispose();
@@ -82,18 +94,6 @@ describe("browser network client", () => {
       state = reduceCdpMessage(state, event.processId, event.message);
       void searchLocalCapture(records(), ["needle"], abort.signal, cache, () => {}).catch(() => {});
     });
-    const streams: EventTarget[] = [];
-    vi.stubGlobal(
-      "EventSource",
-      class extends EventTarget {
-        constructor() {
-          super();
-          streams.push(this);
-          queueMicrotask(() => this.dispatchEvent(new Event("open")));
-        }
-        close() {}
-      }
-    );
     const history =
       JSON.stringify({
         method: "Network.loadingFinished",
@@ -112,15 +112,7 @@ describe("browser network client", () => {
         return new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         });
-      return Response.json({
-        results: [
-          {
-            requestId: "one",
-            request: { terms: [], complete: true },
-            response: { terms: ["needle"], complete: true }
-          }
-        ]
-      });
+      return Response.json({ results: [bodyMatch("one")] });
     });
     const calls = vi.spyOn(client, "searchBodies");
     const controller = new NetworkStreamController(client, input, () => {}, { retryDelaysMs: [1200] });
@@ -160,16 +152,6 @@ describe("browser network client", () => {
       signal: new AbortController().signal
     };
     vi.spyOn(host, "connection", "get").mockReturnValue(input);
-    const streams: Events[] = [];
-    class Events extends EventTarget {
-      close = vi.fn();
-      constructor(readonly url: string) {
-        super();
-        streams.push(this);
-        queueMicrotask(() => this.dispatchEvent(new Event("open")));
-      }
-    }
-    vi.stubGlobal("EventSource", Events);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>

@@ -208,6 +208,7 @@ export async function searchAndroidCapture(
       ).results;
     } catch (error) {
       signal.throwIfAborted();
+      if (error instanceof BodySearchHttpError && error.status === 404) return;
       // A stream can reconnect while the query is still active.
       if (
         error instanceof TypeError ||

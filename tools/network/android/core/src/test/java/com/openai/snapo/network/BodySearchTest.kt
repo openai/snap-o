@@ -8,48 +8,30 @@ import org.junit.Test
 
 class BodySearchTest {
     @Test
-    fun `reports request and response matches and missing bodies`() = runBlocking {
-        val result = searchBodies(
-            listOf(
-                SearchableRequest(
-                    "one",
-                    SearchableBody(CapturedBody("CLIENT token", null), BodyCoverage.Complete),
-                    SearchableBody(CapturedBody("server tbo token", null), BodyCoverage.Incomplete),
-                ),
-                SearchableRequest(
-                    "missing",
-                    SearchableBody(null, BodyCoverage.Incomplete),
-                    SearchableBody(null, BodyCoverage.Absent)
-                ),
-            ),
-            listOf("client", "tbo", "missing"),
-        )
-        assertEquals(listOf("client"), result.results[0].request.terms)
-        assertEquals(listOf("tbo"), result.results[0].response.terms)
-        assertTrue(result.results[0].request.complete)
-        assertFalse(result.results[0].response.complete)
-        assertEquals("server tbo token", result.results[0].response.snippet)
-        assertFalse(result.results[1].request.complete)
-        assertTrue(result.results[1].response.complete)
-    }
-
-    @Test
-    fun `does not search binary base64 as text`() = runBlocking {
-        val result = searchResponse(SearchableBody(CapturedBody("dGJv", "base64"), BodyCoverage.Complete), "dGJv")
-        assertTrue(result.terms.isEmpty())
-        assertFalse(result.complete)
-    }
-
-    @Test
-    fun `response includes empty matches and marks partial searches`() {
-        val json = ProtocolJson.encodeToString(BodySearchMatch.serializer(), BodySearchMatch(emptyList(), false))
-        assertTrue(json.contains("\"terms\":[]"))
-        assertTrue(json.contains("\"complete\":false"))
+    fun `reports matches and missing bodies`() = runBlocking {
+        val full = SearchableBody(CapturedBody("CLIENT token", null), BodyCoverage.Complete)
+        val partial = SearchableBody(CapturedBody("server tbo token", null), BodyCoverage.Incomplete)
+        val result = searchBodies(listOf(SearchableRequest("one", full, partial)), listOf("client", "tbo", "missing"))
+        assertEquals(BodySearchMatch(listOf("client"), true, "CLIENT token"), result.results.single().request)
+        assertEquals(BodySearchMatch(listOf("tbo"), false, "server tbo token"), result.results.single().response)
+        for ((source, complete) in listOf(
+            SearchableBody(null, BodyCoverage.Incomplete) to false,
+            SearchableBody(null, BodyCoverage.Absent) to true,
+            SearchableBody(CapturedBody("dGJv", "base64"), BodyCoverage.Complete) to false,
+        )) {
+            assertEquals(BodySearchMatch(emptyList(), complete), searchResponse(source, "dGJv"))
+        }
     }
 
     @Test
     fun `searches gzip using the declared charset`() = runBlocking {
-        listOf("UTF-8", "ISO-8859-1").forEach { charset ->
+        listOf(
+            "gzip" to "UTF-8",
+            "x-gzip" to "ISO-8859-1",
+            " X-GZip ; level=1" to "UTF-8",
+            "identity, x-gzip" to "ISO-8859-1",
+            "identity\nx-gzip" to "UTF-8"
+        ).forEach { (encoding, charset) ->
             val bytes = "café".toByteArray(java.nio.charset.Charset.forName(charset))
             val output = java.io.ByteArrayOutputStream()
             java.util.zip.GZIPOutputStream(output).use { it.write(bytes) }
@@ -57,7 +39,7 @@ class BodySearchTest {
             buffer.append(
                 request(kotlin.io.encoding.Base64.encode(output.toByteArray())).copy(
                     headers = listOf(
-                        Header("Content-Encoding", "gzip"),
+                        Header("Content-Encoding", encoding),
                         Header("Content-Type", "text/plain; charset=$charset")
                     ),
                     bodyEncoding = "base64",
@@ -79,14 +61,6 @@ class BodySearchTest {
         val evicted = searchBodies(buffer.bodySearchSnapshot(listOf("old")), listOf("needle")).results.single()
         assertTrue(evicted.response.terms.isEmpty())
         assertFalse(evicted.response.complete)
-    }
-
-    @Test
-    fun `parses gzip aliases and header lists consistently`() {
-        listOf("gzip", "x-gzip", " X-GZip ; level=1", "identity, x-gzip", "identity\nx-gzip").forEach {
-            assertTrue(hasGzipContentEncoding(listOf(Header("Content-Encoding", it))))
-        }
-        assertFalse(hasGzipContentEncoding(listOf(Header("Content-Encoding", "br"))))
     }
 
     @Test
