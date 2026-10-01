@@ -46,7 +46,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "13.0.0"
+snapo = "13.0.2"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -74,12 +74,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:13.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:13.0.0")
+    debugImplementation("com.openai.snapo:tweaks:13.0.2")
+    releaseImplementation("com.openai.snapo:tweaks-noop:13.0.2")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:13.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:13.0.2")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.0.2")
 }
 ```
 
@@ -117,10 +117,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:13.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.0.0")
+    debugImplementation("com.openai.snapo:tweaks-core:13.0.2")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.0.2")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:13.0.0")
+    implementation("com.openai.snapo:tweaks-views:13.0.2")
 }
 ```
 
