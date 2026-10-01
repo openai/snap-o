@@ -3,6 +3,11 @@
 CI uses Xcode 26.4.1. Use the same version for local validation; Xcode 26.1.1
 fails to compile the locked dependency test support. The app still targets macOS 26+.
 
+CI builds the app and packages in Debug. The custom Local configuration makes
+Swift packages use release optimization, which slows fresh test builds.
+CI resolves locked packages during that build, then runs the generated `.xctestrun`
+file directly. The test step does not need to resolve packages again.
+
 Test one behavior at a time. Use controlled inputs for everything outside that
 behavior, including discovery, device operations, framework results, and time.
 
@@ -59,8 +64,9 @@ The app uses `Dependencies`; the Xcode tests also use `DependenciesTestSupport`.
 The startup/session, recording, and recovery scripts reuse compiled package
 products through `scripts/test-swift-packages.sh`.
 Set `SNAPO_DERIVED_DATA` to an existing `build-for-testing` output to avoid rebuilding;
-CI passes the output from its native test build. Without it, these scripts build
-the test dependencies first.
+CI passes the output from its native test build. Set `SNAPO_TEST_CONFIGURATION`
+to match that build's configuration; CI uses Debug and local scripts default to Local.
+Without `SNAPO_DERIVED_DATA`, these scripts build the test dependencies first.
 
 The standalone startup, session, and recovery executables use
 `withMainSerialExecutor` from swift-concurrency-extras to control task scheduling.
