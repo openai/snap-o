@@ -30,6 +30,7 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
         hiddenRequestCount={model.hiddenRequestCount}
         records={model.visibleRecords}
         allRecords={model.allRecords}
+        sortNewestFirst={model.sortNewestFirst}
         placeholder={model.sidebarPlaceholder}
         selectedRecordId={model.selectedRecordId}
         client={model.client}

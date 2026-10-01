@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type ToolRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -8,9 +8,12 @@ import { copyCurl, exportAsHar } from "../lib/exportActions";
 import { exclusionFilterForUrl } from "../lib/exclusionFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
+type ScrollAnchor = { row: Element; offset: number };
+
 export function RecordList({
   records,
   allRecords,
+  sortNewestFirst,
   placeholder,
   selectedRecordId,
   onSelect,
@@ -20,6 +23,7 @@ export function RecordList({
 }: {
   records: ToolRecord[];
   allRecords: ToolRecord[];
+  sortNewestFirst: boolean;
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect(id: string): void;
@@ -29,9 +33,51 @@ export function RecordList({
 }): JSX.Element {
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  const followNewestRef = useRef(true);
+  const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const selectedIndex = records.findIndex((record) => recordId(record) === selectedRecordId);
   const [menu, setMenu] = useState<(ContextMenuState & { keyboard: boolean }) | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
+  const updateScrollState = useCallback(() => {
+    const list = listRef.current;
+    if (list == null || list.clientHeight === 0) return;
+    // Allow for fractional scroll positions at either edge.
+    const distance = sortNewestFirst ? list.scrollTop : list.scrollHeight - list.clientHeight - list.scrollTop;
+    followNewestRef.current = distance <= 1;
+    scrollAnchorRef.current = followNewestRef.current ? null : getScrollAnchor(list);
+    setShowTopFade(list.scrollTop > 0);
+  }, [sortNewestFirst]);
+
+  const restoreScrollPosition = useCallback(() => {
+    const list = listRef.current;
+    if (list == null) {
+      followNewestRef.current = true;
+      scrollAnchorRef.current = null;
+      setShowTopFade(false);
+      return;
+    }
+    if (list.clientHeight === 0) return;
+    const anchor = scrollAnchorRef.current;
+    if (followNewestRef.current) {
+      list.scrollTop = sortNewestFirst ? 0 : list.scrollHeight;
+    } else if (anchor != null && list.contains(anchor.row)) {
+      // Keep the same request in view when rows are prepended or reordered.
+      list.scrollTop += anchor.row.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.offset;
+    }
+    updateScrollState();
+  }, [sortNewestFirst, updateScrollState]);
+
+  useLayoutEffect(restoreScrollPosition, [records, placeholder, restoreScrollPosition]);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list == null) return;
+    // Resizing can reach the newest edge without firing a scroll event.
+    const observer = new ResizeObserver(restoreScrollPosition);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [placeholder, restoreScrollPosition]);
+
   const selectRecord = useCallback(
     (id: string) => {
       // WebKit does not always focus buttons on click. Keep keyboard ownership on the list.
@@ -57,6 +103,7 @@ export function RecordList({
     const row = listRef.current?.children.item(selectedIndex);
     if (record == null || row == null) return false;
     row.scrollIntoView({ block: "nearest" });
+    updateScrollState();
     const { left, bottom } = row.getBoundingClientRect();
     openContextMenu(record, left, bottom, true);
     return true;
@@ -98,7 +145,14 @@ export function RecordList({
     event.preventDefault();
     const id = recordId(records[nextIndex]);
     if (id !== selectedRecordId) selectRecord(id);
-    listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (list != null && nextIndex === (sortNewestFirst ? 0 : records.length - 1)) {
+      // Include trailing padding so reaching the newest row resumes following.
+      list.scrollTop = sortNewestFirst ? 0 : list.scrollHeight;
+    } else {
+      list?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+    }
+    updateScrollState();
   };
   const handleContextMenu = useCallback(
     (record: ToolRecord, event: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
@@ -138,7 +192,7 @@ export function RecordList({
             event.stopPropagation();
           }
         }}
-        onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
+        onScroll={updateScrollState}
       >
         {records.map((record, index) => {
           const id = recordId(record);
@@ -161,11 +215,18 @@ export function RecordList({
   );
 }
 
-function handleRecordListScroll(
-  event: JSX.TargetedEvent<HTMLDivElement>,
-  setShowTopFade: (value: boolean) => void
-): void {
-  setShowTopFade(event.currentTarget.scrollTop > 0);
+function getScrollAnchor(list: HTMLElement): ScrollAnchor | null {
+  const top = list.getBoundingClientRect().top;
+  let start = 0;
+  let end = list.children.length;
+  // Find the first visible row without measuring every request on each scroll.
+  while (start < end) {
+    const middle = Math.floor((start + end) / 2);
+    if (list.children[middle].getBoundingClientRect().bottom <= top) start = middle + 1;
+    else end = middle;
+  }
+  const row = list.children.item(start);
+  return row == null ? null : { row, offset: row.getBoundingClientRect().top - top };
 }
 
 function RecordRow({
