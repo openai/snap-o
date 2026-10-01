@@ -38,4 +38,4 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Tools/ToolService.swift \
   Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/Support/DeviceManagerFake.swift \
   Tests/ToolRecovery/ToolRecoveryTests.swift -o "$TEST_DIR/tool-recovery-tests"
-"$TEST_DIR/tool-recovery-tests"
+run_test "$TEST_DIR/tool-recovery-tests"

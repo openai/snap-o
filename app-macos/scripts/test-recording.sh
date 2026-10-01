@@ -17,4 +17,4 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Storage/FileStore.swift Snap-O/Utilities/Logging.swift \
   Tests/Recording/RecordingTestADB.swift Tests/Recording/RecordingTests.swift \
   -o "$TEST_DIR/recording-tests"
-"$TEST_DIR/recording-tests"
+run_test "$TEST_DIR/recording-tests"

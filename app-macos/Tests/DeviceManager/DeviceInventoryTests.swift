@@ -5,6 +5,7 @@ import Observation
 @MainActor
 struct DeviceInventoryTests {
   static func main() async {
+    DeviceManagerTests.run()
     let tests: [(String, (Fixture) async -> Void)] = [
       ("local inventory does not wait for ADB", localInventoryDoesNotWaitForADB),
       ("preview does not wait for identity", previewDoesNotWaitForIdentity),

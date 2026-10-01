@@ -1,10 +1,12 @@
 # Source this after defining APP_DIR and TEST_DIR.
 # Reuse the app's locked package versions and compiled test dependencies.
-BUILD_DIR=${SNAPO_DERIVED_DATA:-"$TEST_DIR/xcode"}
+. "$APP_DIR/scripts/test-swift.sh"
+BUILD_DIR=${SNAPO_DERIVED_DATA:-"$APP_DIR/.build/tests"}
 CONFIGURATION=${SNAPO_TEST_CONFIGURATION:-Local}
 if [ -z "${SNAPO_DERIVED_DATA:-}" ]; then
   xcodebuild -quiet -project "$APP_DIR/Snap-O.xcodeproj" -scheme Snap-O \
     -configuration "$CONFIGURATION" -derivedDataPath "$BUILD_DIR" \
+    -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing
 fi
 PRODUCTS="$BUILD_DIR/Build/Products/$CONFIGURATION"
@@ -19,7 +21,7 @@ swiftc_with_test_dependencies() {
     esac
     set -- "$@" -framework "$(basename "$framework" .framework)"
   done
-  xcrun swiftc -profile-generate -I "$PRODUCTS" \
+  swiftc_for_tests -profile-generate -I "$PRODUCTS" \
     -F "$PRODUCTS/PackageFrameworks" \
     -Xlinker -rpath -Xlinker "$PRODUCTS/PackageFrameworks" "$@"
 }

@@ -25,7 +25,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Tests/CaptureSupport/TestSupport.swift Tests/CaptureMode/CaptureModeTests.swift \
   Tests/StartupCapture/StartupCaptureTests.swift \
   -o "$TEST_DIR/startup-tests"
-"$TEST_DIR/startup-tests"
+run_test "$TEST_DIR/startup-tests"
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
   Snap-O/LivePreview/LivePreviewFrameSource.swift \
@@ -34,4 +34,4 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Capture/ShowTouchesOverride.swift Snap-O/Capture/LivePreviewService.swift \
   Snap-O/Capture/CaptureCoordinator.swift \
   Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/StartupCapture/LivePreviewSessionTests.swift -o "$TEST_DIR/session-tests"
-"$TEST_DIR/session-tests"
+run_test "$TEST_DIR/session-tests"

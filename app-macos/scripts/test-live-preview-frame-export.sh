@@ -5,8 +5,9 @@ APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-frame-export-tests.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
+. "$APP_DIR/scripts/test-swift.sh"
 
-xcrun swiftc -swift-version 6 -parse-as-library \
+swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift \
   Snap-O/Models/Media.swift Snap-O/Capture/CaptureMedia.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Storage/SaveLocation.swift \
@@ -19,4 +20,4 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Tests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
   -o "$TEST_DIR/frame-export-tests"
 # Export assertions run in Snap-OTests; this checks rendering in a test window.
-"$TEST_DIR/frame-export-tests" "$@"
+run_test "$TEST_DIR/frame-export-tests" "$@"

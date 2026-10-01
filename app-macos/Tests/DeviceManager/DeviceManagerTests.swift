@@ -1,8 +1,7 @@
 import Foundation
 
-@main
-struct DeviceManagerTests {
-  static func main() {
+enum DeviceManagerTests {
+  static func run() {
     connectedDevicesComeFirst()
     emulatorsAppearOnlyOnce()
     bootingEmulatorsAppearOnlyOnce()

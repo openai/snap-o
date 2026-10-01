@@ -66,7 +66,24 @@ products through `scripts/test-swift-packages.sh`.
 Set `SNAPO_DERIVED_DATA` to an existing `build-for-testing` output to avoid rebuilding;
 CI passes the output from its native test build. Set `SNAPO_TEST_CONFIGURATION`
 to match that build's configuration; CI uses Debug and local scripts default to Local.
-Without `SNAPO_DERIVED_DATA`, these scripts build the test dependencies first.
+Without `SNAPO_DERIVED_DATA`, these scripts update the build in `app-macos/.build/tests` first.
+Later runs reuse that build instead of compiling packages in a fresh temporary directory.
+
+## Standalone compilation
+
+The scripts use `scripts/test-swift.sh` to compile each suite in one pass.
+`-whole-module-optimization -Onone` avoids repeated work across source files while
+keeping assertions enabled. Swift's compiler cache reuses unchanged compilation
+results. The compiler checks source and dependency contents before reuse.
+
+With `SNAPO_DERIVED_DATA`, scripts share Xcode's `CompilationCache.noindex`.
+Otherwise, they cache results under `app-macos/.build/tests`.
+CI saves the cache after all standalone scripts finish.
+Each script reports compile/link time and test execution time separately.
+
+Device Manager list and inventory tests share one executable. Other suites still
+compile separately when they replace the same service with different fake types.
+Their compiled code cannot be shared without changing those test boundaries.
 
 The standalone startup, session, and recovery executables use
 `withMainSerialExecutor` from swift-concurrency-extras to control task scheduling.
