@@ -363,53 +363,61 @@ struct CaptureWindow: View {
         if presentation.layout.showsTool {
           Group {
             if let toolModel = toolSession.model {
-              ToolWebView(model: toolModel)
-                .overlay {
-                  if let compatibility = toolModel.compatibilityExplanation {
-                    VStack(alignment: .leading, spacing: 12) {
-                      Image(systemName: compatibility.isUnsupported ? "exclamationmark.triangle" : "wifi.exclamationmark")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                      Text(compatibility.title(for: toolModel.preferredPluginID) ?? "Tool unavailable").font(.headline)
-                      Text(compatibility.explanation ?? "")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                      if let version = compatibility.versionDetail {
-                        Text(version).font(.caption).foregroundStyle(.tertiary)
+              VStack(spacing: 0) {
+                if let url = toolModel.developmentURL {
+                  ToolDevelopmentServerBar(url: url) { toolModel.useDevelopmentServer(nil) }
+                }
+                ToolWebView(model: toolModel)
+                  .overlay {
+                    if let compatibility = toolModel.compatibilityExplanation {
+                      VStack(alignment: .leading, spacing: 12) {
+                        Image(systemName: compatibility.isUnsupported ? "exclamationmark.triangle" : "wifi.exclamationmark")
+                          .font(.title2)
+                          .foregroundStyle(.secondary)
+                        Text(compatibility.title(for: toolModel.preferredPluginID) ?? "Tool unavailable").font(.headline)
+                        Text(compatibility.explanation ?? "")
+                          .foregroundStyle(.secondary)
+                          .multilineTextAlignment(.leading)
+                        if let version = compatibility.versionDetail {
+                          Text(version).font(.caption).foregroundStyle(.tertiary)
+                        }
                       }
-                    }
-                    .frame(maxWidth: 440, alignment: .leading)
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .textBackgroundColor))
-                  } else if toolModel.presentation != .tool {
-                    VStack(spacing: 12) {
-                      AppToolPlaceholder(presentation: toolModel.presentation, retry: toolModel.retryDiscovery)
-                      if let launch = toolModel.appLaunch {
-                        Button(launch.pending ? "Opening…" : "Open App") { toolModel.openSelectedApp() }
-                          .disabled(launch.pending)
-                        if let error = launch.error { Text(error).foregroundStyle(.red) }
-                      }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .textBackgroundColor))
-                  } else if let error = toolModel.frontendError {
-                    VStack(spacing: 12) {
-                      Text(error).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                      Button("Retry") { toolModel.retryFrontend() }
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .textBackgroundColor))
-                  } else if !toolModel.isPageReady {
-                    let toolName = toolModel.selectedToolApp?.tools.first {
-                      $0.kind == toolModel.selectedTool?.kind
-                    }?.displayName ?? "tool"
-                    ProgressView("Loading \(toolName)…")
+                      .frame(maxWidth: 440, alignment: .leading)
+                      .padding(24)
                       .frame(maxWidth: .infinity, maxHeight: .infinity)
                       .background(Color(nsColor: .textBackgroundColor))
+                    } else if toolModel.presentation != .tool {
+                      VStack(spacing: 12) {
+                        AppToolPlaceholder(presentation: toolModel.presentation, retry: toolModel.retryDiscovery)
+                        if let launch = toolModel.appLaunch {
+                          Button(launch.pending ? "Opening…" : "Open App") { toolModel.openSelectedApp() }
+                            .disabled(launch.pending)
+                          if let error = launch.error { Text(error).foregroundStyle(.red) }
+                        }
+                      }
+                      .frame(maxWidth: .infinity, maxHeight: .infinity)
+                      .background(Color(nsColor: .textBackgroundColor))
+                    } else if let error = toolModel.frontendError {
+                      VStack(spacing: 12) {
+                        if toolModel.developmentURL != nil {
+                          Text("Could not load the development frontend").font(.headline)
+                        }
+                        Text(error).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("Retry") { toolModel.retryFrontend() }
+                      }
+                      .padding(24)
+                      .frame(maxWidth: .infinity, maxHeight: .infinity)
+                      .background(Color(nsColor: .textBackgroundColor))
+                    } else if !toolModel.isPageReady {
+                      let toolName = toolModel.selectedToolApp?.tools.first {
+                        $0.kind == toolModel.selectedTool?.kind
+                      }?.displayName ?? "tool"
+                      ProgressView("Loading \(toolName)…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(nsColor: .textBackgroundColor))
+                    }
                   }
-                }
+              }
             } else {
               ProgressView()
             }
