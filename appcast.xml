@@ -8,6 +8,17 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 13.0.1</title>
+        <description sparkle:format="markdown"><![CDATA[- Fixed dragging full and cropped recordings from capture review into apps such as Slack, with accurate video previews and export progress.
+]]></description>
+        <pubDate>Thu, 01 Oct 2026 02:22:27 +0000</pubDate>
+        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20260930.02</sparkle:version>
+        <sparkle:shortVersionString>13.0.1</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/13.0.1/Snap-O.dmg" length="8004051" type="application/octet-stream" sparkle:edSignature="XjQ5tczYFfhy2pqM6zajzpkwFHSqn5vNhcOcLoWjmwii49PcIGdfRBemVB+AhwZL7aSZMUmXPUPgUPLqC0GdBw==" />
+    </item>
+
+    <item>
         <title>Snap‑O 13.0.0</title>
         <description sparkle:format="markdown"><![CDATA[- Review and crop screenshots or recordings before saving them to Capture History or dragging a copy into another app.
 - Use ⇧⌘V to both start and stop recording.
