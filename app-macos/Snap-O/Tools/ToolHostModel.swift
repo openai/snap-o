@@ -36,15 +36,15 @@ final class ToolHostModel {
   }
 
   var developmentURL: URL? {
-    activePage?.identity.developmentURL
+    activePageIdentity?.developmentURL
   }
 
   var canConfigureDevelopmentServer: Bool {
-    activePage?.identity.storageIdentifier != nil
+    activePageIdentity?.storageIdentifier != nil
   }
 
   func useDevelopmentServer(_ url: URL?) {
-    guard let scope = activePage?.identity.storageIdentifier,
+    guard let scope = activePageIdentity?.storageIdentifier,
           url == nil || ToolWebPolicy.developmentURL(url?.absoluteString ?? "") != nil else { return }
     let key = "inspectorDevelopmentServer." + scope.uuidString
     if let url {

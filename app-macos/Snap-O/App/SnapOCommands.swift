@@ -224,8 +224,9 @@ struct SnapOCommands: Commands {
       #endif
       Button("Use Development Server…") { toolHost?.isDevelopmentServerPresented = true }
         .disabled(toolHost?.canConfigureDevelopmentServer != true)
-      Button("Use Packaged Frontend") { toolHost?.useDevelopmentServer(nil) }
+      Button("Use Default") { toolHost?.useDevelopmentServer(nil) }
         .disabled(toolHost?.developmentURL == nil)
+        .help("Use the inspector bundled with the Android app.")
       if let url = toolHost?.developmentURL { Text(url.absoluteString) }
     }
     CommandGroup(after: .sidebar) {

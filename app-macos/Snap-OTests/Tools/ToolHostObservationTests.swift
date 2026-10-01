@@ -138,6 +138,44 @@ struct ToolHostObservationTests {
   }
 
   @Test
+  func developmentServerCanBeChangedAndClearedWhileDisconnected() async throws {
+    let suite = "ToolHostDevelopmentServerTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var app = selectionApp(kinds: [.network])
+    app.tools[0].compatibility = .unknown
+    var apps = [app]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    defer { host.stop() }
+    try await waitForState { host.webContainer != nil }
+    let firstURL = try #require(URL(string: "http://127.0.0.1:5173/"))
+    host.useDevelopmentServer(firstURL)
+    #expect(host.developmentURL == firstURL)
+
+    apps = []
+    appTool.refresh()
+    try await waitForState { host.presentation != .tool }
+    let secondURL = try #require(URL(string: "http://127.0.0.1:5174/"))
+    host.useDevelopmentServer(secondURL)
+    #expect(host.webContainer == nil)
+    #expect(host.developmentURL == secondURL)
+    #expect(host.canConfigureDevelopmentServer)
+
+    host.useDevelopmentServer(nil)
+    #expect(host.developmentURL == nil)
+    #expect(host.canConfigureDevelopmentServer)
+    apps = [app]
+    appTool.refresh()
+    try await waitForState { host.webContainer != nil }
+    #expect(host.developmentURL == nil)
+  }
+
+  @Test
   func appDiscoveryIsNotLoadedUntilTheFirstSuccessfulScan() async throws {
     let suite = "ToolHostDiscoveryTests." + UUID().uuidString
     let defaults = try #require(UserDefaults(suiteName: suite))
