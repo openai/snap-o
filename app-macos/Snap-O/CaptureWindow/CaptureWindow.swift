@@ -76,9 +76,9 @@ struct CaptureWindow: View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
       .task {
-        controller.confirmDiscardReview = { [weak controller] in
+        controller.discardReview = { [weak controller] in
           guard let controller else { return false }
-          return CaptureReviewCloseGuard.confirmReplacement {
+          return CaptureReviewCloseGuard.discardForReplacement {
             try controller.fileStore.discardPreviews(controller.mediaList)
           }
         }

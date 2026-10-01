@@ -70,7 +70,7 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-      CaptureReviewCloseGuard.confirmDiscard(in: sender)
+      CaptureReviewCloseGuard.discardBeforeClosing(in: sender)
     }
 
     private struct LayoutSnapshot {

@@ -36,7 +36,7 @@ final class CaptureWindowController {
   @ObservationIgnored private var initialCaptureWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
-  @ObservationIgnored var confirmDiscardReview: (() -> Bool)?
+  @ObservationIgnored var discardReview: (() -> Bool)?
 
   init(
     captureServices: CaptureServices,
@@ -182,7 +182,7 @@ final class CaptureWindowController {
 
   private func prepareToLeaveReview() -> Bool {
     guard isReviewingCapture else { return true }
-    guard confirmDiscardReview?() == true else { return false }
+    guard discardReview?() == true else { return false }
     reviewCrops = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle

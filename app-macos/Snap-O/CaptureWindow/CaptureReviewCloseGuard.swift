@@ -16,13 +16,13 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   }
 
   func updateNSView(_ view: GuardView, context: Context) {
-    if view.captureIDs != captureIDs { view.discardApproved = false }
+    if view.captureIDs != captureIDs { view.didDiscard = false }
     view.captureIDs = captureIDs
     view.isSaving = isSaving
     view.discard = discard
   }
 
-  static func confirmReplacement(discard: () throws -> Void) -> Bool {
+  static func discardForReplacement(discard: () throws -> Void) -> Bool {
     do {
       try discard()
       return true
@@ -32,10 +32,10 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
     }
   }
 
-  static func confirmDiscard(in window: NSWindow? = nil) -> Bool {
+  static func discardBeforeClosing(in window: NSWindow? = nil) -> Bool {
     let pending = views.allObjects.filter {
       $0.window != nil && (window == nil || $0.window === window)
-        && !$0.captureIDs.isEmpty && !$0.discardApproved
+        && !$0.captureIDs.isEmpty && !$0.didDiscard
     }
     guard !pending.isEmpty else { return true }
     guard !pending.contains(where: \.isSaving) else { return false }
@@ -46,7 +46,7 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
     do {
       for view in pending {
         try view.discard?()
-        view.discardApproved = true
+        view.didDiscard = true
       }
       return true
     } catch {
@@ -59,7 +59,7 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   final class GuardView: NSView {
     var captureIDs: [UUID] = []
     var isSaving = false
-    var discardApproved = false
+    var didDiscard = false
     var discard: (() throws -> Void)?
   }
 }

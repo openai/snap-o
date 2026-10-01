@@ -1000,7 +1000,7 @@ struct StartupCaptureTests {
     await fixture.displayGate.open()
     await fixture.controller.start()
     await eventually { !fixture.controller.isProcessing && fixture.controller.canStartRecordingNow }
-    fixture.controller.confirmDiscardReview = { true }
+    fixture.controller.discardReview = { true }
     await fixture.readyGate.open()
     await fixture.stopGate.open()
     await fixture.controller.startRecording()
