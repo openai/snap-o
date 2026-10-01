@@ -78,7 +78,9 @@ results. The compiler checks source and dependency contents before reuse.
 
 With `SNAPO_DERIVED_DATA`, scripts share Xcode's `CompilationCache.noindex`.
 Otherwise, they cache results under `app-macos/.build/tests`.
-CI saves the cache after all standalone scripts finish.
+CI runs `xcrun llvm-cas --prune` after the standalone scripts, then saves the cache.
+This trims unused file capacity that standalone `swiftc` leaves behind.
+Without this step, the archive processes tens of gigabytes of empty space.
 Each script reports compile/link time and test execution time separately.
 
 Device Manager list and inventory tests share one executable. Other suites still
