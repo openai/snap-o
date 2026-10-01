@@ -80,6 +80,11 @@ struct ToolHTTPRequestOperation {
 
   let input: ToolHTTPRequestInput
   var requestTimeout: TimeAmount?
+  var scheduleTimeout: @Sendable (any Channel, TimeAmount) -> (@Sendable () -> Void) = { channel, delay in
+    let timer = channel.eventLoop.scheduleTask(in: delay) { channel.close(promise: nil) }
+    return { timer.cancel() }
+  }
+
   let openConnection: OpenConnection
 
   func run(
@@ -103,10 +108,8 @@ struct ToolHTTPRequestOperation {
         }
       }
     let channel = stream.channel
-    let timeout = requestTimeout.map { timeout in
-      channel.eventLoop.scheduleTask(in: timeout) { channel.close(promise: nil) }
-    }
-    defer { timeout?.cancel() }
+    let cancelTimeout = requestTimeout.map { scheduleTimeout(channel, $0) }
+    defer { cancelTimeout?() }
 
     try await withTaskCancellationHandler {
       try await stream.executeThenClose { inbound, outbound in

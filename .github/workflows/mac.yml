@@ -59,7 +59,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 15
     env:
-      XCODE_VERSION: '26.1.1'
+      XCODE_VERSION: '26.4.1'
+      SNAPO_TEST_CONFIGURATION: Debug
     defaults:
       run:
         working-directory: app-macos
@@ -81,38 +82,24 @@ jobs:
           key: mac-swift-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('app-macos/**/Package.resolved') }}-${{ github.sha }}
           restore-keys: |
             mac-swift-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('app-macos/**/Package.resolved') }}-
-      - name: Resolve locked Swift packages
-        timeout-minutes: 3
-        run: |
-          xcodebuild -resolvePackageDependencies -project Snap-O.xcodeproj -scheme Snap-O \
-            -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
-            -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates
+            mac-swift-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-
       - name: Build macOS tests
         id: build-tests
         timeout-minutes: 8
         run: |
-          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration Local \
+          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration "$SNAPO_TEST_CONFIGURATION" \
             -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
-            -disableAutomaticPackageResolution -skipPackageUpdates -showBuildTimingSummary \
+            -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             COMPILATION_CACHE_ENABLE_CACHING=YES build-for-testing
       - name: Run macOS tests
         timeout-minutes: 2
         run: |
-          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration Local \
-            -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
-            -disableAutomaticPackageResolution -skipPackageUpdates \
+          xcodebuild test-without-building \
+            -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"*.xctestrun \
+            -destination "platform=macOS" \
             -resultBundlePath "$RUNNER_TEMP/snap-o-tests.xcresult" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test-without-building
-      - name: Save Swift packages and compiler cache
-        if: always() && steps.build-tests.outcome == 'success' && steps.swift-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        timeout-minutes: 2
-        with:
-          path: |
-            ${{ runner.temp }}/snap-o-derived-data/SourcePackages
-            ${{ runner.temp }}/snap-o-derived-data/CompilationCache.noindex
-          key: ${{ steps.swift-cache.outputs.cache-primary-key }}
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
       - name: Upload failed test results
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -121,10 +108,16 @@ jobs:
           path: ${{ runner.temp }}/snap-o-tests.xcresult
           if-no-files-found: ignore
       - name: Test capture integration
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-startup-capture.sh
       - name: Test recording failures
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-recording.sh
       - name: Test emulator preview
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-emulator-preview.sh
       - name: Test tool recovery
         env:
@@ -132,7 +125,24 @@ jobs:
         run: sh scripts/test-tool-recovery.sh
 
       - name: Device Manager tests
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: bash Tests/DeviceManager/test.sh
+
+      - name: Compact compiler cache
+        id: compact-swift-cache
+        if: always() && steps.build-tests.outcome == 'success'
+        run: xcrun llvm-cas --cas "$RUNNER_TEMP/snap-o-derived-data/CompilationCache.noindex/builtin" --prune
+
+      - name: Save Swift packages and compiler cache
+        if: always() && steps.compact-swift-cache.outcome == 'success' && steps.swift-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        timeout-minutes: 2
+        with:
+          path: |
+            ${{ runner.temp }}/snap-o-derived-data/SourcePackages
+            ${{ runner.temp }}/snap-o-derived-data/CompilationCache.noindex
+          key: ${{ steps.swift-cache.outputs.cache-primary-key }}
 
   style:
     name: Mac style

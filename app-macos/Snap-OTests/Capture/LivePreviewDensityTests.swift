@@ -1,8 +1,11 @@
 @preconcurrency import AVFoundation
+import Clocks
+import DependenciesTestSupport
 @testable import Snap_O
 import Testing
 
 @MainActor
+@Suite(.dependency(\.continuousClock, TestClock()))
 struct LivePreviewDensityTests {
   @Test
   func initialFormatUsesSourceDensity() throws {

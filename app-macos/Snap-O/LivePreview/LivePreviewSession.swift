@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Dependencies
 import Foundation
 
 /// Owns a preview source, readiness, and samples awaiting a renderer.
@@ -8,7 +9,12 @@ final class LivePreviewSession {
   private static let maxPendingSampleByteCount = 2 * 1024 * 1024
 
   let deviceID: String
-  private(set) var readyAt: ContinuousClock.Instant?
+  private let clock: AnyClock<Duration>
+  private var readyAt: AnyClock<Duration>.Instant?
+
+  var streamingDuration: Duration? {
+    readyAt.map { $0.duration(to: clock.now) }
+  }
 
   var isReady: Bool {
     media != nil && !hasStopped
@@ -47,6 +53,9 @@ final class LivePreviewSession {
   private var stopResult: Error??
 
   init(deviceID: String, densityScale: CGFloat?, source: any LivePreviewFrameSource) {
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
     self.deviceID = deviceID
     self.densityScale = densityScale
     self.source = source
@@ -103,7 +112,7 @@ final class LivePreviewSession {
       let media = Media.livePreview(capturedAt: Date(), display: display)
       let changed = self.media?.common.display != display
       self.media = media
-      readyAt = readyAt ?? .now
+      readyAt = readyAt ?? clock.now
       if changed { mediaDidChange?(media) }
       let continuations = readyContinuations
       readyContinuations.removeAll()

@@ -5,10 +5,11 @@ APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-emulator-preview-tests.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
+. "$APP_DIR/scripts/test-swift.sh"
 
-xcrun swiftc -swift-version 6 -parse-as-library \
+swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   EmulatorService/EmulatorCommand.swift EmulatorService/EmulatorGRPCDiscovery.swift \
   Tests/EmulatorPreview/EmulatorPreviewTests.swift -o "$TEST_DIR/tests"
-"$TEST_DIR/tests"
+run_test "$TEST_DIR/tests"

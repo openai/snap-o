@@ -68,31 +68,9 @@ struct EmulatorPreviewTests {
   }
 
   static func signsJWTForRequestedMethods() throws {
-    let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    defer { try? FileManager.default.removeItem(at: home) }
-    let directory = home.appendingPathComponent("Library/Caches/TemporaryItems/avd/running")
-    let keys = directory.appendingPathComponent("keys")
-    let active = directory.appendingPathComponent("active.jwk")
-    try FileManager.default.createDirectory(at: keys, withIntermediateDirectories: true)
-    let registration = "port.serial=5554\ngrpc.port=8554\ngrpc.jwks=\(keys.path)\ngrpc.jwk_active=\(active.path)\n"
-    try registration.write(to: directory.appendingPathComponent("pid_123.ini"), atomically: true, encoding: .utf8)
-    let worker = DispatchGroup()
-    worker.enter()
-    DispatchQueue.global().async {
-      defer { worker.leave() }
-      let deadline = Date().addingTimeInterval(2)
-      while Date() < deadline {
-        let files = (try? FileManager.default.contentsOfDirectory(at: keys, includingPropertiesForKeys: nil)) ?? []
-        if let file = files.first(where: { $0.pathExtension == "jwk" }),
-           let data = try? Data(contentsOf: file) {
-          try? data.write(to: active, options: .atomic)
-          return
-        }
-        Thread.sleep(forTimeInterval: 0.01)
-      }
-    }
-    defer { worker.wait() }
-    let discovery = EmulatorGRPCDiscovery(home: home, isProcessRunning: { $0 == 123 })
+    let instant = Date(timeIntervalSince1970: 1_800_000_000)
+    let signingKey = P256.Signing.PrivateKey()
+    let keyID = "test-key"
     func decode(_ value: String) -> Data {
       let padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
       return Data(base64Encoded: padded + String(repeating: "=", count: (4 - padded.count % 4) % 4))!
@@ -101,19 +79,21 @@ struct EmulatorPreviewTests {
       (.screenshot, ["streamScreenshot"]), (.clipboard, ["getClipboard", "setClipboard", "streamClipboard"]),
       (.rotation, ["getScreenshot", "setPhysicalModel"])
     ] {
-      let endpoint = try discovery.endpoint(for: "emulator-5554", access: access)!
-      let parts = endpoint.token!.split(separator: ".").map(String.init)
+      let signed = try EmulatorGRPCDiscovery.signedToken(
+        access: access, issuedAt: instant, signingKey: signingKey, keyID: keyID
+      )
+      let parts = signed.token.split(separator: ".").map(String.init)
       precondition(parts.count == 3)
       let claims = try JSONSerialization.jsonObject(with: decode(parts[1])) as! [String: Any]
       precondition(claims["aud"] as? [String] == methods.map { "/android.emulation.control.EmulatorController/" + $0 })
+      precondition(claims["iat"] as? Int == Int(instant.timeIntervalSince1970))
       let expiry = claims["exp"] as! Int
       precondition(expiry - (claims["iat"] as! Int) == 900)
-      precondition(endpoint.expiresAt == Date(timeIntervalSince1970: TimeInterval(expiry)))
-      let keySet = try JSONSerialization.jsonObject(with: Data(contentsOf: active)) as! [String: Any]
-      let key = (keySet["keys"] as! [[String: Any]])[0]
-      let publicKey = try P256.Signing.PublicKey(rawRepresentation: decode(key["x"] as! String) + decode(key["y"] as! String))
+      precondition(signed.expiresAt == Date(timeIntervalSince1970: TimeInterval(expiry)))
+      let header = try JSONSerialization.jsonObject(with: decode(parts[0])) as! [String: Any]
+      precondition(header["kid"] as? String == keyID)
       let signature = try P256.Signing.ECDSASignature(rawRepresentation: decode(parts[2]))
-      precondition(publicKey.isValidSignature(signature, for: Data((parts[0] + "." + parts[1]).utf8)))
+      precondition(signingKey.publicKey.isValidSignature(signature, for: Data((parts[0] + "." + parts[1]).utf8)))
     }
   }
 

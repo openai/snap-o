@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import Observation
 import OSLog
 
 enum StartupCaptureMode { case screenshot, livePreview }
@@ -30,6 +31,7 @@ struct LivePreviewOperationHandle {
 }
 
 @MainActor
+@Observable
 final class LivePreviewSession {
   var mediaDidChange: ((Media) -> Void)?
   var media: Media? = .livePreview(capturedAt: Date(), display: testDisplay)
@@ -76,9 +78,17 @@ actor LivePreviewService {
   private let interactiveGate: TestGate?
   private let stopGate: TestGate?
   private let readyGate: TestGate?
-  private(set) var starts: [String] = []
-  private(set) var stops: [UUID] = []
-  private(set) var active: Set<UUID> = []
+  private(set) var starts: [String] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var stops: [UUID] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var active: Set<UUID> = [] {
+    didSet { testChanges.signal() }
+  }
 
   init(
     interactiveGate: TestGate? = nil,
@@ -124,7 +134,9 @@ actor LivePreviewService {
 
 actor ScreenshotService {
   private let gate: TestGate?
-  private(set) var requests: [[String]] = []
+  private(set) var requests: [[String]] = [] {
+    didSet { testChanges.signal() }
+  }
 
   init(gate: TestGate? = nil) {
     self.gate = gate
@@ -144,12 +156,22 @@ actor ADBService {
   private var displayFailures: [String: Int]
   private var densityFailures: [String: Int]
   private var bootingDeviceIDs: Set<String> = []
-  private(set) var displayRequests: [String] = []
-  private(set) var retryDelays: [Duration] = []
+  private(set) var displayRequests: [String] = [] {
+    didSet { testChanges.signal() }
+  }
+
   private let pointerPreparationGate: TestGate?
-  private(set) var pointerPreparations: [String] = []
-  private(set) var pointerEvents: [LivePreviewPointerEvent] = []
-  private(set) var activePointerDeviceIDs: Set<String> = []
+  private(set) var pointerPreparations: [String] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var pointerEvents: [LivePreviewPointerEvent] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var activePointerDeviceIDs: Set<String> = [] {
+    didSet { testChanges.signal() }
+  }
 
   init(
     displayGates: [String: TestGate] = [:],
@@ -177,10 +199,6 @@ actor ADBService {
 
   func isBootComplete(deviceID: String) throws -> Bool {
     !bootingDeviceIDs.contains(deviceID)
-  }
-
-  func recordRetryDelay(_ delay: Duration) {
-    retryDelays.append(delay)
   }
 
   func setBooting(_ booting: Bool, deviceID: String) {
@@ -264,6 +282,7 @@ actor LivePreviewPointerInjector {
 }
 
 @MainActor
+@Observable
 final class LivePreviewRenderer {
   let operation: LivePreviewOperationHandle
   let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, [CGPoint], CGSize) -> Void
@@ -281,6 +300,7 @@ final class LivePreviewRenderer {
 }
 
 @MainActor
+@Observable
 final class AppSettings {
   static let shared = AppSettings()
   var lastViewedDeviceID: String?
@@ -290,8 +310,11 @@ final class AppSettings {
 }
 
 @MainActor
+@Observable
 final class FileStore {
-  private(set) var discardedCaptureIDs: [[UUID]] = []
+  private(set) var discardedCaptureIDs: [[UUID]] = [] {
+    didSet { testChanges.signal() }
+  }
 
   func discardPreviews(_ captures: [CaptureMedia]) {
     discardedCaptureIDs.append(captures.map(\.id))
@@ -320,7 +343,10 @@ struct RecordingOperationResult {
 }
 
 actor RecordingService {
-  private(set) var requests: [[String]] = []
+  private(set) var requests: [[String]] = [] {
+    didSet { testChanges.signal() }
+  }
+
   private var finishGate: TestGate?
   private var completedMedia: [CaptureMedia] = []
 
@@ -355,8 +381,12 @@ actor RecordingService {
 }
 
 @MainActor
+@Observable
 final class LivePreviewRotation {
-  private(set) var stopCount = 0
+  private(set) var stopCount = 0 {
+    didSet { testChanges.signal() }
+  }
+
   init(deviceID: String) {}
   func rotate(left: Bool) async throws {}
   func stop() async {

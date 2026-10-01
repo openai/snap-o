@@ -1,7 +1,15 @@
 import Foundation
 
 actor ADBService {
-  private(set) var waitingForCancellation = false
+  private(set) var waitingForCancellation = false {
+    didSet { testChanges.signal() }
+  }
+
+  private let timesOut: Bool
+
+  init(timesOut: Bool = false) {
+    self.timesOut = timesOut
+  }
 
   func exec() -> ADBService {
     self
@@ -16,11 +24,19 @@ actor ADBService {
     case "device-a":
       return Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1kAAAAASUVORK5CYII=")!
     case "device-b":
+      if timesOut { throw ADBError.requestTimedOut("Screenshot capture timed out after 2 seconds") }
       waitingForCancellation = true
-      try await Task.sleep(for: .seconds(60))
+      try await suspendUntilCancelled()
       throw CancellationError()
     default:
       throw ADBError.protocolFailure("Screenshot failed")
     }
+  }
+}
+
+/// Deadline behavior has its own fake-clock tests; history only needs the operation's result.
+enum ScreenshotDeadline {
+  static func run<Value: Sendable>(_ operation: @escaping @Sendable () async throws -> Value) async throws -> Value {
+    try await operation()
   }
 }

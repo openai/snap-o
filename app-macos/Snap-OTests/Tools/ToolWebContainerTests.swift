@@ -1,299 +1,251 @@
 import AppKit
 import Foundation
-import Network
 @testable import Snap_O
+import Synchronization
 import Testing
 import WebKit
 
-@Suite("Tool WebKit wiring", .serialized)
+@Suite(.timeLimit(.minutes(1)))
 @MainActor
 struct ToolWebContainerTests {
   #if DEBUG
-  @Test("local Web Inspector renders in a separate window without Safari", .timeLimit(.minutes(1)))
-  func localWebInspector() async throws {
-    let container = ToolWebContainer(bridge: ToolWebBridge(), storageIdentifier: nil)
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.titled], backing: .buffered, defer: false
-    )
-    window.contentView = container.webView
-    window.orderBack(nil)
-    defer {
-      container.stop()
-      window.orderOut(nil)
-    }
-    var ready = false
-    container.pageReadinessChangedHandler = { ready = $0 }
-    try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data("<p>Inspector fixture</p>".utf8)]))
-    try await eventually { ready }
-    container.showWebInspector()
-    let inspector = try #require(
-      container.webView.perform(NSSelectorFromString("_inspector"))?.takeUnretainedValue() as? NSObject
-    )
-    defer { inspector.perform(NSSelectorFromString("close")) }
-    #expect(!container.webView.isInspectable, "Local inspection does not require remote inspection")
-    try await eventually("Inspector did not detach") {
-      NSApp.windows.contains { $0 !== window && $0.isVisible && $0.title.hasPrefix("Web Inspector") }
-    }
-    let inspectorWindow = try #require(NSApp.windows.first { $0 !== window && $0.title.hasPrefix("Web Inspector") })
-    let inspectorContent = try #require(inspectorWindow.contentView)
-    let inspectorView = try #require(webViews(in: inspectorContent).first)
-    try await eventually("Inspector frontend did not render") {
-      await (try? inspectorView.evaluateJavaScript(
-        "['Elements', 'Console', 'Network'].every(label => document.body.innerText.includes(label))"
-      ) as? Bool) == true
-    }
-    #expect(!inspectorView.isHiddenOrHasHiddenAncestor)
-    #expect(inspectorView.bounds.width > 0 && inspectorView.bounds.height > 0)
+  @Test
+  func localInspectorEnablesDeveloperExtrasBeforeShowingAndDetaching() {
+    let inspector = InspectorDouble()
+    let delegate = NSObject()
+    var enabled = false
+    inspector.onShow = { #expect(enabled) }
+    ToolWebInspector.show(inspector, delegate: delegate, enable: { enabled = true }, unavailable: {
+      Issue.record("Supported inspector was rejected")
+    })
+    #expect(inspector.owner === delegate)
+    #expect(inspector.calls == ["delegate", "show", "detach"])
   }
 
-  private func webViews(in view: NSView) -> [WKWebView] {
-    (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap { webViews(in: $0) }
+  @Test(arguments: [false, true])
+  func unavailableInspectorDoesNotEnableDeveloperExtras(missing: Bool) {
+    var unavailable = false
+    ToolWebInspector.show(missing ? nil : NSObject(), delegate: NSObject(), enable: {
+      Issue.record("Unsupported inspector enabled developer extras")
+    }, unavailable: { unavailable = true })
+    #expect(unavailable)
   }
   #endif
 
-  @Test("custom assets, request policy, bridge ownership, and shutdown", .timeLimit(.minutes(1)))
-  func containerLifecycle() async throws {
-    let allowed = try ToolHTTPFixture()
-    let denied = try ToolHTTPFixture()
-    defer { allowed.stop()
-      denied.stop()
+  @Test
+  func pageEventsWaitForReadinessAndThePreviousBatch() throws {
+    var queue = ToolPageEventQueue()
+    for index in 0 ..< 65 {
+      let enqueued = queue.enqueue(.init(name: "host:state", payload: index))
+      #expect(enqueued)
     }
-    let allowedURL = try await allowed.start()
-    let deniedURL = try await denied.start()
-    allowed.redirect = deniedURL
-    let (_, control) = try await URLSession.shared.data(from: deniedURL)
-    #expect((control as? HTTPURLResponse)?.statusCode == 200)
-    denied.paths.removeAll()
+    let beforeReady = queue.next(isReady: false)
+    #expect(beforeReady == nil)
+    let first = queue.next(isReady: true)
+    let batch = try #require(first)
+    #expect(batch.events.compactMap { $0.payload as? Int } == Array(0 ..< 64))
+    let duringDelivery = queue.next(isReady: true)
+    #expect(duringDelivery == nil)
+    let completed = queue.complete(generation: batch.generation)
+    #expect(completed)
+    let last = queue.next(isReady: true)
+    #expect(last?.events.compactMap { $0.payload as? Int } == [64])
+  }
 
-    let html = """
-    <script>
-    window.events = [];
-    addEventListener('snapo:host:state', e => events.push(e.detail));
-    window.startup = fetch('\(allowedURL)').then(() => false, () => true);
-    try { eval('window.earlyEval = true'); } catch { window.earlyEval = false; }
-    </script>
-    <script type="module" src="./main.js"></script>
-    """
-    let bundle = try ToolFrontendBundle(files: [
-      "index.html": Data(html.utf8), "main.js": Data("window.moduleLoaded = true".utf8)
-    ])
+  @Test
+  func queueBoundsIncludeInFlightEventsAndResetRejectsStaleCallbacks() throws {
+    var queue = ToolPageEventQueue()
+    for index in 0 ..< 2048 {
+      let enqueued = queue.enqueue(.init(name: "host:state", payload: index))
+      #expect(enqueued)
+    }
+    let first = queue.next(isReady: true)
+    let batch = try #require(first)
+    let overflow = queue.enqueue(.init(name: "host:state", payload: 2048))
+    #expect(!overflow)
+    queue.reset()
+    let enqueued = queue.enqueue(.init(name: "host:state", payload: "replacement"))
+    #expect(enqueued)
+    let replacement = queue.next(isReady: true)
+    #expect(replacement?.events.first?.payload as? String == "replacement")
+    let staleCompleted = queue.complete(generation: batch.generation)
+    #expect(!staleCompleted && queue.isInFlight)
+  }
+
+  @Test
+  func bridgeReturnsHostStateOnlyForAuthorizedMessages() async {
     let bridge = ToolWebBridge()
-    bridge.hostStateHandler = { ToolConnectionState() }
-    bridge.isActiveHandler = { false }
-    let container = ToolWebContainer(bridge: bridge, storageIdentifier: nil)
-    let web = container.webView
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.borderless],
-      backing: .buffered,
-      defer: false
-    )
-    window.contentView = web
-    window.orderBack(nil)
-    defer { container.stop()
-      window.orderOut(nil)
+    var reads = 0
+    bridge.hostStateHandler = { reads += 1
+      return ToolConnectionState()
     }
-    var ready = false
-    container.pageReadinessChangedHandler = { ready = $0 }
-    container.sendPageEvent(name: "host:state", payload: "queued")
-    container.start(frontend: bundle)
-    container.start(frontend: nil)
-    try await eventually { ready }
-    let startup = try await web.callAsyncJavaScript("return await startup", arguments: [:], in: nil, contentWorld: .page)
-    #expect(startup as? Bool == true, "Install the deny-all policy before executing tool scripts")
-    #expect(allowed.paths.isEmpty)
-    try await eventually {
-      await (try? web.evaluateJavaScript("moduleLoaded && events[0] === 'queued'") as? Bool) == true
-    }
-    let served = try await web.callAsyncJavaScript(
-      "return {html: await (await fetch(location.href)).text(), earlyEval}", arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
-    #expect(served?["html"] as? String == html, "Serve original asset bytes")
-    #expect(served?["earlyEval"] as? Bool == false, "Attach CSP before the first script")
+    let rejected = await bridge.receive(["command": "hostState"], authorized: false)
+    #expect(rejected.0 == nil && rejected.1 != nil)
+    #expect(reads == 0)
+    let accepted = await bridge.receive(["command": "hostState"], authorized: true)
+    #expect((accepted.0 as? [String: Any])?["connected"] as? Bool == false)
+    #expect(accepted.1 == nil && reads == 1)
+    bridge.invalidate()
+    let stopped = await bridge.receive(["command": "hostState"], authorized: true)
+    #expect(stopped.0 == nil && stopped.1 != nil)
+    #expect(reads == 1)
+  }
 
-    container.setServer(ToolHTTPService.Endpoint(
-      id: UUID(), reference: ToolServerReference(deviceId: "phone", socketName: "snapo_sample_42"), adb: ADBClient()
-    ))
-    #expect(try await !fetch(allowedURL, in: web))
-    #expect(try await !fetch(deniedURL, in: web))
-    #expect(try await !fetch(allowedURL.appendingPathComponent("redirect"), in: web))
-    #expect(denied.paths.isEmpty, "Direct and redirected requests must not reach a different endpoint")
-    container.setServer(nil)
-    let requests = allowed.paths.count
-    #expect(try await !fetch(allowedURL, in: web))
-    #expect(allowed.paths.count == requests, "Tool pages cannot contact loopback directly")
+  @Test(arguments: ["copyText", "saveFile", "openNativeColorPanel"], [false, true])
+  func nativeCommandsRequireAnActiveVisibleWindow(command: String, active: Bool) async {
+    let bridge = ToolWebBridge()
+    bridge.isActiveHandler = { active }
+    let result = await bridge.receive([
+      "command": command,
+      "payload": [
+        "text": "fixture",
+        "defaultPath": "fixture.txt",
+        "data": "",
+        "sessionId": "test",
+        "color": "#112233",
+        "revision": 0
+      ]
+    ], authorized: true)
+    #expect(result.0 == nil && result.1 != nil)
+  }
 
-    let hostState = try await web.callAsyncJavaScript(
-      "return await webkit.messageHandlers.snapoHost.postMessage({command:'hostState'})",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
-    #expect(hostState?["connected"] as? Bool == false)
-    for active in [false, true] {
-      bridge.isActiveHandler = { active }
-      web.isHidden = active
-      let rejected = try await web.callAsyncJavaScript(
-        """
-        for (const command of ['copyText', 'saveFile', 'openNativeColorPanel']) {
-          try {
-            await webkit.messageHandlers.snapoHost.postMessage({command, payload: {
-              text: 'fixture', defaultPath: 'fixture.txt', data: '',
-              sessionId: 'test', color: '#112233', revision: 0
-            }});
-            return false;
-          } catch {}
-        }
-        return true;
-        """, arguments: [:], in: nil, contentWorld: .page
+  @Test
+  func documentAccessRequiresTheOwningViewFrameAndCurrentDocument() throws {
+    let current = try #require(URL(string: "snapo://tool/index.html?document=current"))
+    func accepts(
+      ownsView: Bool = true, main: Bool = true, url: URL? = nil,
+      scheme: String = "snapo", host: String = "tool", port: Int = 0
+    ) -> Bool {
+      ToolWebPolicy.acceptsMessage(
+        ownsView: ownsView, isMainFrame: main, url: url ?? current, documentURL: current,
+        origin: .init(scheme: scheme, host: host, port: port)
       )
-      #expect(rejected as? Bool == true, "Inactive or hidden pages cannot present native UI")
     }
-    web.isHidden = false
-
-    let otherConfiguration = WKWebViewConfiguration()
-    otherConfiguration.websiteDataStore = .nonPersistent()
-    otherConfiguration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: ToolWebBridge.messageHandlerName)
-    defer { otherConfiguration.userContentController.removeAllScriptMessageHandlers() }
-    let url = try #require(web.url)
-    let assets = ToolSchemeHandler()
-    assets.bundle = try ToolFrontendBundle(files: ["index.html": Data("<p>Foreign page</p>".utf8)])
-    otherConfiguration.setURLSchemeHandler(assets, forURLScheme: ToolURL.scheme)
-    let other = WKWebView(frame: .zero, configuration: otherConfiguration)
-    defer { other.stopLoading() }
-    other.load(URLRequest(url: url))
-    try await eventually { other.url != nil && !other.isLoading }
-    #expect(try await bridgeRejected(in: other), "The same origin in another WebView cannot use this bridge")
-
-    container.recoverFromEventOverflow()
-    try await eventually { ready && web.url != url }
-    let stale = try await web.callAsyncJavaScript(
-      """
-      const current = location.href;
-      history.replaceState(null, '', oldURL);
-      try { await webkit.messageHandlers.snapoHost.postMessage({command:'hostState'}); return false; }
-      catch { return true; }
-      finally { history.replaceState(null, '', current); }
-      """, arguments: ["oldURL": url.absoluteString], in: nil, contentWorld: .page
-    )
-    #expect(stale as? Bool == true, "Recovery must revoke the old document's bridge access")
-    #expect(try await !bridgeRejected(in: web), "The replacement document keeps bridge access")
-    container.stop()
-    await container.finishStopping()
-    try await eventually { web.url?.absoluteString == "about:blank" && !web.isLoading }
-    #expect(try await web.evaluateJavaScript("typeof window.events") as? String == "undefined")
-
-    let development = ToolWebContainer(bridge: ToolWebBridge(), storageIdentifier: nil, developmentURL: allowedURL)
-    defer { development.stop() }
-    var developmentReady = false
-    development.pageReadinessChangedHandler = { developmentReady = $0 }
-    window.contentView = development.webView
-    development.start(frontend: nil)
-    try await eventually { developmentReady }
-    #expect(development.webView.url?.scheme == "snapo")
-    #expect(try await fetch(ToolURL.frontend.appending(path: "main.js"), in: development.webView))
-    #expect(allowed.paths.contains("/main.js"), "Development files come from the local server")
-    let developmentRequests = allowed.paths.count
-    #expect(try await !fetch(ToolURL.api, in: development.webView))
-    #expect(allowed.paths.count == developmentRequests, "API requests never go to the development server")
-    #expect(try await !fetch(ToolURL.frontend.appending(path: "redirect"), in: development.webView))
-    #expect(denied.paths.isEmpty, "Development redirects must not escape the selected server")
+    #expect(accepts())
+    #expect(accepts(url: URL(string: current.absoluteString + "#section")))
+    #expect(!accepts(ownsView: false))
+    #expect(!accepts(main: false))
+    #expect(!accepts(scheme: "https"))
+    #expect(!accepts(host: "other"))
+    #expect(!accepts(port: 1234))
+    #expect(!accepts(url: URL(string: "snapo://tool/index.html?document=previous")))
+    #expect(!ToolWebPolicy.acceptsMessage(
+      ownsView: true, isMainFrame: true, url: current, documentURL: nil, origin: .init(scheme: "snapo", host: "tool", port: 0)
+    ))
   }
 
-  private func fetch(_ url: URL, in web: WKWebView) async throws -> Bool {
-    try await web.callAsyncJavaScript(
-      "try { return (await fetch(url, {signal: AbortSignal.timeout(2000)})).ok; } catch { return false; }",
-      arguments: ["url": url.absoluteString], in: nil, contentWorld: .page
-    ) as? Bool == true
-  }
-
-  private func bridgeRejected(in web: WKWebView) async throws -> Bool {
-    try await web.callAsyncJavaScript(
-      "try { await webkit.messageHandlers.snapoHost.postMessage({command:'hostState'}); return false; } catch { return true; }",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? Bool == true
-  }
-
-  private func eventually(
-    _ message: String = "WebKit fixture did not become ready", _ predicate: () async -> Bool
-  ) async throws {
-    let deadline = ContinuousClock.now + .seconds(10)
-    while ContinuousClock.now < deadline {
-      if await predicate() { return }
-      try await Task.sleep(for: .milliseconds(20))
+  @Test
+  func bundledAssetsPreserveBytesAndInstallCSP() async throws {
+    let html = Data("<script type=\"module\" src=\"./main.js\"></script>".utf8)
+    let script = Data("window.fixture = true".utf8)
+    let handler = ToolSchemeHandler()
+    handler.bundle = try ToolFrontendBundle(files: ["index.html": html, "main.js": script])
+    defer { handler.invalidate() }
+    #expect(handler.entryURL == ToolURL.frontend.appendingPathComponent("index.html"))
+    for (file, data, type) in [("index.html", html, "text/html; charset=utf-8"), ("main.js", script, "text/javascript; charset=utf-8")] {
+      let request = SchemeTaskDouble(URLRequest(url: ToolURL.frontend.appendingPathComponent(file)))
+      await handler.start(request)?.value
+      #expect(request.failure == nil && request.finished)
+      #expect(request.body == data)
+      #expect(request.response?.value(forHTTPHeaderField: "Content-Type") == type)
+      #expect(request.response?.value(forHTTPHeaderField: "Content-Security-Policy") == ToolWebPolicy.contentSecurityPolicy)
+      #expect(request.response?.value(forHTTPHeaderField: "X-Content-Type-Options") == "nosniff")
     }
-    Issue.record("\(message) within 10 seconds")
-    throw CancellationError()
+  }
+
+  @Test(arguments: ["snapo://other/index.html", "snapo://tool:1234/index.html", "snapo://user@tool/index.html", "snapo://tool/api/items"])
+  func rejectsForeignOriginsAndDisconnectedAPI(url: String) async throws {
+    let handler = ToolSchemeHandler()
+    defer { handler.invalidate() }
+    let request = try SchemeTaskDouble(URLRequest(url: #require(URL(string: url))))
+    await handler.start(request)?.value
+    #expect(request.failure != nil)
+    #expect(request.response == nil && request.body.isEmpty && !request.finished)
+  }
+
+  @Test(arguments: ["missing.html", "index.html"])
+  func rejectsMissingAssetsAndNonGETRequests(file: String) async throws {
+    let handler = ToolSchemeHandler()
+    handler.bundle = try ToolFrontendBundle(files: ["index.html": Data("fixture".utf8)])
+    defer { handler.invalidate() }
+    var input = URLRequest(url: ToolURL.frontend.appendingPathComponent(file))
+    if file == "index.html" { input.httpMethod = "POST" }
+    let request = SchemeTaskDouble(input)
+    await handler.start(request)?.value
+    #expect(request.failure != nil && !request.finished)
+  }
+
+  @Test
+  func developmentEntryUsesTheToolOriginAndRejectsRedirects() throws {
+    let upstream = try #require(URL(string: "http://127.0.0.1:5173/dev/index.html"))
+    let handler = ToolSchemeHandler(developmentURL: upstream)
+    defer { handler.invalidate() }
+    #expect(handler.entryURL?.absoluteString == "snapo://tool/dev/index.html")
+    let response = try #require(HTTPURLResponse(
+      url: upstream,
+      statusCode: 302,
+      httpVersion: nil,
+      headerFields: ["Location": "https://example.com"]
+    ))
+    let task = URLSession.shared.dataTask(with: upstream)
+    defer { task.cancel() }
+    let called = Mutex(false)
+    handler
+      .urlSession(URLSession.shared, task: task, willPerformHTTPRedirection: response, newRequest: URLRequest(url: upstream)) { request in
+        #expect(request == nil)
+        called.withLock { $0 = true }
+      }
+    #expect(called.withLock { $0 })
   }
 }
 
-/// Only the HTTP behavior needed to verify Snap-O's endpoint allowlist.
+#if DEBUG
 @MainActor
-private final class ToolHTTPFixture {
-  private let listener: NWListener
-  private var connections: [NWConnection] = []
-  var paths: [String] = []
-  var redirect: URL?
-
-  init() throws {
-    let parameters = NWParameters.tcp
-    parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
-    listener = try NWListener(using: parameters)
+private final class InspectorDouble: NSObject {
+  var calls: [String] = []
+  var owner: NSObject?
+  var onShow: (() -> Void)?
+  @objc func setDelegate(_ value: NSObject) {
+    owner = value
+    calls.append("delegate")
   }
 
-  func start() async throws -> URL {
-    let (states, continuation) = AsyncStream<NWListener.State>.makeStream()
-    listener.stateUpdateHandler = { continuation.yield($0) }
-    listener.newConnectionHandler = { [weak self] connection in
-      Task { @MainActor [weak self] in
-        guard let self else { connection.cancel()
-          return
-        }
-        connections.append(connection)
-        connection.start(queue: .main)
-        receive(connection)
-      }
-    }
-    listener.start(queue: .main)
-    for await state in states {
-      switch state {
-      case .ready:
-        let port = try #require(listener.port)
-        return try #require(URL(string: "http://127.0.0.1:\(port.rawValue)/"))
-      case .failed(let error): throw error
-      case .cancelled: throw CancellationError()
-      default: continue
-      }
-    }
-    throw CancellationError()
+  @objc func show() {
+    onShow?()
+    calls.append("show")
   }
 
-  func stop() {
-    listener.cancel()
-    connections.forEach { $0.cancel() }
+  @objc func detach() {
+    calls.append("detach")
+  }
+}
+#endif
+
+@MainActor
+final class SchemeTaskDouble: NSObject, @preconcurrency WKURLSchemeTask {
+  let request: URLRequest
+  var failure: Error?
+  var response: HTTPURLResponse?
+  var body = Data()
+  var finished = false
+
+  init(_ request: URLRequest) {
+    self.request = request
   }
 
-  private func receive(_ connection: NWConnection, pending: Data = Data()) {
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, complete, error in
-      Task { @MainActor [weak self] in
-        guard let self, error == nil, let data else { connection.cancel()
-          return
-        }
-        let request = pending + data
-        guard let text = String(data: request, encoding: .utf8), text.contains("\r\n\r\n") else {
-          if !complete, request.count < 8192 { receive(connection, pending: request) } else { connection.cancel() }
-          return
-        }
-        let path = String(text.split(separator: " ")[1])
-        paths.append(path)
-        let response = if path == "/redirect", let redirect {
-          "HTTP/1.1 302 Found\r\nLocation: \(redirect)\r\n"
-        } else {
-          "HTTP/1.1 200 OK\r\n"
-        }
-        let headers = "Content-Type: text/html\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: *\r\n"
-          + "Cache-Control: no-store\r\nConnection: close\r\n\r\nok"
-        connection.send(content: Data((response + headers).utf8), completion: .contentProcessed { _ in connection.cancel() })
-      }
-    }
+  func didReceive(_ response: URLResponse) {
+    self.response = response as? HTTPURLResponse
+  }
+
+  func didReceive(_ data: Data) {
+    body.append(data)
+  }
+
+  func didFinish() {
+    finished = true
+  }
+
+  func didFailWithError(_ error: any Error) {
+    failure = error
   }
 }

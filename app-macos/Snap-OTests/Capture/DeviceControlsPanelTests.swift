@@ -56,7 +56,7 @@ struct DeviceControlsPanelTests {
   }
 
   @Test
-  func changingPlacementAndRemovingControlsPreservesCaptureSize() async throws {
+  func changingPlacementAndRemovingControlsPreservesCaptureSize() {
     let window = NSWindow(
       contentRect: capture, styleMask: [.titled, .resizable], backing: .buffered, defer: false
     )
@@ -78,7 +78,6 @@ struct DeviceControlsPanelTests {
     for placement: DeviceControlsPlacement? in [.left, .below, .hidden, .left, nil] {
       host.rootView = content(placement)
       host.layoutSubtreeIfNeeded()
-      try await Task.sleep(for: .milliseconds(20))
       #expect(window.frame == originalFrame)
       #expect(host.frame.size == originalContentSize)
     }

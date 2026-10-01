@@ -1,4 +1,5 @@
-@preconcurrency import AVFoundation
+import Clocks
+import Dependencies
 import Foundation
 
 @main
@@ -11,26 +12,31 @@ struct RecordingTests {
   static let options = RecordingOptions(recordsBugReport: false, showsTouches: false)
 
   static func main() async throws {
-    let watchdog = Task {
-      try await Task.sleep(for: .seconds(30))
-      fatalError("Recording tests timed out")
+    try await withDependencies {
+      $0.context = .test
+      $0.continuousClock = TestClock()
+    } operation: {
+      let watchdog = Task {
+        try await Task.sleep(for: .seconds(30))
+        fatalError("Recording tests timed out")
+      }
+      defer { watchdog.cancel() }
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let video = root.appendingPathComponent("fixture.mp4")
+      try Data("valid recording".utf8).write(to: video)
+      try await failedDeviceLeavesHealthyRecordingActive(root: root, video: video)
+      try await collectionFailurePreservesHealthyRecording(root: root, video: video)
+      try await disconnectedDeviceLeavesHealthyRecordingActive(root: root, video: video)
+      try await cancellationDoesNotSignalEndedSession(root: root, video: video)
+      try await endedSessionRestoresTouchIndicators(root: root, video: video)
+      try await unconfirmedStopPreservesRemoteRecording(root: root, video: video)
+      try await invalidDownloadPreservesRemoteRecording(root: root)
+      try await confirmedRecordingRemovesRemoteCopy(root: root, video: video)
+      try await bugReportRecordingIsExclusive(root: root, video: video)
+      print("Recording tests passed (9 cases)")
     }
-    defer { watchdog.cancel() }
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: root) }
-    let video = root.appendingPathComponent("fixture.mp4")
-    try await makeVideo(at: video)
-    try await failedDeviceLeavesHealthyRecordingActive(root: root, video: video)
-    try await collectionFailurePreservesHealthyRecording(root: root, video: video)
-    try await disconnectedDeviceLeavesHealthyRecordingActive(root: root, video: video)
-    try await cancellationDoesNotSignalEndedSession(root: root, video: video)
-    try await endedSessionRestoresTouchIndicators(root: root, video: video)
-    try await unconfirmedStopPreservesRemoteRecording(root: root, video: video)
-    try await invalidDownloadPreservesRemoteRecording(root: root)
-    try await confirmedRecordingRemovesRemoteCopy(root: root, video: video)
-    try await bugReportRecordingIsExclusive(root: root, video: video)
-    print("Recording tests passed (9 cases)")
   }
 
   struct Fixture {
@@ -44,14 +50,21 @@ struct RecordingTests {
       history = CaptureHistoryRepository(root: directory.appendingPathComponent("history"))
       service = RecordingService(
         adb: adb, fileStore: FileStore(baseDir: directory.appendingPathComponent("preview")),
-        coordinator: CaptureCoordinator(), history: history
+        coordinator: CaptureCoordinator(), history: history,
+        loadRecording: { url, device, capturedAt in
+          guard try Data(contentsOf: url) == Data("valid recording".utf8) else { throw CocoaError(.fileReadCorruptFile) }
+          return CaptureMedia(device: device, media: .video(
+            url: url, capturedAt: capturedAt, display: DisplayInfo(size: CGSize(width: 16, height: 16), densityScale: 1)
+          ))
+        }
       )
     }
 
     func waitForFailure() async {
-      await RecordingTests.eventually {
-        await history.currentSnapshot().entries.first?.items.first?.failure != nil
+      for await snapshot in await history.updates() {
+        if snapshot.entries.first?.items.first?.failure != nil { return }
       }
+      preconditionFailure("History ended before the recording failure was published")
     }
   }
 
@@ -168,38 +181,5 @@ struct RecordingTests {
 
     let removed = await fixture.adb.removedRecordings
     precondition(removed == [devices[0].id], "A confirmed stop and usable local copy allow remote cleanup")
-  }
-
-  static func eventually(_ condition: () async -> Bool) async {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-    while ContinuousClock.now < deadline {
-      if await condition() { return }
-      await Task.yield()
-    }
-    fatalError("Expected recording state was not reached")
-  }
-
-  static func makeVideo(at url: URL) async throws {
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-      AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 16, AVVideoHeightKey: 16
-    ])
-    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
-    writer.add(input)
-    precondition(writer.startWriting())
-    writer.startSession(atSourceTime: .zero)
-    var buffer: CVPixelBuffer?
-    precondition(CVPixelBufferCreate(kCFAllocatorDefault, 16, 16, kCVPixelFormatType_32ARGB, nil, &buffer) == kCVReturnSuccess)
-    let frame = buffer!
-    CVPixelBufferLockBaseAddress(frame, [])
-    memset(CVPixelBufferGetBaseAddress(frame)!, 0, CVPixelBufferGetDataSize(frame))
-    CVPixelBufferUnlockBaseAddress(frame, [])
-    await eventually { input.isReadyForMoreMediaData }
-    precondition(adaptor.append(frame, withPresentationTime: .zero))
-    await eventually { input.isReadyForMoreMediaData }
-    precondition(adaptor.append(frame, withPresentationTime: CMTime(value: 1, timescale: 1)))
-    input.markAsFinished()
-    await writer.finishWriting()
-    precondition(writer.status == .completed)
   }
 }

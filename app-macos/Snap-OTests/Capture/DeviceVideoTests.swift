@@ -190,23 +190,22 @@ struct DeviceVideoTests {
       AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 32, AVVideoHeightKey: 32,
       AVVideoCompressionPropertiesKey: [AVVideoAllowFrameReorderingKey: false]
     ])
-    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
-    writer.add(input)
+    let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: nil)
     #expect(writer.startWriting())
     writer.startSession(atSourceTime: .zero)
-    var pixel: CVPixelBuffer?
-    #expect(CVPixelBufferCreate(kCFAllocatorDefault, 32, 32, kCVPixelFormatType_32ARGB, nil, &pixel) == kCVReturnSuccess)
-    let buffer = try #require(pixel)
-    CVPixelBufferLockBaseAddress(buffer, [])
-    memset(CVPixelBufferGetBaseAddress(buffer), 80, CVPixelBufferGetDataSize(buffer))
-    CVPixelBufferUnlockBaseAddress(buffer, [])
-    for timestamp in [0.0, 0.25, 1.5] {
-      while !input.isReadyForMoreMediaData {
-        try await Task.sleep(for: .milliseconds(1))
-      }
-      #expect(adaptor.append(buffer, withPresentationTime: CMTime(seconds: timestamp, preferredTimescale: 600)))
+    let buffer = try CVMutablePixelBuffer(.init(
+      pixelFormatType: .init(rawValue: kCVPixelFormatType_32ARGB), size: .init(width: 32, height: 32)
+    ))
+    buffer.withUnsafeBuffer { pixel in
+      CVPixelBufferLockBaseAddress(pixel, [])
+      memset(CVPixelBufferGetBaseAddress(pixel), 80, CVPixelBufferGetDataSize(pixel))
+      CVPixelBufferUnlockBaseAddress(pixel, [])
     }
-    input.markAsFinished()
+    let pixels = CVReadOnlyPixelBuffer(buffer)
+    for timestamp in [0.0, 0.25, 1.5] {
+      try await receiver.append(pixels, with: CMTime(seconds: timestamp, preferredTimescale: 600))
+    }
+    receiver.finish()
     await writer.finishWriting()
     #expect(writer.status == .completed)
   }

@@ -1,9 +1,12 @@
+import Dependencies
 import Foundation
 
 private let log = SnapOLog.tracker
 
 actor DeviceTracker {
   private let adbService: ADBService
+  @Dependency(\.continuousClock)
+  private var clock
   private let infoCache = DeviceInfoCache()
 
   private var trackTask: Task<Void, Never>?
@@ -115,7 +118,7 @@ actor DeviceTracker {
     #endif
     @inline(__always)
     func pause() async {
-      try? await Task.sleep(for: .milliseconds(300))
+      try? await clock.sleep(for: .milliseconds(300))
     }
 
     while !Task.isCancelled {
@@ -180,7 +183,7 @@ actor DeviceTracker {
       guard devices.count < deviceCount else { return }
       // Successful properties are cached; only failed devices need another shell request.
       do {
-        try await Task.sleep(for: .seconds(3))
+        try await clock.sleep(for: .seconds(3))
       } catch {
         return
       }

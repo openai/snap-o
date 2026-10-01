@@ -1,34 +1,33 @@
+import Clocks
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 @testable import Snap_O
 import Testing
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
 struct ScreenshotDeadlineTests {
+  @Dependency(\.continuousClock, as: TestClock<Duration>.self) private var clock
+
   @Test
   func completionCancelsDeadline() async throws {
-    let timer = TestSuspension()
-    let result = try await ScreenshotDeadline.run(sleep: { duration in
-      #expect(duration == .seconds(2))
-      try await timer.wait()
-    }) { 42 }
+    let result = try await ScreenshotDeadline.run { 42 }
     #expect(result == 42)
-    #expect(timer.wasCancelled)
+    try await clock.checkSuspension()
   }
 
   @Test
   func timeoutCancelsOperation() async throws {
-    let timer = TestSuspension()
     let operation = TestSuspension()
     let task = Task {
-      try await ScreenshotDeadline.run(sleep: { duration in
-        #expect(duration == .seconds(2))
-        try await timer.wait()
-      }) {
+      try await ScreenshotDeadline.run {
         try await operation.wait()
       }
     }
     await operation.waitUntilStarted()
-    timer.resume()
+    await clock.advance(by: .milliseconds(1999))
+    #expect(!operation.wasCancelled)
+    await clock.advance(by: .milliseconds(1))
     do {
       try await task.value
       Issue.record("Expected screenshot timeout")
@@ -40,48 +39,17 @@ struct ScreenshotDeadlineTests {
 
   @Test
   func cancellationCancelsOperationAndDeadline() async throws {
-    let timer = TestSuspension()
     let operation = TestSuspension()
     let task = Task {
-      try await ScreenshotDeadline.run(sleep: { _ in try await timer.wait() }) {
+      try await ScreenshotDeadline.run {
         try await operation.wait()
       }
     }
     await operation.waitUntilStarted()
-    await timer.waitUntilStarted()
+    await #expect(throws: SuspensionError.self) { try await clock.checkSuspension() }
     task.cancel()
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(operation.wasCancelled)
-    #expect(timer.wasCancelled)
-  }
-}
-
-private final class TestSuspension: @unchecked Sendable {
-  private let started = AsyncStream<Void>.makeStream()
-  private let resumed = AsyncStream<Void>.makeStream()
-  private let lock = NSLock()
-  private var cancelled = false
-
-  var wasCancelled: Bool {
-    lock.withLock { cancelled }
-  }
-
-  func wait() async throws {
-    started.continuation.yield(())
-    var iterator = resumed.stream.makeAsyncIterator()
-    _ = await iterator.next()
-    if Task.isCancelled {
-      lock.withLock { cancelled = true }
-      throw CancellationError()
-    }
-  }
-
-  func waitUntilStarted() async {
-    var iterator = started.stream.makeAsyncIterator()
-    _ = await iterator.next()
-  }
-
-  func resume() {
-    resumed.continuation.yield(())
+    try await clock.checkSuspension()
   }
 }

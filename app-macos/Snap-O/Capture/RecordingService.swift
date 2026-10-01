@@ -81,7 +81,7 @@ actor RecordingService {
       if let touchRestoration {
         await touchRestoration.value
       } else {
-        await showTouchesOverride.restore(using: adb, timeout: .seconds(3))
+        await showTouchesOverride.restore(using: adb)
       }
     }
   }
@@ -100,6 +100,8 @@ actor RecordingService {
   }
 
   typealias StartRecording = @Sendable (String, Bool) async throws -> any ScreenRecording
+  typealias LoadRecording = @Sendable (URL, Device, Date) async throws -> CaptureMedia
+  private let recordingLoader: LoadRecording?
   private let startRecording: StartRecording
   private let adb: ADBService
   private let fileStore: FileStore
@@ -118,9 +120,11 @@ actor RecordingService {
     fileStore: FileStore,
     coordinator: CaptureCoordinator,
     history: CaptureHistoryRepository? = nil,
-    startRecording: StartRecording? = nil
+    startRecording: StartRecording? = nil,
+    loadRecording: LoadRecording? = nil
   ) {
     self.adb = adb
+    recordingLoader = loadRecording
     self.startRecording = startRecording ?? { deviceID, bugReport in
       let session = try await adb.exec().startScreenrecord(deviceID: deviceID, bugReport: bugReport)
       return ADBScreenRecording(session: session, adb: adb)
@@ -259,14 +263,13 @@ actor RecordingService {
           let showTouchesOverride = await ShowTouchesOverride.apply(
             deviceID: device.id,
             enabled: options.showsTouches,
-            using: adb,
-            timeout: .seconds(3)
+            using: adb
           )
           do {
             let session = try await startRecording(device.id, options.recordsBugReport)
             return (device, showTouchesOverride, .success(session))
           } catch {
-            await showTouchesOverride.restore(using: adb, timeout: .seconds(3))
+            await showTouchesOverride.restore(using: adb)
             return (device, showTouchesOverride, .failure(error))
           }
         }
@@ -345,7 +348,7 @@ actor RecordingService {
     guard var operation = operations[operationID],
           let index = operation.entries.firstIndex(where: { $0.device.id == entry.device.id }),
           operation.entries[index].stopStatus == .recording else { return }
-    let restoration = Task { await entry.showTouchesOverride.restore(using: adb, timeout: .seconds(3)) }
+    let restoration = Task { await entry.showTouchesOverride.restore(using: adb) }
     operation.entries[index].touchRestoration = restoration
     operation.entries[index].stopStatus = stopStatus
     operation.entries[index].failure = message
@@ -441,6 +444,7 @@ actor RecordingService {
   }
 
   private func loadRecording(at url: URL, device: Device, capturedAt: Date) async throws -> CaptureMedia {
+    if let recordingLoader { return try await recordingLoader(url, device, capturedAt) }
     let invalidRecording = RecordingLifecycleError(errorDescription: "No playable recording was received.")
     let asset = AVURLAsset(url: url)
     let (duration, isPlayable) = try await asset.load(.duration, .isPlayable)

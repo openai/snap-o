@@ -94,16 +94,22 @@ final class EmulatorGRPCDiscovery {
       try JSONSerialization.data(withJSONObject: ["keys": [jwk]]).write(to: keyFile, options: .atomic)
     }
 
-    let deadline = Date().addingTimeInterval(2)
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while !Self.containsKey(keyID, in: activeFile) {
-      guard Date() < deadline else {
+      guard ContinuousClock.now < deadline else {
         try? FileManager.default.removeItem(at: keyFile)
         return nil
       }
       Thread.sleep(forTimeInterval: 0.05)
     }
 
-    let now = Int(Date().timeIntervalSince1970)
+    return try Self.signedToken(access: access, issuedAt: Date(), signingKey: signingKey, keyID: keyID)
+  }
+
+  static func signedToken(
+    access: Access, issuedAt: Date, signingKey: P256.Signing.PrivateKey, keyID: String
+  ) throws -> (token: String, expiresAt: Date) {
+    let now = Int(issuedAt.timeIntervalSince1970)
     let header = try Self.encodedJSON(["alg": "ES256", "typ": "JWT", "kid": keyID])
     let claims = try Self.encodedJSON([
       "iss": "Snap-O", "iat": now, "exp": now + 900,

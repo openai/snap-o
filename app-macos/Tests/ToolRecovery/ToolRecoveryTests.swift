@@ -1,3 +1,6 @@
+import Clocks
+import ConcurrencyExtras
+import Dependencies
 import Foundation
 
 actor ADBService {
@@ -15,28 +18,38 @@ enum SnapOLog {
 @MainActor
 struct ToolRecoveryTests {
   static func main() async throws {
-    try await reconnectsAfterCooldown()
-    try await waitsForInitialDevices()
-    try await propagatesScanFailures()
-    try await cachesOnlyTheSameProcess()
-    try await retriesFailedDeviceProperties()
-    try await refreshesSiblingDescriptors()
-    try await filtersSocketFloods()
-    try await mixedCompatibility()
-    try await preservesMetadataAfterFailure()
-    try await restartsCanceledLegacyProbe()
+    try await withMainSerialExecutor {
+      try await withDependencies {
+        $0.context = .test
+        $0.continuousClock = TestClock()
+      } operation: {
+        try await reconnectsAfterCooldown()
+        try await waitsForInitialDevices()
+        try await propagatesScanFailures()
+        try await cachesOnlyTheSameProcess()
+        try await retriesFailedDeviceProperties()
+        try await refreshesSiblingDescriptors()
+        try await filtersSocketFloods()
+        try await mixedCompatibility()
+        try await preservesMetadataAfterFailure()
+        try await restartsCanceledLegacyProbe()
+      }
+    }
   }
 
   static func reconnectsAfterCooldown() async throws {
     let adbService = ADBService()
     let adb = await adbService.exec()
-    let clock = RecoveryClock()
-    let service = ToolHTTPService(adbService: adbService) { clock.now }
+    let clock = TestClock()
+    let service = withDependencies { $0.continuousClock = clock } operation: {
+      ToolHTTPService(adbService: adbService)
+    }
     var published: [ToolHTTPService.App] = []
     let changes = await service.changes()
     let observer = Task {
       for await _ in changes {
         published = await service.currentApps().apps
+        testChanges.signal()
       }
     }
     defer { observer.cancel() }
@@ -58,13 +71,13 @@ struct ToolRecoveryTests {
     precondition(published.filter { $0.deviceID == "frozen" }.allSatisfy { !$0.isConnected })
     _ = try await service.endpoint(for: healthy)
     adb.unfreeze()
-    clock.advance(by: .milliseconds(2999))
+    await clock.advance(by: .milliseconds(2999))
     let healthyAttempts = adb.connectionAttempts(to: "healthy")
     try await refresh(service, using: adb, devices: ["frozen", "healthy"])
     // Wait for this refresh to reach the transport before checking the blocked sockets.
     try await eventually { adb.connectionAttempts(to: "healthy") == healthyAttempts + 2 }
     precondition(adb.connectionAttempts(to: "frozen") == 2, "Cooldown must suppress new connections")
-    clock.advance(by: .milliseconds(1))
+    await clock.advance(by: .milliseconds(1))
     try await refresh(service, using: adb, devices: ["frozen", "healthy"])
     try await eventually { published.allSatisfy(\.isConnected) }
     _ = try await service.endpoint(for: network)
@@ -86,10 +99,14 @@ struct ToolRecoveryTests {
     let adbService = ADBService()
     let adb = await adbService.exec()
     let tracker = DeviceTracker(adbService: adbService)
+    let trackerObserver = await observe(tracker.deviceStream())
+    defer { trackerObserver.cancel() }
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1\nother device transport_id:2")
     try await eventually { await tracker.latestDevices.count == 2 }
     let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     adb.setDiscoveryFailures(["healthy", "other"])
     do {
       _ = try await service.discoverPlugins()
@@ -118,14 +135,22 @@ struct ToolRecoveryTests {
     let adbService = ADBService()
     let adb = await adbService.exec()
     let tracker = DeviceTracker(adbService: adbService)
-    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let trackerObserver = await observe(tracker.deviceStream())
+    defer { trackerObserver.cancel() }
+    let requested = TestValue(false)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: {
+      await MainActor.run { requested.value = true }
+      return await tracker.deviceStream()
+    }))
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     var completed = false
     let scan = Task {
       let snapshot = try await service.discoverPlugins()
       completed = true
       return snapshot
     }
-    try await Task.sleep(for: .milliseconds(50))
+    await waitForObservedTestState { requested.value }
     precondition(!completed, "An uninitialized tracker is not an empty device scan")
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
@@ -135,9 +160,13 @@ struct ToolRecoveryTests {
     await tracker.stopTracking()
 
     let idleTracker = DeviceTracker(adbService: adbService)
-    let idleService = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await idleTracker.deviceStream() }))
+    let idleRequested = TestValue(false)
+    let idleService = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: {
+      await MainActor.run { idleRequested.value = true }
+      return await idleTracker.deviceStream()
+    }))
     let pending = Task { try await idleService.discoverPlugins() }
-    try await Task.sleep(for: .milliseconds(50))
+    await waitForObservedTestState { idleRequested.value }
     await idleService.stop()
     let stopped = try await pending.value
     precondition(stopped.apps.isEmpty, "Shutdown cancels discovery waiting for the first device update")
@@ -149,10 +178,14 @@ struct ToolRecoveryTests {
     let adb = await adbService.exec()
     adb.setMetadataAvailable(true)
     let tracker = DeviceTracker(adbService: adbService)
+    let trackerObserver = await observe(tracker.deviceStream())
+    defer { trackerObserver.cancel() }
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1\nother device transport_id:2")
     try await eventually { await tracker.latestDevices.count == 2 }
     let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     _ = try await service.discoverPlugins()
     try await eventually { await service.currentPlugins().apps.allSatisfy { $0.appIconBase64 != nil } }
     let original = await service.currentPlugins().apps
@@ -176,6 +209,8 @@ struct ToolRecoveryTests {
 
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
     let restarted = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let restartedObserver = await observe(restarted.changes())
+    defer { restartedObserver.cancel() }
     let fresh = try await restarted.discoverPlugins().apps
     precondition(fresh.allSatisfy { $0.appIconBase64 == nil }, "Metadata is not shared across service instances")
     adb.setMetadataAvailable(true)
@@ -189,20 +224,26 @@ struct ToolRecoveryTests {
   }
 
   static func retriesFailedDeviceProperties() async throws {
-    let adbService = ADBService()
-    let adb = await adbService.exec()
-    let tracker = DeviceTracker(adbService: adbService)
-    await tracker.startTracking()
-    let previewStream = await tracker.previewDeviceStream()
-    var previews = previewStream.makeAsyncIterator()
-    adb.emitDevices("healthy device transport_id:1\nstalled device transport_id:2\nignored detached transport_id:3")
-    let earlyDevices = await previews.next()
-    precondition(earlyDevices?.map(\.id) == ["healthy", "stalled"], "Preview discovery must not wait for properties")
-    try await eventually { await tracker.latestDevices.map(\.id) == ["healthy"] }
-    adb.recoverProperties()
-    try await eventually { await tracker.latestDevices.map(\.id) == ["healthy", "stalled"] }
-    await tracker.stopTracking()
-    print("Failed device properties recover without another tracking event")
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adbService = ADBService()
+      let adb = await adbService.exec()
+      let tracker = DeviceTracker(adbService: adbService)
+      let trackerObserver = await observe(tracker.deviceStream())
+      defer { trackerObserver.cancel() }
+      await tracker.startTracking()
+      let previewStream = await tracker.previewDeviceStream()
+      var previews = previewStream.makeAsyncIterator()
+      adb.emitDevices("healthy device transport_id:1\nstalled device transport_id:2\nignored detached transport_id:3")
+      let earlyDevices = await previews.next()
+      precondition(earlyDevices?.map(\.id) == ["healthy", "stalled"], "Preview discovery must not wait for properties")
+      try await eventually { await tracker.latestDevices.map(\.id) == ["healthy"] }
+      adb.recoverProperties()
+      await clock.advance(by: .seconds(3))
+      try await eventually { await tracker.latestDevices.map(\.id) == ["healthy", "stalled"] }
+      await tracker.stopTracking()
+      print("Failed device properties recover without another tracking event")
+    }
   }
 
   static func refreshesSiblingDescriptors() async throws {
@@ -211,10 +252,14 @@ struct ToolRecoveryTests {
     adb.setMetadataAvailable(true)
     adb.setSocketNames(["snapo_network_42", "snapo_network_43"], deviceID: "healthy")
     let tracker = DeviceTracker(adbService: adbService)
+    let trackerObserver = await observe(tracker.deviceStream())
+    defer { trackerObserver.cancel() }
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
     let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     _ = try await service.discoverPlugins()
     try await eventually {
       await service.currentPlugins().apps.first?.metadata?.tools.map(\.id) == [.network, .tweaks, .sample]
@@ -251,6 +296,8 @@ struct ToolRecoveryTests {
     let noise = (0 ..< 1000).map { "snapo_noise\($0)_42" }
     adb.setSocketNames(noise + ["snapo_sample_42", "snapo_network_43"], deviceID: "healthy")
     let service = ToolHTTPService(adbService: adbService)
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     try await refresh(service, using: adb)
     try await eventually { adb.metadataProcessRequests.count == 1 && adb.toolConnectionCount == 1 }
     let pending = await service.currentApps().apps
@@ -274,6 +321,8 @@ struct ToolRecoveryTests {
 
     let requestsBeforeBatches = adb.metadataProcessRequests.count
     let manyProcesses = ToolHTTPService(adbService: adbService)
+    let manyProcessesObserver = await observe(manyProcesses.changes())
+    defer { manyProcessesObserver.cancel() }
     adb.setSocketNames((100 ... 164).map { "snapo_noise_\($0)" }, deviceID: "healthy")
     try await refresh(manyProcesses, using: adb)
     try await eventually { adb.metadataProcessRequests.count == requestsBeforeBatches + 2 }
@@ -292,12 +341,17 @@ struct ToolRecoveryTests {
     adb.setMetadataAvailable(true)
     adb.setLegacyKinds([.network])
     let tracker = DeviceTracker(adbService: adbService)
+    let trackerObserver = await observe(tracker.deviceStream())
+    defer { trackerObserver.cancel() }
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
     let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
+    _ = try await service.discoverPlugins()
     try await eventually {
-      let options = try await service.discoverPlugins().apps.first?.tools
+      let options = await service.currentPlugins().apps.first?.tools
       return options?.first { $0.kind == .network }?.compatibility == .legacy(protocolVersion: 1)
         && options?.first { $0.kind == .tweaks }?.compatibility == .supported
         && options?.allSatisfy(\.isConnected) == true
@@ -315,8 +369,9 @@ struct ToolRecoveryTests {
     precondition(adb.legacyRequestCount == 1, "Known legacy metadata is cached and modern siblings are not probed")
     adb.setLegacyKinds([])
     adb.replaceListeners()
+    _ = try await service.discoverPlugins()
     try await eventually {
-      try await service.discoverPlugins().apps.first?.tools.allSatisfy { $0.compatibility == .supported } == true
+      await service.currentPlugins().apps.first?.tools.allSatisfy { $0.compatibility == .supported } == true
     }
     precondition(adb.legacyRequestCount == 1, "Replacement listeners use fresh manifests before legacy detection")
     await service.stop()
@@ -337,6 +392,8 @@ struct ToolRecoveryTests {
       adb.setMetadataAvailable(true)
       adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
       let service = ToolHTTPService(adbService: adbService)
+      let serviceObserver = await observe(service.changes())
+      defer { serviceObserver.cancel() }
       try await refresh(service, using: adb)
       try await eventually {
         let app = await service.currentApps().apps.first
@@ -399,6 +456,8 @@ struct ToolRecoveryTests {
     adb.setLegacyBlocked(true)
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
     let service = ToolHTTPService(adbService: adbService)
+    let serviceObserver = await observe(service.changes())
+    defer { serviceObserver.cancel() }
     try await refresh(service, using: adb)
     try await eventually {
       await service.currentApps().apps.first?.checkingLegacy == true && adb.legacyRequestCount == 1
@@ -423,23 +482,19 @@ struct ToolRecoveryTests {
     print("Socket removal clears canceled probe state; rediscovery retries immediately and shutdown cancels active probes")
   }
 
-  static func eventually(line: Int = #line, _ condition: () async throws -> Bool) async throws {
-    for _ in 0 ..< 500 {
-      if try await condition() { return }
-      try await Task.sleep(for: .milliseconds(10))
+  static func observe(_ changes: AsyncStream<some Sendable>) -> Task<Void, Never> {
+    Task {
+      for await _ in changes {
+        testChanges.signal()
+      }
     }
-    fatalError("Condition at line \(line) did not become true")
-  }
-}
-
-private final class RecoveryClock: @unchecked Sendable {
-  private let lock = NSLock()
-  private var instant = ContinuousClock.now
-  var now: ContinuousClock.Instant {
-    lock.withLock { instant }
   }
 
-  func advance(by duration: Duration) {
-    lock.withLock { instant = instant.advanced(by: duration) }
+  static func eventually(_ condition: () async throws -> Bool) async throws {
+    while true {
+      let revision = testChanges.revision
+      if try await condition() { return }
+      try await testChanges.wait(after: revision)
+    }
   }
 }

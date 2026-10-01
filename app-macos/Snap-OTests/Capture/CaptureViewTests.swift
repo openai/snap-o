@@ -8,7 +8,7 @@ import Testing
 @MainActor
 struct CaptureViewTests {
   @Test
-  func sizingPreservesMountedContent() async throws {
+  func sizingPreservesMountedContent() {
     var mounted: [NSView] = []
     func surface(_ ratio: CGFloat?) -> some View {
       CaptureSurfaceView(aspectRatio: ratio) {
@@ -32,7 +32,7 @@ struct CaptureViewTests {
     ] {
       view.rootView = surface(ratio)
       view.layoutSubtreeIfNeeded()
-      try await eventually { mounted.first?.frame.size == size }
+      #expect(mounted.first?.frame.size == size)
       #expect(mounted.count == 1, "Sizing changes must preserve the mounted media view")
     }
   }
@@ -58,7 +58,7 @@ struct CaptureViewTests {
   }
 
   @Test
-  func connectButtonClearsTheSelectedConnectionFailure() async throws {
+  func connectButtonClearsTheSelectedConnectionFailure() throws {
     NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
     let host = FailedPreviewHost()
     host.connection.hasFailed = true
@@ -77,11 +77,12 @@ struct CaptureViewTests {
     )
     window.contentView = view
     defer { window.contentView = nil }
-    try await eventually { connectButton(in: view) != nil }
+    view.layoutSubtreeIfNeeded()
     let button = try #require(connectButton(in: view))
     #expect(button.accessibilityPerformPress?() == true)
     #expect(!host.connection.hasFailed)
-    try await eventually { connectButton(in: view) == nil }
+    view.layoutSubtreeIfNeeded()
+    #expect(connectButton(in: view) == nil)
   }
 
   private func connectButton(in element: AnyObject) -> AnyObject? {
@@ -92,14 +93,6 @@ struct CaptureViewTests {
       if let found = connectButton(in: child as AnyObject) { return found }
     }
     return nil
-  }
-
-  private func eventually(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while !condition(), ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(1))
-    }
-    try #require(condition())
   }
 }
 

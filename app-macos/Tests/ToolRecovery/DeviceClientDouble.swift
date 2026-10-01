@@ -1,26 +1,39 @@
 import Darwin
 import Foundation
+import NIOCore
+import NIOHTTP1
 
 public struct ToolFrontendBundle: Sendable {}
 
-public final class ADBSocketConnection: @unchecked Sendable {
-  func takeSocketDescriptor() throws -> Int32 {
-    var descriptors: [Int32] = [0, 0]
-    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw POSIXError(.EIO) }
-    let peer = descriptors[1]
-    var noSignal: Int32 = 1
-    _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
-    DispatchQueue.global().async {
-      defer { Darwin.close(peer) }
-      var request = [UInt8](repeating: 0, count: 16 * 1024)
-      guard Darwin.recv(peer, &request, request.count, 0) > 0 else { return }
-      let response = Array("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n".utf8)
-      _ = response.withUnsafeBytes { Darwin.send(peer, $0.baseAddress, $0.count, 0) }
-    }
-    return descriptors[0]
-  }
+public final class ADBSocketConnection: Sendable {}
 
-  public func close() {}
+/// Recovery policy only needs the outcome of an HTTP health probe.
+enum ToolURL {
+  static let api = URL(string: "snapo://tool/api/")!
+}
+
+struct ToolHTTPRequestInput {
+  init(request: URLRequest) throws {
+    precondition(request.httpMethod == "OPTIONS" && request.url == ToolURL.api)
+  }
+}
+
+enum ToolHTTPTransportError: Error { case invalidResponse }
+
+struct ToolHTTPRequestOperation {
+  let input: ToolHTTPRequestInput
+  let requestTimeout: TimeAmount?
+  let openConnection: @Sendable () async throws -> ADBSocketConnection
+
+  func run(
+    isolation: isolated (any Actor)? = #isolation,
+    onResponse: (HTTPResponseHead) async throws -> Void,
+    onData _: (Data) async throws -> Void
+  ) async throws {
+    _ = try await openConnection()
+    try Task.checkCancellation()
+    try await onResponse(HTTPResponseHead(version: .http1_1, status: .noContent))
+  }
 }
 
 public final class ADBClient: @unchecked Sendable {
@@ -49,6 +62,7 @@ public final class ADBClient: @unchecked Sendable {
 
   public func setLegacyBlocked(_ blocked: Bool) {
     lock.withLock { legacyBlocked = blocked }
+    testChanges.signal()
   }
 
   public var legacyCancellationCount: Int {
@@ -104,6 +118,7 @@ public final class ADBClient: @unchecked Sendable {
       if failed { failedToolConnections += 1 }
       return failed
     }
+    testChanges.signal()
     if shouldFail { throw ADBError.requestTimedOut("Test timeout") }
     return ADBSocketConnection()
   }
@@ -118,6 +133,7 @@ public final class ADBClient: @unchecked Sendable {
 
   public func setMetadataAvailable(_ available: Bool) {
     lock.withLock { metadataAvailable = available }
+    testChanges.signal()
   }
 
   public var metadataProcessRequests: [[Int]] {
@@ -127,8 +143,11 @@ public final class ADBClient: @unchecked Sendable {
   public func pluginMetadata(deviceID: String, processIDs: [Int], helperURL: URL) async throws -> [ToolProcessMetadata] {
     precondition(!processIDs.isEmpty && processIDs.count <= 64)
     lock.withLock { metadataRequests.append(processIDs) }
-    while !lock.withLock({ metadataAvailable }) {
-      try await Task.sleep(for: .milliseconds(10))
+    testChanges.signal()
+    while true {
+      let revision = testChanges.revision
+      if lock.withLock({ metadataAvailable }) { break }
+      try await testChanges.wait(after: revision)
     }
     let failure = lock.withLock { metadataFailure }
     if failure == .request { throw ADBError.requestTimedOut("Test metadata timeout") }
@@ -167,13 +186,18 @@ public final class ADBClient: @unchecked Sendable {
     pid: Int
   ) async throws -> LegacyPluginMetadata? {
     lock.withLock { legacyRequests += 1 }
+    testChanges.signal()
     do {
-      while lock.withLock({ legacyBlocked }) {
-        try await Task.sleep(for: .milliseconds(10))
+      while true {
+        let revision = testChanges.revision
+        if !lock.withLock({ legacyBlocked }) { break }
+        try await testChanges.wait(after: revision)
       }
       try Task.checkCancellation()
     } catch {
-      if Task.isCancelled { lock.withLock { legacyCancellations += 1 } }
+      if Task.isCancelled { lock.withLock { legacyCancellations += 1 }
+        testChanges.signal()
+      }
       throw error
     }
     return lock.withLock {

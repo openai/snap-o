@@ -1,6 +1,8 @@
 import Foundation
+import Observation
 
 @MainActor
+@Observable
 final class DeviceTracker {
   private var preview: AsyncStream<[Device]>.Continuation?
   private var ready: AsyncStream<[Device]>.Continuation?
@@ -34,6 +36,7 @@ final class DeviceTracker {
 }
 
 @MainActor
+@Observable
 final class ADBService {
   let client = ADBClient()
   func exec() async -> ADBClient {
@@ -42,6 +45,7 @@ final class ADBService {
 }
 
 @MainActor
+@Observable
 final class ADBClient {
   let connectionsGate = TestGate()
   let bootGate = TestGate()
@@ -64,6 +68,7 @@ final class ADBClient {
 }
 
 @MainActor
+@Observable
 final class EmulatorClient {
   var title = "Test Tablet"
   var resolvesSerial = true

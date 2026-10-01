@@ -204,33 +204,32 @@ struct CaptureCropExportTests {
       AVVideoCompressionPropertiesKey: [AVVideoAllowFrameReorderingKey: false]
     ])
     if rotated { input.transform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 32, ty: 0) }
-    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
-    writer.add(input)
+    let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: nil)
     try #require(writer.startWriting())
     writer.startSession(atSourceTime: .zero)
-    var buffer: CVPixelBuffer?
-    try #require(CVPixelBufferCreate(kCFAllocatorDefault, 64, 32, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess)
-    let pixel = try #require(buffer)
-    CVPixelBufferLockBaseAddress(pixel, [])
-    let bytes = try #require(CVPixelBufferGetBaseAddress(pixel)).assumingMemoryBound(to: UInt8.self)
-    for y in 0 ..< 32 {
-      for x in 0 ..< 64 {
-        let offset = y * CVPixelBufferGetBytesPerRow(pixel) + x * 4
-        bytes[offset] = x >= 32 ? 255 : 0
-        bytes[offset + 1] = 0
-        bytes[offset + 2] = x < 32 ? 255 : 0
-        bytes[offset + 3] = 255
+    let buffer = try CVMutablePixelBuffer(.init(
+      pixelFormatType: .init(rawValue: kCVPixelFormatType_32BGRA), size: .init(width: 64, height: 32)
+    ))
+    try buffer.withUnsafeBuffer { pixel in
+      CVPixelBufferLockBaseAddress(pixel, [])
+      defer { CVPixelBufferUnlockBaseAddress(pixel, []) }
+      let bytes = try #require(CVPixelBufferGetBaseAddress(pixel)).assumingMemoryBound(to: UInt8.self)
+      for y in 0 ..< 32 {
+        for x in 0 ..< 64 {
+          let offset = y * CVPixelBufferGetBytesPerRow(pixel) + x * 4
+          bytes[offset] = x >= 32 ? 255 : 0
+          bytes[offset + 1] = 0
+          bytes[offset + 2] = x < 32 ? 255 : 0
+          bytes[offset + 3] = 255
+        }
       }
     }
-    CVPixelBufferUnlockBaseAddress(pixel, [])
+    let pixels = CVReadOnlyPixelBuffer(buffer)
     for frame in 0 ..< 3 {
-      while !input.isReadyForMoreMediaData {
-        try await Task.sleep(for: .milliseconds(1))
-      }
-      try #require(adaptor.append(pixel, withPresentationTime: CMTime(value: Int64(frame), timescale: 10)))
+      try await receiver.append(pixels, with: CMTime(value: Int64(frame), timescale: 10))
     }
     writer.endSession(atSourceTime: CMTime(value: 3, timescale: 10))
-    input.markAsFinished()
+    receiver.finish()
     await writer.finishWriting()
     try #require(writer.status == .completed)
   }

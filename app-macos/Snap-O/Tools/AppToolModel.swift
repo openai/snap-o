@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 struct AppLaunchState: Encodable {
@@ -46,7 +47,8 @@ final class AppToolModel {
   private let changes: (() async -> AsyncStream<Void>)?
   private let currentDiscovery: (() async -> ToolDiscoverySnapshot)?
   private let openApp: (OpenAppInput) async throws -> Void
-  private let sleep: (Duration) async throws -> Void
+  @Dependency(\.continuousClock)
+  private var clock
   private let preferences: UserDefaults
   private var selection: ToolSelection
   private var savedPreferences: String?
@@ -69,15 +71,13 @@ final class AppToolModel {
     discover: @escaping () async throws -> ToolDiscoverySnapshot,
     changes: (() async -> AsyncStream<Void>)? = nil,
     currentDiscovery: (() async -> ToolDiscoverySnapshot)? = nil,
-    openApp: @escaping (OpenAppInput) async throws -> Void,
-    sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    openApp: @escaping (OpenAppInput) async throws -> Void
   ) {
     self.preferences = preferences
     self.discover = discover
     self.changes = changes
     self.currentDiscovery = currentDiscovery
     self.openApp = openApp
-    self.sleep = sleep
     savedPreferences = preferences.string(forKey: "inspectorPreferences")
     selection = ToolSelection(saved: savedPreferences)
   }
@@ -106,10 +106,10 @@ final class AppToolModel {
         }
       }
     }
-    let sleep = sleep
+    let clock = clock
     pollingTask = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await sleep(.milliseconds(2500)) } catch { return }
+        do { try await clock.sleep(for: .milliseconds(2500)) } catch { return }
         guard !Task.isCancelled, let self else { return }
         if !launchWaiting { refresh() }
       }
@@ -203,10 +203,10 @@ final class AppToolModel {
     launchWaiting = true
     launchError = nil
     publish()
-    let sleep = sleep
+    let clock = clock
     launchPollingTask = Task { [weak self] in
       for _ in 0 ..< 10 {
-        do { try await sleep(.milliseconds(500)) } catch { return }
+        do { try await clock.sleep(for: .milliseconds(500)) } catch { return }
         guard !Task.isCancelled, self?.launchID == id else { return }
         self?.refresh()
       }

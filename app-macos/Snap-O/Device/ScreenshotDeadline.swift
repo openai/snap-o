@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 /// One deadline for a screenshot attempt, including retries and metadata reads.
@@ -5,13 +6,14 @@ enum ScreenshotDeadline {
   static let duration: Duration = .seconds(2)
 
   static func run<Value: Sendable>(
-    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
     _ operation: @escaping @Sendable () async throws -> Value
   ) async throws -> Value {
-    try await withThrowingTaskGroup(of: Value.self) { group in
+    @Dependency(\.continuousClock)
+    var clock
+    return try await withThrowingTaskGroup(of: Value.self) { group in
       group.addTask(operation: operation)
-      group.addTask {
-        try await sleep(duration)
+      group.addTask { [clock] in
+        try await clock.sleep(for: duration)
         throw ADBError.requestTimedOut("Screenshot capture timed out after 2 seconds")
       }
       defer { group.cancelAll() }

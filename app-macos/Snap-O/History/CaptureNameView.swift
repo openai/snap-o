@@ -129,7 +129,7 @@ struct CaptureHistoryName: View {
   }
 }
 
-private struct CaptureHistoryNameField: NSViewRepresentable {
+struct CaptureHistoryNameField: NSViewRepresentable {
   let entry: CaptureHistoryEntry
   @Binding var isEditing: Bool
   let rename: (String) -> Void
@@ -203,12 +203,16 @@ private struct CaptureHistoryNameField: NSViewRepresentable {
   }
 }
 
-private final class CaptureHistoryRenameField: NSTextField {
+final class CaptureHistoryRenameField: NSTextField {
+  var scheduleFocus: (@escaping @MainActor @Sendable () -> Void) -> Void = { action in
+    DispatchQueue.main.async(execute: action)
+  }
+
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     guard window != nil else { return }
     // The field is created during Rename; wait for attachment and menu dismissal before focusing it.
-    DispatchQueue.main.async { [weak self] in
+    scheduleFocus { [weak self] in
       guard let self, window != nil else { return }
       selectText(nil)
     }

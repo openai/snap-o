@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 public final class RecordingSession: @unchecked Sendable {
@@ -29,7 +30,11 @@ public final class RecordingSession: @unchecked Sendable {
     try await completionTask.value
   }
 
-  func waitUntilStopped(timeout: Duration) async throws {
+  func waitUntilStopped(
+    timeout: Duration
+  ) async throws {
+    @Dependency(\.continuousClock)
+    var clock
     try await withThrowingTaskGroup(of: Void.self) { group in
       group.addTask {
         try await withTaskCancellationHandler {
@@ -38,8 +43,8 @@ public final class RecordingSession: @unchecked Sendable {
           self.close()
         }
       }
-      group.addTask {
-        try await Task.sleep(for: timeout)
+      group.addTask { [clock] in
+        try await clock.sleep(for: timeout)
         throw ADBError.requestTimedOut("Recording finalization timed out.")
       }
       defer { group.cancelAll() }

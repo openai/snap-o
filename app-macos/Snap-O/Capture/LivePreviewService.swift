@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 struct LivePreviewOptions: Equatable {
@@ -21,7 +22,8 @@ actor LivePreviewService {
 
   private let adb: ADBService
   private let coordinator: CaptureCoordinator
-  private let bootRetrySleep: @Sendable (Duration) async throws -> Void
+  @Dependency(\.continuousClock)
+  private var clock
   private var bootWaitTasks: [UUID: Task<Void, Error>] = [:]
 
   private var operations: [UUID: Operation] = [:]
@@ -32,12 +34,10 @@ actor LivePreviewService {
 
   init(
     adb: ADBService,
-    coordinator: CaptureCoordinator,
-    bootRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    coordinator: CaptureCoordinator
   ) {
     self.adb = adb
     self.coordinator = coordinator
-    self.bootRetrySleep = bootRetrySleep
   }
 
   func start(
@@ -143,7 +143,7 @@ actor LivePreviewService {
           await session.updateDensityScale(CGFloat(density))
           break
         } catch {
-          do { try await bootRetrySleep(.seconds(1)) } catch { return nil }
+          do { try await clock.sleep(for: .seconds(1)) } catch { return nil }
         }
       }
       guard !Task.isCancelled else { return nil }
@@ -192,7 +192,7 @@ actor LivePreviewService {
     guard !isShuttingDown else { throw CaptureCoordinationError.closed }
     let id = UUID()
     // Keep discovery cancellable during both ADB requests and retry delays.
-    let task = Task { [adb, sleep = bootRetrySleep] in
+    let task = Task { [adb, clock] in
       let exec = await adb.exec()
       var delay = Duration.seconds(1)
       while true {
@@ -204,7 +204,7 @@ actor LivePreviewService {
         } catch {
           // ADB can reject commands or time out while Android is booting.
         }
-        try await sleep(delay)
+        try await clock.sleep(for: delay)
         delay = min(delay * 2, .seconds(10))
       }
     }

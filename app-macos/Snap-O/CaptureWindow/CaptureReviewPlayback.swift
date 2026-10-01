@@ -17,9 +17,7 @@ final class CaptureReviewPlayback {
   @ObservationIgnored private var looper: AVPlayerLooper?
   @ObservationIgnored private var timeObserver: Any?
   @ObservationIgnored private var generation = UUID()
-  @ObservationIgnored private var seekGeneration = UUID()
-  @ObservationIgnored private var isSeeking = false
-  @ObservationIgnored private var pendingSeek: (time: Double, tolerance: Double)?
+  @ObservationIgnored private var seeks = CaptureSeekQueue()
 
   var isPlaying: Bool {
     isActive && isWindowVisible && wantsPlayback && !isScrubbing
@@ -43,7 +41,7 @@ final class CaptureReviewPlayback {
       isActive = true
       timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
         MainActor.assumeIsolated {
-          guard let self, token == self.generation, !self.isScrubbing, !self.isSeeking, time.seconds.isFinite else { return }
+          guard let self, token == self.generation, !self.isScrubbing, !self.seeks.isSeeking, time.seconds.isFinite else { return }
           self.time = max(0, min(time.seconds, self.duration))
         }
       }
@@ -56,9 +54,7 @@ final class CaptureReviewPlayback {
 
   func stop() {
     generation = UUID()
-    seekGeneration = UUID()
-    isSeeking = false
-    pendingSeek = nil
+    seeks = CaptureSeekQueue()
     isActive = false
     isScrubbing = false
     player.pause()
@@ -96,16 +92,12 @@ final class CaptureReviewPlayback {
   func seek(to seconds: Double) {
     guard seconds.isFinite else { return }
     time = max(0, min(seconds, duration))
-    pendingSeek = (time, isScrubbing ? 1.0 / 15 : 0)
+    seeks.enqueue(time: time, tolerance: isScrubbing ? 1.0 / 15 : 0)
     performPendingSeek()
   }
 
   private func performPendingSeek() {
-    guard !isSeeking, let request = pendingSeek else { return }
-    pendingSeek = nil
-    let token = UUID()
-    seekGeneration = token
-    isSeeking = true
+    guard let request = seeks.next() else { return }
     updatePlayback()
     let tolerance = CMTime(seconds: request.tolerance, preferredTimescale: 60000)
     // Finish the current decode, then jump to the latest requested position.
@@ -116,8 +108,7 @@ final class CaptureReviewPlayback {
         toleranceAfter: tolerance
       ) { [weak self] _ in
         Task { @MainActor in
-          guard let self, token == self.seekGeneration else { return }
-          self.isSeeking = false
+          guard let self, self.seeks.complete(request) else { return }
           self.performPendingSeek()
           self.updatePlayback()
         }
@@ -131,7 +122,7 @@ final class CaptureReviewPlayback {
   }
 
   private func updatePlayback() {
-    if isPlaying, !isSeeking {
+    if isPlaying, !seeks.isSeeking {
       player.playImmediately(atRate: speed)
     } else {
       player.pause()
@@ -144,5 +135,37 @@ final class CaptureReviewPlayback {
       return String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
     }
     return String(format: "%02d:%02d", total / 60, total % 60)
+  }
+}
+
+/// Coalesces pending scrubs while the player finishes its current seek.
+struct CaptureSeekQueue {
+  struct Request {
+    let id = UUID()
+    let time: Double
+    let tolerance: Double
+  }
+
+  private var active: UUID?
+  private var pending: Request?
+  var isSeeking: Bool {
+    active != nil
+  }
+
+  mutating func enqueue(time: Double, tolerance: Double) {
+    pending = Request(time: time, tolerance: tolerance)
+  }
+
+  mutating func next() -> Request? {
+    guard active == nil, let request = pending else { return nil }
+    pending = nil
+    active = request.id
+    return request
+  }
+
+  mutating func complete(_ request: Request) -> Bool {
+    guard active == request.id else { return false }
+    active = nil
+    return true
   }
 }

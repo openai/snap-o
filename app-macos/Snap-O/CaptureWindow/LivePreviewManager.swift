@@ -1,4 +1,5 @@
 import CoreGraphics
+import Dependencies
 import Foundation
 
 @MainActor
@@ -14,9 +15,9 @@ final class LivePreviewManager {
   private let pointerInjector: LivePreviewPointerInjector
   private var preparedLivePreview: PreparedLivePreview?
   private var preparedMediaTask: Task<Void, Never>?
-  private var displayRetryTask: Task<Void, Never>?
-  private let warmupSleep: @Sendable (Duration) async throws -> Void
-  private let displayRetrySleep: @Sendable (Duration) async throws -> Void
+  private(set) var displayRetryTask: Task<Void, Never>?
+  @Dependency(\.continuousClock)
+  private var clock
 
   private var deviceOrder: [String] = []
   private var deviceInfo: [String: Device] = [:]
@@ -49,16 +50,12 @@ final class LivePreviewManager {
     adbService: ADBService,
     options: LivePreviewOptions,
     preparedLivePreview: PreparedLivePreview? = nil,
-    warmupSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-    displayRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
     mediaDidChange: @escaping @MainActor ([CaptureMedia]) -> Void
   ) {
     self.livePreviewService = livePreviewService
     self.adbService = adbService
     self.options = options
     self.preparedLivePreview = preparedLivePreview
-    self.displayRetrySleep = displayRetrySleep
-    self.warmupSleep = warmupSleep
     self.mediaDidChange = mediaDidChange
     pointerInjector = LivePreviewPointerInjector(adb: adbService)
   }
@@ -162,6 +159,10 @@ final class LivePreviewManager {
     return renderer
   }
 
+  func waitUntilInteractive(_ renderer: LivePreviewRenderer) async {
+    await readinessTasks[renderer.operation.id]?.value
+  }
+
   private func startEmulatorWarmups(for devices: [Device]) {
     for device in devices where EmulatorGRPCEndpoint.isEmulator(device.id) {
       guard lastDisplayInfo[device.id] == nil, emulatorWarmups[device.id] == nil else { continue }
@@ -170,11 +171,13 @@ final class LivePreviewManager {
         preparedLivePreview = nil
         prepared = existing
       } else {
-        prepared = PreparedLivePreview(
-          deviceID: device.id, options: options,
-          operationTask: PreparedLivePreview.startOperation(for: device.id, options: options, service: livePreviewService),
-          service: livePreviewService, sleep: warmupSleep
-        )
+        prepared = withDependencies(from: self) {
+          PreparedLivePreview(
+            deviceID: device.id, options: options,
+            operationTask: PreparedLivePreview.startOperation(for: device.id, options: options, service: livePreviewService),
+            service: livePreviewService
+          )
+        }
       }
       prepared.expireAfterReadiness()
       let task = Task { [weak self] in
@@ -346,10 +349,10 @@ final class LivePreviewManager {
     guard await refreshDisplayInfos(for: devices, syncID: syncID) else { return }
 
     // ADB can connect before Android's display services are ready, without another device update.
-    displayRetryTask = Task { [weak self, sleep = displayRetrySleep] in
+    displayRetryTask = Task { [weak self, clock] in
       var delay = Duration.seconds(1)
       while true {
-        do { try await sleep(delay) } catch { return }
+        do { try await clock.sleep(for: delay) } catch { return }
         guard await self?.refreshDisplayInfos(for: devices, syncID: syncID) == true else { return }
         delay = min(delay * 2, .seconds(10))
       }
@@ -483,7 +486,7 @@ final class LivePreviewManager {
     }
   }
 
-  private func sendPointerEvent(
+  func sendPointerEvent(
     operation: LivePreviewOperationHandle,
     action: LivePreviewPointerAction,
     source: LivePreviewPointerSource,

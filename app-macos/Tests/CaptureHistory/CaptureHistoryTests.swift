@@ -37,7 +37,7 @@ struct CaptureHistoryTests {
     try await oversizedGrace()
     try await failureAndRecovery()
     try await screenshotCancellation()
-    try await screenshotTimeout()
+    try await screenshotTimeoutPreservesHealthyDevice()
     print("Capture history tests passed")
   }
 
@@ -57,13 +57,11 @@ struct CaptureHistoryTests {
     ))
   }
 
-  static func screenshotTimeout() async throws {
+  static func screenshotTimeoutPreservesHealthyDevice() async throws {
     let root = try temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
-    let service = ScreenshotService(adb: ADBService(), fileStore: FileStore(baseDir: root))
-    let start = ContinuousClock.now
+    let service = ScreenshotService(adb: ADBService(timesOut: true), fileStore: FileStore(baseDir: root))
     let result = await service.capture(for: [firstDevice, secondDevice])
-    precondition(start.duration(to: .now) < .seconds(3), "A stalled device must not hold screenshots for ten seconds")
     precondition(result.media.map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
     precondition(result.failures.count == 1 && result.failures[0].device.id == secondDevice.id)
     precondition(result.failures[0].error.localizedDescription.contains("2 seconds"))
@@ -84,17 +82,12 @@ struct CaptureHistoryTests {
       )
       let devices = keepsCompletedScreenshot ? [firstDevice, secondDevice] : [secondDevice]
       let task = Task { await service.capture(for: devices) }
-      var ready = false
-      for _ in 0 ..< 2000 {
-        let snapshot = await repository.currentSnapshot()
-        let hasExpectedMedia = !keepsCompletedScreenshot || snapshot.entries.first?.availableItems.count == 1
-        if await adb.waitingForCancellation, hasExpectedMedia {
-          ready = true
-          break
+      await waitForActorTestState { await adb.waitingForCancellation }
+      if keepsCompletedScreenshot {
+        for await snapshot in await repository.updates() {
+          if snapshot.entries.first?.availableItems.count == 1 { break }
         }
-        try await Task.sleep(for: .milliseconds(1))
       }
-      precondition(ready, "Reach the intended cancellation point before canceling")
       task.cancel()
       let result = await task.value
       let snapshot = await CaptureHistoryRepository(root: repository.root).currentSnapshot()

@@ -44,19 +44,24 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
   }
 
   func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
+    start(urlSchemeTask)
+  }
+
+  @discardableResult
+  func start(_ urlSchemeTask: any WKURLSchemeTask) -> Task<Void, Never>? {
     guard let url = urlSchemeTask.request.url, url.scheme == ToolURL.scheme, url.host == ToolURL.host,
           url.port == nil, url.user == nil, url.password == nil, url.fragment == nil else {
       urlSchemeTask.didFailWithError(URLError(.unsupportedURL))
-      return
+      return nil
     }
     let api = ToolURL.isAPI(url)
     let endpoint = endpoint
     guard !api || endpoint != nil else {
       urlSchemeTask.didFailWithError(URLError(.userAuthenticationRequired))
-      return
+      return nil
     }
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
-    tasks[identifier] = (api, Task {
+    let task = Task {
       defer { tasks[identifier] = nil }
       do {
         try Task.checkCancellation()
@@ -86,10 +91,16 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
       } catch {
         if !Task.isCancelled { urlSchemeTask.didFailWithError(error) }
       }
-    })
+    }
+    tasks[identifier] = (api, task)
+    return task
   }
 
   func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {
+    stop(urlSchemeTask)
+  }
+
+  func stop(_ urlSchemeTask: any WKURLSchemeTask) {
     tasks.removeValue(forKey: ObjectIdentifier(urlSchemeTask as AnyObject))?.task.cancel()
   }
 

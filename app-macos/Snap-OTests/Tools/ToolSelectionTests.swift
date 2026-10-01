@@ -1,3 +1,6 @@
+import Clocks
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 import Observation
 @testable import Snap_O
@@ -41,9 +44,11 @@ private func selected(_ kind: ToolID = .network) -> ToolSelection {
   return owner
 }
 
-@Suite("Tool selection and discovery", .timeLimit(.minutes(1)))
+@Suite("Tool selection and discovery", .timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
 @MainActor
 struct ToolSelectionTests {
+  @Dependency(\.continuousClock, as: TestClock<Duration>.self) private var clock
+
   @Test
   func appToolOrdering() throws {
     let analytics = ToolID(rawValue: "analytics")
@@ -342,7 +347,6 @@ struct ToolSelectionTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     defaults.set(selected(.tweaks).serialized, forKey: "inspectorPreferences")
-    let clock = TestClock()
     var scans = 0
     var apps = [selectionApp()]
     var failScan = false
@@ -360,7 +364,7 @@ struct ToolSelectionTests {
     }, openApp: { input in
       launched.append(input)
       try await withCheckedThrowingContinuation { launchReply.value = $0 }
-    }, sleep: { try await clock.sleep($0) })
+    })
     let snapshots = TestValue<[AppToolSnapshot]>([])
     model.stateChanged = { snapshots.value.append($0) }
     await model.start()?.value
@@ -392,11 +396,7 @@ struct ToolSelectionTests {
     try await waitForState { launchReply.value != nil }
     #expect(launched.count == 1 && launched[0].androidUserId == 0, "Prevent duplicate app launches")
     #expect(model.snapshot.appLaunch?.pending == true, "Show pending launch")
-    for _ in 0 ..< 10 {
-      try await clock.advanceWhenWaiting(.milliseconds(500))
-    }
-    // Wait until the last timer resumes before completing the held launch.
-    try await waitForState { clock.completedLaunchWaits == 10 }
+    await clock.advance(by: .seconds(5))
     #expect(model.snapshot.appLaunch?.pending == true, "Do not allow duplicate launch while ADB is still running")
     launchReply.value?.resume()
     launchReply.value = nil
@@ -440,7 +440,6 @@ struct ToolSelectionTests {
     launchReply.value?.resume()
     launchReply.value = nil
     await stoppedLaunch?.value
-    clock.cancelAll()
     await stopped.value
     #expect(snapshots.value.count == published, "Stop publishing after shutdown")
   }
@@ -450,11 +449,10 @@ struct ToolSelectionTests {
     let suite = "SnapOPluginTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
-    let clock = TestClock()
     var apps = [selectionApp()]
     let model = AppToolModel(preferences: defaults, discover: {
       ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
+    }, openApp: { _ in })
     #expect(model.snapshot.pageState(for: .network).isWaiting, "Wait for initial native discovery")
     await model.start()?.value
     var page = model.snapshot.pageState(for: .network)
@@ -487,8 +485,8 @@ struct ToolSelectionTests {
     #expect(model.snapshot.pageState(for: .network).isConnected, "Reconnect even when the previous tool is absent")
     #expect(model.snapshot.state.selectedApp?.tools.map(\.kind) == [.network])
 
-    model.stop()
-    clock.cancelAll()
+    await model.stop().value
+    try await clock.checkSuspension()
   }
 
   @Test
@@ -496,7 +494,6 @@ struct ToolSelectionTests {
     let suite = "SnapOPluginTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
-    let clock = TestClock()
     let (updates, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     defer { continuation.finish() }
     var latest = ToolDiscoverySnapshot(apps: [selectionApp()], revision: 2)
@@ -505,7 +502,7 @@ struct ToolSelectionTests {
     let model = AppToolModel(preferences: defaults, discover: {
       scans += 1
       return await withCheckedContinuation { scanReply.value = $0 }
-    }, changes: { updates }, currentDiscovery: { latest }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
+    }, changes: { updates }, currentDiscovery: { latest }, openApp: { _ in })
     let publications = TestValue(0)
     model.stateChanged = { _ in publications.value += 1 }
     let scan = model.start()
@@ -531,7 +528,6 @@ struct ToolSelectionTests {
     let stoppedRevision = model.snapshot.revision
     latest = ToolDiscoverySnapshot(apps: [selectionApp()], revision: 4)
     continuation.yield(())
-    clock.cancelAll()
     await stopped.value
     #expect(model.snapshot.revision == stoppedRevision, "Stop consuming discovery updates after shutdown")
   }
@@ -541,11 +537,10 @@ struct ToolSelectionTests {
     let suite = "SnapOPluginTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
-    let clock = TestClock()
     let replies = TestValue<[CheckedContinuation<ToolDiscoverySnapshot, Never>]>([])
     let model = AppToolModel(preferences: defaults, discover: {
       await withCheckedContinuation { replies.value.append($0) }
-    }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
+    }, openApp: { _ in })
     let canceled = model.start()
     try await waitForState { replies.value.count == 1 }
     model.stop()
@@ -559,45 +554,9 @@ struct ToolSelectionTests {
     replies.value[1].resume(returning: ToolDiscoverySnapshot(apps: [selectionApp(20)]))
     await restarted?.value
     #expect(model.snapshot.state.selectedApp?.id == selectionApp(20).id, "Publish only the restarted scan")
-    model.stop()
-    clock.cancelAll()
+    await model.stop().value
+    try await clock.checkSuspension()
   }
 }
 
 private enum TestError: Error { case failed }
-
-@Observable
-@MainActor
-private final class TestClock {
-  private var waits: [(Duration, CheckedContinuation<Void, Error>)] = []
-
-  private(set) var completedLaunchWaits = 0
-
-  func sleep(_ duration: Duration) async throws {
-    try Task.checkCancellation()
-    try await withCheckedThrowingContinuation { waits.append((duration, $0)) }
-    try Task.checkCancellation()
-    if duration == .milliseconds(500) { completedLaunchWaits += 1 }
-  }
-
-  func advanceWhenWaiting(_ duration: Duration) async throws {
-    try await waitForState { waits.contains { $0.0 == duration } }
-    advance(duration)
-  }
-
-  func advance(_ duration: Duration) {
-    let ready = waits.filter { $0.0 == duration }
-    waits.removeAll { $0.0 == duration }
-    for (_, continuation) in ready {
-      continuation.resume()
-    }
-  }
-
-  func cancelAll() {
-    let pending = waits
-    waits.removeAll()
-    for (_, continuation) in pending {
-      continuation.resume(throwing: CancellationError())
-    }
-  }
-}

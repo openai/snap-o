@@ -25,30 +25,26 @@ struct CaptureModeTests {
     print("Capture mode tests passed (17 cases)")
   }
 
+  static func eventually(_ condition: @escaping @MainActor @Sendable () -> Bool) async {
+    await waitForObservedTestState(condition)
+  }
+
   static func eventually(_ condition: () async -> Bool) async {
-    for _ in 0 ..< 10000 {
-      if await condition() { return }
-      await Task.yield()
-    }
-    fatalError("Condition did not become true")
+    await waitForActorTestState(condition)
   }
 
   static func makeManager(_ service: LivePreviewService, adb: ADBService = ADBService()) -> LivePreviewManager {
     LivePreviewManager(livePreviewService: service, adbService: adb, options: options) { _ in }
   }
 
-  static func settle() async {
-    for _ in 0 ..< 100 {
-      await Task.yield()
-    }
-  }
-
-  static func click(_ renderer: LivePreviewRenderer) {
-    renderer.sendPointer(.down, .touchscreen, [.zero], testDisplay.size)
+  static func click(_ manager: LivePreviewManager, _ renderer: LivePreviewRenderer) async {
+    await manager.sendPointerEvent(
+      operation: renderer.operation, action: .down, source: .touchscreen,
+      locations: [.zero], displaySize: testDisplay.size
+    )
   }
 
   static func expectNoPointer(_ adb: ADBService) async {
-    await settle()
     let preparations = await adb.pointerPreparations
     let events = await adb.pointerEvents
     precondition(preparations.isEmpty, "Unready preview must not prepare a virtual touchscreen")
@@ -69,7 +65,7 @@ struct CaptureModeTests {
       let renderer = try await manager.makeRenderer(for: first.id)
       await eventually { await preparationGate.waitCount == 1 }
 
-      var stopped = false
+      let stopped = TestValue(false)
       let stop = Task {
         switch teardown {
         case .renderer:
@@ -90,11 +86,10 @@ struct CaptureModeTests {
           await manager.stop()
           await removing.value
         }
-        stopped = true
+        stopped.value = true
       }
       await eventually { await service.active.isEmpty }
-      await settle()
-      precondition(!stopped, "\(teardown) must wait for queued pointer preparation")
+      precondition(!stopped.value, "\(teardown) must wait for queued pointer preparation")
 
       await preparationGate.open()
       await stop.value
@@ -122,25 +117,25 @@ struct CaptureModeTests {
   static func disconnectedPreviewDisappearsBeforeCleanup() async throws {
     let stopGate = TestGate()
     let service = LivePreviewService(stopGate: stopGate)
-    var displayed: [String] = []
+    let displayed = TestValue<[String]>([])
     let manager = LivePreviewManager(
       livePreviewService: service, adbService: ADBService(), options: options
-    ) { displayed = $0.map(\.device.id) }
+    ) { displayed.value = $0.map(\.device.id) }
     await manager.start(with: [first, second])
     _ = try await manager.makeRenderer(for: first.id)
-    precondition(displayed == [first.id, second.id])
+    precondition(displayed.value == [first.id, second.id])
 
-    var finished = false
+    let finished = TestValue(false)
     let disconnect = Task {
       await manager.updateDevices([second])
-      finished = true
+      finished.value = true
     }
     await eventually { await stopGate.waitCount == 1 }
-    precondition(!finished, "Disconnect must still await stream cleanup")
-    precondition(displayed == [second.id], "Disconnected previews must disappear before cleanup finishes")
+    precondition(!finished.value, "Disconnect must still await stream cleanup")
+    precondition(displayed.value == [second.id], "Disconnected previews must disappear before cleanup finishes")
     await stopGate.open()
     await disconnect.value
-    precondition(displayed == [second.id], "Cleanup must not restore the disconnected preview")
+    precondition(displayed.value == [second.id], "Cleanup must not restore the disconnected preview")
     await manager.stop()
   }
 
@@ -151,12 +146,12 @@ struct CaptureModeTests {
     await manager.start(with: [first])
     let renderer = try await manager.makeRenderer(for: first.id)
     await eventually { await gate.waitCount == 1 }
-    click(renderer)
+    await click(manager, renderer)
     await expectNoPointer(adb)
 
     await gate.open()
-    await eventually { await adb.pointerPreparations == [first.id] }
-    click(renderer)
+    await manager.waitUntilInteractive(renderer)
+    await click(manager, renderer)
     await eventually { await adb.pointerEvents.count == 1 }
     await manager.stop()
   }
@@ -176,7 +171,7 @@ struct CaptureModeTests {
       case .stop: await manager.stop()
       case .removal: await manager.updateDevices([])
       }
-      click(renderer)
+      await click(manager, renderer)
       await expectNoPointer(adb)
       await manager.stop()
     }
@@ -196,7 +191,7 @@ struct CaptureModeTests {
     // The stream can become ready after its renderer has started cleanup.
     await readyGate.open()
     await eventually { renderer.operation.session.isReady }
-    click(renderer)
+    await click(manager, renderer)
     await expectNoPointer(adb)
     await stopGate.open()
     await stop.value
@@ -208,15 +203,14 @@ struct CaptureModeTests {
     let manager = makeManager(LivePreviewService(), adb: adb)
     await manager.start(with: [first])
     let firstRenderer = try await manager.makeRenderer(for: first.id)
-    await eventually { await adb.pointerPreparations.count == 1 }
+    await manager.waitUntilInteractive(firstRenderer)
     await manager.stopRenderer(firstRenderer)
     let replacement = try await manager.makeRenderer(for: first.id)
-    await eventually { await adb.pointerPreparations.count == 2 }
-    click(firstRenderer)
-    await settle()
+    await manager.waitUntilInteractive(replacement)
+    await click(manager, firstRenderer)
     let staleEvents = await adb.pointerEvents
     precondition(staleEvents.isEmpty, "A replaced renderer must not send pointer events")
-    click(replacement)
+    await click(manager, replacement)
     await eventually { await adb.pointerEvents.count == 1 }
     await manager.stop()
   }
@@ -230,14 +224,11 @@ struct CaptureModeTests {
     let stopRenderer = Task { await manager.stopRenderer(renderer) }
     await eventually { await service.stops.count == 1 }
     await manager.stopRenderer(renderer)
-    var stopped = false
-    let stop = Task { await manager.stop()
-      stopped = true
+    let stopped = TestValue(false)
+    let stop = await startTestTask { await manager.stop()
+      stopped.value = true
     }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
-    precondition(!stopped)
+    precondition(!stopped.value)
     await gate.open()
     await stopRenderer.value
     await stop.value
@@ -253,10 +244,7 @@ struct CaptureModeTests {
     await manager.start(with: [first])
     let renderer = Task { try? await manager.makeRenderer(for: first.id) }
     await eventually { await service.starts.count == 1 }
-    let stop = Task { await manager.stop() }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
+    let stop = await startTestTask { await manager.stop() }
     await gate.open()
     let result = await renderer.value
     await stop.value
@@ -266,17 +254,17 @@ struct CaptureModeTests {
 
   static func overlappingDeviceUpdates() async {
     let gate = TestGate()
-    var displayed: [String] = []
+    let displayed = TestValue<[String]>([])
     let manager = LivePreviewManager(
       livePreviewService: LivePreviewService(),
       adbService: ADBService(displayGates: [first.id: gate]), options: options
-    ) { displayed = $0.map(\.device.id) }
+    ) { displayed.value = $0.map(\.device.id) }
     let start = Task { await manager.start(with: [first]) }
     await eventually { await gate.waitCount == 1 }
     await manager.updateDevices([second])
     await gate.open()
     await start.value
-    precondition(displayed == [second.id])
+    precondition(displayed.value == [second.id])
     await manager.stop()
   }
 
