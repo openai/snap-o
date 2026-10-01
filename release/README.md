@@ -109,22 +109,34 @@ Publish the GitHub Release with the version alone as its title and the final DMG
 
 Use the generated Sparkle item without changing or regenerating its signature. Check its app version, build number, minimum macOS version, byte length, URL, and signature. Add it to the latest `gh-pages` appcast after the channel description. Preserve prior entries.
 
-Embed the approved GitHub Release notes in each new macOS item's `<description sparkle:format="markdown">`. Sparkle does not fetch the GitHub Release body automatically. Wrap the same Markdown in CDATA:
+Embed cumulative HTML in each new macOS item's `<description sparkle:format="html">`. Include the approved notes for that release and the published notes for earlier appcast releases, newest first. Sparkle does not fetch GitHub Release bodies automatically.
 
-```xml
-<description sparkle:format="markdown"><![CDATA[
-- Describe the first user-visible change.
-- Describe the next user-visible change.
-]]></description>
+Wrap each release in a sibling `<section data-sparkle-version="BUILD_NUMBER">`. Use the appcast build number, not the marketing version. Sparkle adds `sparkle-installed-version` to the installed build's section. Hide that section and every older sibling:
+
+```html
+<style>
+section.sparkle-installed-version,
+section.sparkle-installed-version ~ section { display: none; }
+</style>
+<section data-sparkle-version="20261001.01">
+  <h2>13.0.2</h2>
+  <ul><li>No more prompt when discarding unsaved captures.</li></ul>
+</section>
+<section data-sparkle-version="20260930.02">
+  <h2>13.0.1</h2>
+  <!-- Published notes for this version. -->
+</section>
 ```
 
-If the notes contain `]]>`, split the CDATA section or XML-escape the text instead. Adding the description must preserve the generated version fields, enclosure, and signature.
+Keep an empty section marker when a historical release has no notes. Preserve each release's wording. Use GitHub's rendered release bodies (`application/vnd.github.html+json`) and retain normal HTML escaping. See [Sparkle's installed-version filtering](https://sparkle-project.org/documentation/publishing/#adapting-release-notes-based-on-currently-installed-version).
+
+Wrap the HTML document in CDATA. If it contains `]]>`, split the CDATA section or XML-escape the text instead. Adding the description must preserve the generated version fields, enclosure, and signature. Preserve all historical appcast items.
 
 Update the Markdown sources in `docs/` for the released functionality. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not publish dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
 
 Build and preview the docs using [Documentation sources](../docs/README.md#build-and-preview). Check examples against the released APIs, CLI, definitions in `contracts/`, and [Tweaks protocol reference](../docs/tweaks-protocol.md).
 
-Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check that the new item has a nonempty description matching the approved release notes. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle displays those notes, then installs the new version.
+Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check that the newest section matches the approved release notes. Preview both a one-version update and a skipped-version update; only releases newer than the installed build should appear. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle displays those notes, then installs the new version.
 
 Android-only releases also need affected dependency examples and guides updated after Maven publication. If no page needs a change, record why.
 
