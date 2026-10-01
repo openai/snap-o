@@ -1,6 +1,6 @@
 {
   "name": "snap-o",
-  "version": "13.0.0",
+  "version": "13.0.1",
   "description": "Inspect Android network traffic, override API responses, and adjust live UI tweaks with Snap-O.",
   "author": {
     "name": "OpenAI",
