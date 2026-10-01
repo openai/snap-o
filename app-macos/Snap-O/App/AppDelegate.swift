@@ -44,7 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     )
     if hasRepliedToTermination { return .terminateNow }
     if terminationCleanupTask != nil { return .terminateLater }
-    guard CaptureReviewCloseGuard.confirmDiscard() else { return .terminateCancel }
+    guard CaptureReviewCloseGuard.prepareToClose() else { return .terminateCancel }
 
     AppSettings.shared.isAppTerminating = true
     let prepareForTermination = prepareForTermination

@@ -36,7 +36,6 @@ final class CaptureWindowController {
   @ObservationIgnored private var initialCaptureWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
-  @ObservationIgnored var confirmDiscardReview: (() -> Bool)?
 
   init(
     captureServices: CaptureServices,
@@ -180,13 +179,12 @@ final class CaptureWindowController {
     await startLivePreview()
   }
 
-  private func prepareToLeaveReview() -> Bool {
-    guard isReviewingCapture else { return true }
-    guard confirmDiscardReview?() == true else { return false }
+  private func prepareToLeaveReview() {
+    guard isReviewingCapture else { return }
+    fileStore.discardPreviews(mediaList)
     reviewCrops = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle
-    return true
   }
 
   var canStartRecordingNow: Bool {
@@ -267,7 +265,7 @@ final class CaptureWindowController {
       guard await waitForInitialCaptureSetup() else { return }
     }
     guard canCaptureNow else { return }
-    guard prepareToLeaveReview() else { return }
+    prepareToLeaveReview()
     hasStartedInitialCapture = true
     isProcessing = true
     let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
@@ -305,7 +303,7 @@ final class CaptureWindowController {
 
   func startRecording() async {
     guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
-    guard prepareToLeaveReview() else { return }
+    prepareToLeaveReview()
     hasStartedInitialCapture = true
     let recordsBugReport = AppSettings.shared.recordAsBugReport
     let needsPreview = !isLivePreviewActive && !recordsBugReport
@@ -403,7 +401,7 @@ final class CaptureWindowController {
 
   func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil, allowRecording: Bool = false) async {
     guard canStartLivePreviewNow || (allowRecording && isRecording && !isLivePreviewActive && !isTornDown) else { return }
-    guard prepareToLeaveReview() else { return }
+    prepareToLeaveReview()
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil

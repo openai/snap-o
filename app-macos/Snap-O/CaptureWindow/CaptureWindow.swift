@@ -76,12 +76,6 @@ struct CaptureWindow: View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
       .task {
-        controller.confirmDiscardReview = { [weak controller] in
-          guard let controller else { return false }
-          return CaptureReviewCloseGuard.confirmReplacement {
-            try controller.fileStore.discardPreviews(controller.mediaList)
-          }
-        }
         await controller.start()
       }
       .task(id: controller.mediaList.map(\.id)) {
@@ -117,7 +111,7 @@ struct CaptureWindow: View {
           captureIDs: controller.isReviewingCapture ? controller.mediaList.map(\.id) : [],
           isSaving: controller.isSavingReview
         ) {
-          try controller.fileStore.discardPreviews(controller.mediaList)
+          controller.fileStore.discardPreviews(controller.mediaList)
         }
         .frame(width: 0, height: 0)
       }

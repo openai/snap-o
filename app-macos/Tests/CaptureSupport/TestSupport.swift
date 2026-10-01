@@ -289,7 +289,14 @@ final class AppSettings {
   var showTouchesDuringCapture = false
 }
 
-struct FileStore {}
+@MainActor
+final class FileStore {
+  private(set) var discardedCaptureIDs: [[UUID]] = []
+
+  func discardPreviews(_ captures: [CaptureMedia]) {
+    discardedCaptureIDs.append(captures.map(\.id))
+  }
+}
 
 @MainActor
 protocol LivePreviewHosting: AnyObject {
