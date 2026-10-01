@@ -121,8 +121,12 @@ jobs:
           path: ${{ runner.temp }}/snap-o-tests.xcresult
           if-no-files-found: ignore
       - name: Test capture integration
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-startup-capture.sh
       - name: Test recording failures
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-recording.sh
       - name: Test emulator preview
         run: sh scripts/test-emulator-preview.sh

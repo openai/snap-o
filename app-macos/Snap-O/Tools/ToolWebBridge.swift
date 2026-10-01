@@ -101,8 +101,12 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) async -> (Any?, String?) {
-    guard !isStopped, requests.count < 8, acceptsMessage?(message) == true,
-          let body = message.body as? [String: Any],
+    await receive(message.body, authorized: acceptsMessage?(message) == true)
+  }
+
+  func receive(_ body: Any, authorized: Bool) async -> (Any?, String?) {
+    guard !isStopped, requests.count < 8, authorized,
+          let body = body as? [String: Any],
           let command = body["command"] as? String, Self.validMessage(body, command: command)
     else {
       return (nil, ToolError.invalidBridgeMessage.localizedDescription)

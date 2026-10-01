@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 struct ShowTouchesOverride {
@@ -7,14 +8,15 @@ struct ShowTouchesOverride {
   static func apply(
     deviceID: String,
     enabled: Bool,
-    using adb: ADBService,
-    timeout: Duration? = nil
+    using adb: ADBService
   ) async -> ShowTouchesOverride {
-    await TouchSettingLeases.shared.acquire(deviceID: deviceID, enabled: enabled, adb: adb, timeout: timeout)
+    await TouchSettingLeases.shared.acquire(deviceID: deviceID, enabled: enabled, adb: adb)
   }
 
-  func restore(using adb: ADBService, timeout: Duration? = nil) async {
-    await TouchSettingLeases.shared.release(self, adb: adb, timeout: timeout)
+  func restore(
+    using adb: ADBService
+  ) async {
+    await TouchSettingLeases.shared.release(self, adb: adb)
   }
 }
 
@@ -33,7 +35,9 @@ private actor TouchSettingLeases {
   private var entries: [String: Entry] = [:]
   private var cleanup: [String: Task<Void, Never>] = [:]
 
-  func acquire(deviceID: String, enabled: Bool, adb: ADBService, timeout: Duration?) async -> ShowTouchesOverride {
+  func acquire(
+    deviceID: String, enabled: Bool, adb: ADBService
+  ) async -> ShowTouchesOverride {
     let lease = ShowTouchesOverride(deviceID: deviceID, id: UUID())
     guard !Task.isCancelled else { return lease }
     if entries[deviceID] == nil {
@@ -57,15 +61,17 @@ private actor TouchSettingLeases {
     }
     entries[deviceID]?.owners.insert(lease.id)
     if let task = entries[deviceID]?.originalValue,
-       await !(Self.wait(for: task, timeout: timeout ?? Self.commandTimeout)) {
+       await !(Self.wait(for: task)) {
       _ = releaseTask(lease, adb: adb)
     }
     return lease
   }
 
-  func release(_ lease: ShowTouchesOverride, adb: ADBService, timeout: Duration?) async {
+  func release(
+    _ lease: ShowTouchesOverride, adb: ADBService
+  ) async {
     guard let task = releaseTask(lease, adb: adb) else { return }
-    _ = await Self.wait(for: task, timeout: timeout ?? Self.commandTimeout)
+    _ = await Self.wait(for: task)
   }
 
   private func releaseTask(_ lease: ShowTouchesOverride, adb: ADBService) -> Task<Void, Never>? {
@@ -109,7 +115,9 @@ private actor TouchSettingLeases {
   }
 
   /// Ending a caller's wait must not cancel work shared with another capture.
-  private static func wait(for task: Task<some Sendable, Never>, timeout: Duration) async -> Bool {
+  private static func wait(
+    for task: Task<some Sendable, Never>
+  ) async -> Bool {
     guard !Task.isCancelled else { return false }
     let completion = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingNewest(1))
     let observer = Task {
@@ -117,8 +125,10 @@ private actor TouchSettingLeases {
       completion.continuation.yield(true)
       completion.continuation.finish()
     }
-    let timer = Task {
-      do { try await Task.sleep(for: timeout) } catch { return }
+    @Dependency(\.continuousClock)
+    var clock
+    let timer = Task { [clock] in
+      do { try await clock.sleep(for: commandTimeout) } catch { return }
       completion.continuation.yield(false)
       completion.continuation.finish()
     }

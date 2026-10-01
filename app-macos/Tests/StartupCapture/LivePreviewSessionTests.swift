@@ -1,4 +1,6 @@
 @preconcurrency import AVFoundation
+import Clocks
+import Dependencies
 import Foundation
 import OSLog
 
@@ -8,22 +10,19 @@ enum SnapOLog {
 
 enum TestError: Error { case expected }
 
-actor RetryDelays {
-  private(set) var values: [Duration] = []
-
-  func append(_ delay: Duration) -> Int {
-    values.append(delay)
-    return values.count
-  }
-}
-
 actor ADBService {
   private let densityGate: TestGate?
   private let settingsGate: TestGate?
   private let failsWake: Bool
   private let wakeGate: TestGate?
-  private(set) var keyEvents: [String] = []
-  private(set) var densityQueries = 0
+  private(set) var keyEvents: [String] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var densityQueries = 0 {
+    didSet { testChanges.signal() }
+  }
+
   private let failsSettingRead: Bool
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
@@ -31,11 +30,22 @@ actor ADBService {
   private var densityFailures: Int
   private var bootFailures: Int
   private let blocksBootQuery: Bool
-  private(set) var bootQueries = 0
+  private(set) var bootQueries = 0 {
+    didSet { testChanges.signal() }
+  }
+
   private var writeGate: TestGate?
-  private(set) var commandTimeouts: [Duration?] = []
-  private(set) var settingsReadStarted = false
-  private(set) var writes: [Bool] = []
+  private(set) var commandTimeouts: [Duration?] = [] {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var settingsReadStarted = false {
+    didSet { testChanges.signal() }
+  }
+
+  private(set) var writes: [Bool] = [] {
+    didSet { testChanges.signal() }
+  }
 
   init(
     showsTouches: Bool = false,
@@ -69,7 +79,7 @@ actor ADBService {
 
   func isBootComplete(deviceID _: String) async throws -> Bool {
     bootQueries += 1
-    if blocksBootQuery { try await Task.sleep(for: .seconds(60)) }
+    if blocksBootQuery { try await suspendUntilCancelled() }
     if bootFailures > 0 {
       bootFailures -= 1
       throw TestError.expected
@@ -126,33 +136,39 @@ actor ADBService {
 @MainActor
 struct LivePreviewSessionTests {
   static func main() async throws {
-    try await readinessWaitersReceiveFirstFormat()
-    await cancellationReleasesReadinessWaiters()
-    try await independentFramesKeepLatest()
-    try formatChangesUpdateMedia()
-    try await emulatorFramesDoNotWaitForBoot()
-    try await emulatorDensityUpdatesAfterBoot()
-    try await emulatorTouchSettingsAreRestored()
-    try await stoppingEmulatorCancelsBootSetup()
-    try await sourceFailureReleasesReadinessWaiters()
-    cancellationStopsSourceOnce()
-    await showTouchesRestoration()
-    await touchSettingWaitsAreBounded()
-    try await shutdownDuringTouchSetup()
-    try await startupRestoresSettings()
-    try await startupWaitsForBoot()
-    try await readyDeviceDoesNotWait()
-    try await physicalPreviewWakesDevice()
-    try await physicalPreviewWaitsForWakeBeforeStartingSource()
-    try await wakeFailureDoesNotPreventPreview()
-    try await cancellationDuringWakeDoesNotStartSource()
-    try await physicalPreviewDoesNotQueryDensity()
-    try await bootQueriesRetryWithBackoff()
-    for shutdown in [false, true] {
-      try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
-      try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
+    try await withDependencies {
+      $0.context = .test
+      $0.continuousClock = TestClock()
+    } operation: {
+      try await readinessWaitersReceiveFirstFormat()
+      await streamingDurationStartsAtFirstFormat()
+      await cancellationReleasesReadinessWaiters()
+      try await independentFramesKeepLatest()
+      try formatChangesUpdateMedia()
+      try await emulatorFramesDoNotWaitForBoot()
+      try await emulatorDensityUpdatesAfterBoot()
+      try await emulatorTouchSettingsAreRestored()
+      try await stoppingEmulatorCancelsBootSetup()
+      try await sourceFailureReleasesReadinessWaiters()
+      cancellationStopsSourceOnce()
+      await showTouchesRestoration()
+      await touchSettingWaitsAreBounded()
+      try await shutdownDuringTouchSetup()
+      try await startupRestoresSettings()
+      try await startupWaitsForBoot()
+      try await readyDeviceDoesNotWait()
+      try await physicalPreviewWakesDevice()
+      try await physicalPreviewWaitsForWakeBeforeStartingSource()
+      try await wakeFailureDoesNotPreventPreview()
+      try await cancellationDuringWakeDoesNotStartSource()
+      try await physicalPreviewDoesNotQueryDensity()
+      try await bootQueriesRetryWithBackoff()
+      for shutdown in [false, true] {
+        try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
+        try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
+      }
+      print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
     }
-    print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
   }
 
   static func makeSession() -> LivePreviewSession {
@@ -162,29 +178,50 @@ struct LivePreviewSessionTests {
   static func readinessWaitersReceiveFirstFormat() async throws {
     let session = makeSession()
     precondition(!session.isReady)
-    precondition(session.readyAt == nil)
+    precondition(session.streamingDuration == nil)
     defer { session.cancel() }
-    let first = Task { try await session.waitUntilReady() }
-    let second = Task { try await session.waitUntilReady() }
-    for _ in 0 ..< 20 {
-      await Task.yield()
+    let entered = TestValue(0)
+    let first = Task { entered.value += 1
+      return try await session.waitUntilReady()
     }
+    let second = Task { entered.value += 1
+      return try await session.waitUntilReady()
+    }
+    await waitForObservedTestState { entered.value == 2 }
     DeviceVideoSource.latest?.emitFormat()
     let firstMedia = try await first.value
     let secondMedia = try await second.value
     precondition(firstMedia == secondMedia)
     precondition(firstMedia.size == CGSize(width: 1080, height: 2400))
     precondition(session.isReady)
-    precondition(session.readyAt != nil)
+    precondition(session.streamingDuration != nil)
+  }
+
+  static func streamingDurationStartsAtFirstFormat() async {
+    let clock = TestClock()
+    let session = withDependencies { $0.continuousClock = clock } operation: { makeSession() }
+    defer { session.cancel() }
+    await clock.advance(by: .seconds(30))
+    precondition(session.streamingDuration == nil, "Startup does not count as streaming time")
+    DeviceVideoSource.latest?.emitFormat()
+    precondition(session.streamingDuration == .zero)
+    await clock.advance(by: .seconds(9))
+    DeviceVideoSource.latest?.emitFormat()
+    precondition(session.streamingDuration == .seconds(9), "Later formats do not reset streaming time")
+    await clock.advance(by: .seconds(1))
+    precondition(session.streamingDuration == .seconds(10))
   }
 
   static func cancellationReleasesReadinessWaiters() async {
     let cancelled = makeSession()
-    let pendingFirst = Task { try await cancelled.waitUntilReady() }
-    let pendingSecond = Task { try await cancelled.waitUntilReady() }
-    for _ in 0 ..< 20 {
-      await Task.yield()
+    let entered = TestValue(0)
+    let pendingFirst = Task { entered.value += 1
+      return try await cancelled.waitUntilReady()
     }
+    let pendingSecond = Task { entered.value += 1
+      return try await cancelled.waitUntilReady()
+    }
+    await waitForObservedTestState { entered.value == 2 }
     cancelled.cancel()
     precondition(!cancelled.isReady)
     await expectCancellation(pendingFirst)
@@ -238,18 +275,22 @@ struct LivePreviewSessionTests {
   }
 
   static func emulatorDensityUpdatesAfterBoot() async throws {
-    let retryGate = TestGate()
-    let adb = ADBService(bootComplete: false, densityFailures: 1)
-    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { _ in await retryGate.wait() }
-    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
-    let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 4), width: 1, height: 1, timestamp: 0)!
-    EmulatorPreviewFrameSource.latest?.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
-    await eventually { await adb.bootQueries > 0 }
-    await adb.finishBoot()
-    await retryGate.open()
-    _ = await service.waitUntilInteractive(handle)
-    precondition(handle.session.media?.densityScale == 3)
-    _ = await service.stop(handle)
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adb = ADBService(bootComplete: false, densityFailures: 1)
+      let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+      let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
+      let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 4), width: 1, height: 1, timestamp: 0)!
+      EmulatorPreviewFrameSource.latest?.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+      await eventually { await adb.bootQueries > 0 }
+      await adb.finishBoot()
+      await clock.advance(by: .seconds(1))
+      await eventually { await adb.densityQueries == 1 }
+      await clock.advance(by: .seconds(1))
+      _ = await service.waitUntilInteractive(handle)
+      precondition(handle.session.media?.densityScale == 3)
+      _ = await service.stop(handle)
+    }
   }
 
   static func emulatorTouchSettingsAreRestored() async throws {
@@ -283,8 +324,11 @@ struct LivePreviewSessionTests {
   static func sourceFailureReleasesReadinessWaiters() async throws {
     let failedSource = TestRawFrameSource()
     let failed = LivePreviewSession(deviceID: "emulator-5554", densityScale: 3, source: failedSource)
-    let waiting = Task { try await failed.waitUntilReady() }
-    await Task.yield()
+    let entered = TestValue(false)
+    let waiting = Task { entered.value = true
+      return try await failed.waitUntilReady()
+    }
+    await waitForObservedTestState { entered.value }
     failedSource.deliver?(.stopped(TestError.expected))
     do {
       _ = try await waiting.value
@@ -293,26 +337,32 @@ struct LivePreviewSessionTests {
   }
 
   static func startupWaitsForBoot() async throws {
-    let adb = ADBService(bootComplete: false)
-    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
-    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
-    await eventually { await adb.bootQueries > 0 }
-    let earlySettingsRead = await adb.settingsReadStarted
-    precondition(!earlySettingsRead, "Boot wait must precede settings changes")
-    await adb.finishBoot()
-    let handle = try await task.value
-    _ = await service.stop(handle)
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adb = ADBService(bootComplete: false)
+      let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+      let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+      await eventually { await adb.bootQueries > 0 }
+      let earlySettingsRead = await adb.settingsReadStarted
+      precondition(!earlySettingsRead, "Boot wait must precede settings changes")
+      await adb.finishBoot()
+      await clock.advance(by: .seconds(1))
+      let handle = try await task.value
+      _ = await service.stop(handle)
+    }
   }
 
   static func readyDeviceDoesNotWait() async throws {
-    let adb = ADBService()
-    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { _ in
-      fatalError("A ready device must not wait before connecting")
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adb = ADBService()
+      let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+      let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
+      let queries = await adb.bootQueries
+      precondition(queries == 1)
+      _ = await service.stop(handle)
+      try await clock.checkSuspension()
     }
-    let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
-    let queries = await adb.bootQueries
-    precondition(queries == 1)
-    _ = await service.stop(handle)
   }
 
   static func physicalPreviewWakesDevice() async throws {
@@ -369,51 +419,55 @@ struct LivePreviewSessionTests {
   }
 
   static func bootQueriesRetryWithBackoff() async throws {
-    let adb = ADBService(bootComplete: false, bootFailures: 2)
-    let delays = RetryDelays()
-    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { delay in
-      if await delays.append(delay) == 6 { await adb.finishBoot() }
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adb = ADBService(bootComplete: false, bootFailures: 2)
+      let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+      let startup = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: false)) }
+      await eventually { await adb.bootQueries == 1 }
+      for (index, seconds) in [1, 2, 4, 8, 10, 10].enumerated() {
+        await clock.advance(by: .seconds(seconds) - .milliseconds(1))
+        let beforeRetry = await adb.bootQueries
+        precondition(beforeRetry == index + 1, "Do not retry before the backoff deadline")
+        if index == 5 { await adb.finishBoot() }
+        await clock.advance(by: .milliseconds(1))
+        await eventually { await adb.bootQueries == index + 2 }
+      }
+      let handle = try await startup.value
+      let queries = await adb.bootQueries
+      precondition(queries == 7, "Failed queries must recover automatically once Android is ready")
+      _ = await service.stop(handle)
     }
-    let handle = try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: false))
-    let observedDelays = await delays.values
-    precondition(observedDelays == [1, 2, 4, 8, 10, 10].map { .seconds($0) })
-    let queries = await adb.bootQueries
-    precondition(queries == 7, "Failed queries must recover automatically once Android is ready")
-    _ = await service.stop(handle)
   }
 
   static func bootWaitCancels(shutdown: Bool, blocksQuery: Bool) async throws {
-    let adb = ADBService(bootComplete: false, blocksBootQuery: blocksQuery)
-    let coordinator = CaptureCoordinator()
-    let delays = RetryDelays()
-    let service = LivePreviewService(adb: adb, coordinator: coordinator) { delay in
-      _ = await delays.append(delay)
-      if delay == .seconds(10) { try await Task.sleep(for: .seconds(60)) }
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let adb = ADBService(bootComplete: false, blocksBootQuery: blocksQuery)
+      let coordinator = CaptureCoordinator()
+      let service = LivePreviewService(adb: adb, coordinator: coordinator)
+      let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+      if blocksQuery {
+        await eventually { await adb.bootQueries > 0 }
+      } else {
+        await eventually { await adb.bootQueries == 1 }
+        for (index, seconds) in [1, 2, 4, 8].enumerated() {
+          await clock.advance(by: .seconds(seconds))
+          await eventually { await adb.bootQueries == index + 2 }
+        }
+      }
+      if shutdown { await service.shutdown() } else { task.cancel() }
+      do {
+        _ = try await task.value
+        fatalError("Boot wait should have ended without starting a stream")
+      } catch is CancellationError {
+        // Both caller cancellation and shutdown must interrupt discovery immediately.
+      }
+      let settingsRead = await adb.settingsReadStarted
+      precondition(!settingsRead)
+      let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
+      await coordinator.release(lease)
     }
-    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
-    if blocksQuery {
-      await eventually { await adb.bootQueries > 0 }
-    } else {
-      await eventually { await delays.values.last == .seconds(10) }
-    }
-    let rescue = Task {
-      try await Task.sleep(for: .seconds(2))
-      task.cancel()
-    }
-    defer { rescue.cancel() }
-    let start = ContinuousClock.now
-    if shutdown { await service.shutdown() } else { task.cancel() }
-    do {
-      _ = try await task.value
-      fatalError("Boot wait should have ended without starting a stream")
-    } catch is CancellationError {
-      // Both caller cancellation and shutdown must interrupt discovery immediately.
-    }
-    precondition(start.duration(to: .now) < .seconds(1), "Cancellation must interrupt the probe or backoff sleep")
-    let settingsRead = await adb.settingsReadStarted
-    precondition(!settingsRead)
-    let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
-    await coordinator.release(lease)
   }
 
   static func showTouchesRestoration() async {
@@ -488,19 +542,14 @@ struct LivePreviewSessionTests {
         await ShowTouchesOverride.apply(deviceID: deviceID, enabled: true, using: adb)
       }
       await eventually { await adb.settingsReadStarted }
-      var returned = false
-      let recording = Task {
-        let lease = await ShowTouchesOverride.apply(
-          deviceID: deviceID, enabled: false, using: adb,
-          timeout: cancel ? .seconds(30) : .milliseconds(30)
+      let clock = TestClock()
+      let recording = withDependencies { $0.continuousClock = clock } operation: { Task {
+        await ShowTouchesOverride.apply(
+          deviceID: deviceID, enabled: false, using: adb
         )
-        returned = true
-        return lease
-      }
-      // Let the second owner join the pending read before cancelling it.
-      try? await Task.sleep(for: .milliseconds(10))
-      if cancel { recording.cancel() }
-      await eventually { returned }
+      } }
+      await clock.advance()
+      if cancel { recording.cancel() } else { await clock.advance(by: .seconds(3)) }
       let abandoned = await recording.value
       await abandoned.restore(using: adb)
       let pendingWrites = await adb.writes
@@ -519,9 +568,15 @@ struct LivePreviewSessionTests {
 
     let gate = TestGate()
     let adb = ADBService(settingsGate: gate)
-    let abandoned = await ShowTouchesOverride.apply(
-      deviceID: "abandoned-setup", enabled: true, using: adb, timeout: .milliseconds(30)
-    )
+    let clock = TestClock()
+    let setup = withDependencies { $0.continuousClock = clock } operation: { Task {
+      await ShowTouchesOverride.apply(
+        deviceID: "abandoned-setup", enabled: true, using: adb
+      )
+    } }
+    await eventually { await gate.waitCount == 1 }
+    await clock.advance(by: .seconds(3))
+    let abandoned = await setup.value
     await abandoned.restore(using: adb)
     await gate.open()
     await eventually { await adb.writes == [true, false] }
@@ -531,14 +586,13 @@ struct LivePreviewSessionTests {
       let lease = await ShowTouchesOverride.apply(deviceID: "blocked-restore-\(cancel)", enabled: true, using: adb)
       let gate = TestGate()
       await adb.blockWrites(on: gate)
-      var returned = false
-      let restore = Task {
-        await lease.restore(using: adb, timeout: cancel ? .seconds(30) : .milliseconds(30))
-        returned = true
-      }
+      let clock = TestClock()
+      let restore = withDependencies { $0.continuousClock = clock } operation: { Task {
+        await lease.restore(using: adb)
+      } }
       await eventually { await gate.waitCount == 1 }
-      if cancel { restore.cancel() }
-      await eventually { returned }
+      await clock.advance()
+      if cancel { restore.cancel() } else { await clock.advance(by: .seconds(3)) }
       await restore.value
       await gate.open()
       await eventually { await adb.writes == [true, false] }
@@ -546,31 +600,30 @@ struct LivePreviewSessionTests {
   }
 
   static func shutdownDuringTouchSetup() async throws {
-    let gate = TestGate()
-    let adb = ADBService(settingsGate: gate)
-    let coordinator = CaptureCoordinator()
-    let service = LivePreviewService(adb: adb, coordinator: coordinator)
-    let startup = Task {
-      try await service.start(for: "shutdown-settings", options: LivePreviewOptions(showsTouches: true))
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let gate = TestGate()
+      let adb = ADBService(settingsGate: gate)
+      let coordinator = CaptureCoordinator()
+      let service = LivePreviewService(adb: adb, coordinator: coordinator)
+      let startup = Task {
+        try await service.start(for: "shutdown-settings", options: LivePreviewOptions(showsTouches: true))
+      }
+      await eventually { await adb.settingsReadStarted }
+      let shutdown = Task { await service.shutdown() }
+      await clock.advance(by: .seconds(3))
+      await shutdown.value
+      do {
+        _ = try await startup.value
+        fatalError("Startup must not succeed after shutdown")
+      } catch is CancellationError {
+        // Expected while the device is still unresponsive.
+      }
+      let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .livePreview)
+      await coordinator.release(lease)
+      await gate.open()
+      await eventually { await adb.writes == [true, false] }
     }
-    await eventually { await adb.settingsReadStarted }
-    var stopped = false
-    let shutdown = Task {
-      await service.shutdown()
-      stopped = true
-    }
-    await eventually { stopped }
-    await shutdown.value
-    do {
-      _ = try await startup.value
-      fatalError("Startup must not succeed after shutdown")
-    } catch is CancellationError {
-      // Expected while the device is still unresponsive.
-    }
-    let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .livePreview)
-    await coordinator.release(lease)
-    await gate.open()
-    await eventually { await adb.writes == [true, false] }
   }
 
   enum StartupOutcome: CaseIterable { case success, cancellation }
@@ -589,7 +642,7 @@ struct LivePreviewSessionTests {
         return handle
       }
       await eventually { await adb.settingsReadStarted }
-      await eventually { DeviceVideoSource.latest != nil }
+      await waitForActorTestState { DeviceVideoSource.latest != nil }
       precondition(!returned, "Stream startup must overlap the blocked settings read")
       if outcome == .cancellation { startup.cancel() }
       await settingsGate.open()
@@ -611,12 +664,7 @@ struct LivePreviewSessionTests {
   }
 
   static func eventually(_ condition: () async -> Bool) async {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-    while ContinuousClock.now < deadline {
-      if await condition() { return }
-      await Task.yield()
-    }
-    fatalError("Condition did not become true")
+    await waitForActorTestState(condition)
   }
 
   static func expectCancellation(_ task: Task<Media, Error>) async {
@@ -658,7 +706,9 @@ final class EmulatorPreviewFrameSource: TestRawFrameSource {
 
 @MainActor
 final class DeviceVideoSource: TestRawFrameSource {
-  static var latest: DeviceVideoSource?
+  static var latest: DeviceVideoSource? {
+    didSet { testChanges.signal() }
+  }
 
   init(deviceID _: String) {
     super.init()

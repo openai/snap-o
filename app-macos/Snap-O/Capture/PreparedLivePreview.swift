@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 /// Holds a startup stream until one renderer takes ownership or the warmup expires.
@@ -14,8 +15,9 @@ final class PreparedLivePreview {
 
   private let operationTask: Task<LivePreviewOperationHandle?, Never>
   private let service: LivePreviewService
-  private let lifetime: Duration
-  private let sleep: @Sendable (Duration) async throws -> Void
+  private static let lifetime: Duration = .seconds(5)
+  @Dependency(\.continuousClock)
+  private var clock
   private var expirationTask: Task<Void, Never>?
   private var state: State = .available
 
@@ -33,16 +35,12 @@ final class PreparedLivePreview {
     deviceID: String,
     options: LivePreviewOptions,
     operationTask: Task<LivePreviewOperationHandle?, Never>,
-    service: LivePreviewService,
-    lifetime: Duration = .seconds(5),
-    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    service: LivePreviewService
   ) {
     self.deviceID = deviceID
     self.options = options
     self.operationTask = operationTask
     self.service = service
-    self.lifetime = lifetime
-    self.sleep = sleep
     scheduleExpiration(afterReadiness: false)
   }
 
@@ -53,11 +51,11 @@ final class PreparedLivePreview {
 
   private func scheduleExpiration(afterReadiness: Bool) {
     expirationTask?.cancel()
-    expirationTask = Task { [weak self, sleep, lifetime] in
+    expirationTask = Task { [weak self, clock] in
       if afterReadiness { _ = await self?.waitUntilReady() }
       guard !Task.isCancelled else { return }
       do {
-        try await sleep(lifetime)
+        try await clock.sleep(for: Self.lifetime)
       } catch {
         return
       }
@@ -70,9 +68,13 @@ final class PreparedLivePreview {
     options: LivePreviewOptions,
     service: LivePreviewService
   ) -> Task<LivePreviewOperationHandle?, Never> {
-    Task.detached(priority: .userInitiated) {
-      guard !Task.isCancelled else { return nil }
-      return try? await service.start(for: deviceID, options: options)
+    withEscapedDependencies { dependencies in
+      Task.detached(priority: .userInitiated) {
+        await dependencies.yield {
+          guard !Task.isCancelled else { return nil }
+          return try? await service.start(for: deviceID, options: options)
+        }
+      }
     }
   }
 

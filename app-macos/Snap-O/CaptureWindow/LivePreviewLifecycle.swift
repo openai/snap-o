@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 import Observation
 
@@ -19,10 +20,10 @@ final class LivePreviewLifecycle<Renderer> {
   @ObservationIgnored private let start: @MainActor () async -> Renderer?
   @ObservationIgnored private let stop: @MainActor (Renderer) async -> Void
   @ObservationIgnored private let waitUntilStop: @MainActor (Renderer) async -> Error?
-  @ObservationIgnored private let readyAt: @MainActor (Renderer) -> ContinuousClock.Instant?
+  @ObservationIgnored private let streamingDuration: @MainActor (Renderer) -> Duration?
   @ObservationIgnored private let canReconnect: @MainActor () -> Bool
-  @ObservationIgnored private let now: @MainActor () -> ContinuousClock.Instant
-  @ObservationIgnored private let waitBeforeReconnect: @MainActor (Duration) async throws -> Void
+  @Dependency(\.continuousClock)
+  @ObservationIgnored private var clock
   @ObservationIgnored private var streamTask: Task<Void, Never>?
   private var lifecycleID: UUID?
   private var isViewVisible = false
@@ -33,19 +34,15 @@ final class LivePreviewLifecycle<Renderer> {
     start: @escaping @MainActor () async -> Renderer?,
     stop: @escaping @MainActor (Renderer) async -> Void,
     waitUntilStop: @escaping @MainActor (Renderer) async -> Error?,
-    readyAt: @escaping @MainActor (Renderer) -> ContinuousClock.Instant?,
-    canReconnect: @escaping @MainActor () -> Bool,
-    waitBeforeReconnect: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-    now: @escaping @MainActor () -> ContinuousClock.Instant = { .now }
+    streamingDuration: @escaping @MainActor (Renderer) -> Duration?,
+    canReconnect: @escaping @MainActor () -> Bool
   ) {
     self.connection = connection
     self.start = start
     self.stop = stop
     self.waitUntilStop = waitUntilStop
-    self.readyAt = readyAt
+    self.streamingDuration = streamingDuration
     self.canReconnect = canReconnect
-    self.now = now
-    self.waitBeforeReconnect = waitBeforeReconnect
   }
 
   func appear() {
@@ -125,7 +122,7 @@ final class LivePreviewLifecycle<Renderer> {
             return
           }
           phase = .waitingToReconnect
-          do { try await waitBeforeReconnect(delays[retryIndex]) } catch { return }
+          do { try await clock.sleep(for: delays[retryIndex]) } catch { return }
           retryIndex += 1
           guard isActive(id) else { return }
           guard canReconnect() else {
@@ -148,7 +145,7 @@ final class LivePreviewLifecycle<Renderer> {
           guard isActive(id) else { return }
           renderer = nil
           // Startup time does not count toward a stable preview.
-          if let readyAt = readyAt(newRenderer), readyAt.duration(to: now()) >= .seconds(10) {
+          if let duration = streamingDuration(newRenderer), duration >= .seconds(10) {
             retryIndex = 0
           }
           isRecovering = true

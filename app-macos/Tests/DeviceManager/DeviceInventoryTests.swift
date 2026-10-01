@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 @main
 @MainActor
@@ -32,7 +33,7 @@ struct DeviceInventoryTests {
 
   static func previewDoesNotWaitForIdentity(_ fixture: Fixture) async {
     fixture.tracker.update([device()])
-    await eventually { fixture.client.identityRequests == 1 && fixture.updates.last?.count == 1 }
+    await waitForState { fixture.client.identityRequests == 1 && fixture.updates.last?.count == 1 }
     precondition(fixture.updates.last?.first?.displayTitle == "Generic model")
     precondition(fixture.manager.latestDevices.isEmpty, "Preview readiness must not authorize shell-dependent captures")
   }
@@ -40,12 +41,12 @@ struct DeviceInventoryTests {
   static func matchingPreservesOneRow(_ fixture: Fixture) async {
     let rowID = fixture.manager.entries[0].id
     fixture.tracker.update([device()])
-    await eventually { fixture.client.identityRequests == 1 }
+    await waitForState { fixture.client.identityRequests == 1 }
     precondition(fixture.manager.entries.count == 1)
     precondition(fixture.manager.entries[0].id == rowID)
     precondition(fixture.manager.entries[0].detail == nil, "Pending matching must not display a lock warning")
     await fixture.client.identityGate.open()
-    await eventually { fixture.manager.connectedDevices.first?.displayTitle == "Test Tablet" }
+    await waitForState { fixture.manager.connectedDevices.first?.displayTitle == "Test Tablet" }
     precondition(fixture.manager.entries.count == 1 && fixture.manager.entries[0].id == rowID)
     precondition(fixture.adb.client.bootRequests == 0, "Matching must not wait for the blocked ADB refresh")
   }
@@ -53,9 +54,9 @@ struct DeviceInventoryTests {
   static func bootStatusUpdatesAfterIdentity(_ fixture: Fixture) async {
     await fixture.connect()
     await fixture.adb.client.connectionsGate.open()
-    await eventually { !fixture.manager.isRefreshing }
+    await waitForState { !fixture.manager.isRefreshing }
     let refresh = Task { await fixture.manager.refresh() }
-    await eventually { fixture.adb.client.bootRequests > 0 }
+    await waitForState { fixture.adb.client.bootRequests > 0 }
     precondition(fixture.manager.emulators[0].state == .starting)
     await fixture.adb.client.bootGate.open()
     await refresh.value
@@ -78,7 +79,7 @@ struct DeviceInventoryTests {
     let captured = fixture.manager.latestDevices[0]
     fixture.client.title = "Renamed Tablet"
     await fixture.manager.refresh()
-    await eventually { fixture.updates.last?.first?.displayTitle == "Renamed Tablet" }
+    await waitForState { fixture.updates.last?.first?.displayTitle == "Renamed Tablet" }
     precondition(fixture.manager.latestDevices[0].displayTitle == "Renamed Tablet")
     precondition(captured.displayTitle == "Test Tablet", "Existing capture snapshots must retain their name")
     precondition(fixture.manager.latestDevices[0].avdName == "Test Tablet", "Renaming must preserve AVD identity")
@@ -88,7 +89,7 @@ struct DeviceInventoryTests {
     fixture.client.resolvesSerial = false
     await fixture.client.identityGate.open()
     fixture.tracker.update([device()])
-    await eventually { fixture.client.identityRequests == 1 && fixture.manager.matchingSerials.isEmpty }
+    await waitForState { fixture.client.identityRequests == 1 && fixture.manager.matchingSerials.isEmpty }
     precondition(fixture.manager.entries.contains { $0.serial == "emulator-5554" })
   }
 
@@ -96,18 +97,18 @@ struct DeviceInventoryTests {
     await fixture.connect(ready: true)
     fixture.client.identityGate = TestGate()
     fixture.tracker.update([device(transportID: "2")])
-    await eventually { fixture.manager.connectedDevices.first?.transportID == "2" }
+    await waitForState { fixture.manager.connectedDevices.first?.transportID == "2" }
     precondition(fixture.manager.connectedDevices[0].displayTitle == "Generic model")
     precondition(fixture.manager.latestDevices.isEmpty)
   }
 
   static func staleMatchingCannotRestoreOldTransport(_ fixture: Fixture) async {
     fixture.tracker.update([device(transportID: "3")])
-    await eventually { fixture.client.identityRequests == 1 }
+    await waitForState { fixture.client.identityRequests == 1 }
     fixture.tracker.update([device(transportID: "4")])
-    await eventually { fixture.client.identityRequests == 2 }
+    await waitForState { fixture.client.identityRequests == 2 }
     await fixture.client.identityGate.open()
-    await eventually { fixture.manager.matchingSerials.isEmpty && fixture.manager.connectedDevices.first?.displayName != nil }
+    await waitForState { fixture.manager.matchingSerials.isEmpty && fixture.manager.connectedDevices.first?.displayName != nil }
     precondition(fixture.manager.connectedDevices[0].transportID == "4")
     precondition(fixture.manager.entries.count == 1)
   }
@@ -115,7 +116,7 @@ struct DeviceInventoryTests {
   static func disconnectRemovesCurrentDevices(_ fixture: Fixture) async {
     await fixture.connect(ready: true)
     fixture.tracker.update([], ready: true)
-    await eventually { fixture.manager.connectedDevices.isEmpty && fixture.manager.latestDevices.isEmpty }
+    await waitForState { fixture.manager.connectedDevices.isEmpty && fixture.manager.latestDevices.isEmpty }
   }
 
   static func device(avdName: String? = nil, transportID: String = "1") -> Device {
@@ -125,15 +126,22 @@ struct DeviceInventoryTests {
     )
   }
 
-  static func eventually(line: UInt = #line, _ condition: () -> Bool) async {
-    for _ in 0 ..< 10000 {
-      if condition() { return }
-      await Task.yield()
+  static func waitForState(line: UInt = #line, _ condition: () -> Bool) async {
+    while true {
+      let (stream, continuation) = AsyncStream<Void>.makeStream()
+      let satisfied = withObservationTracking { condition() } onChange: { continuation.yield(()) }
+      if satisfied { continuation.finish()
+        return
+      }
+      var iterator = stream.makeAsyncIterator()
+      _ = await iterator.next()
+      continuation.finish()
+      precondition(!Task.isCancelled, "Inventory wait cancelled at line \(line)")
     }
-    fatalError("Expected inventory update did not arrive at line \(line)")
   }
 
   @MainActor
+  @Observable
   final class Fixture {
     let adb = ADBService()
     let tracker = DeviceTracker()
@@ -153,13 +161,13 @@ struct DeviceInventoryTests {
           updates.append(devices)
         }
       }
-      await eventually { self.manager.hasLoaded && self.adb.client.connectionRequests > 0 }
+      await waitForState { self.manager.hasLoaded && self.adb.client.connectionRequests > 0 }
     }
 
     func connect(ready: Bool = false) async {
       await client.identityGate.open()
       tracker.update([device(avdName: ready ? "Test Tablet" : nil)], ready: ready)
-      await eventually {
+      await waitForState {
         self.manager.connectedDevices.first?.displayName == "Test Tablet"
           && self.manager.matchingSerials.isEmpty
           && (!ready || self.manager.latestDevices.count == 1)
@@ -169,7 +177,7 @@ struct DeviceInventoryTests {
     func allowRefresh() async {
       await adb.client.connectionsGate.open()
       await adb.client.bootGate.open()
-      await eventually { !self.manager.isRefreshing }
+      await waitForState { !self.manager.isRefreshing }
     }
 
     func stop() async {
@@ -179,7 +187,7 @@ struct DeviceInventoryTests {
       await adb.client.connectionsGate.open()
       await adb.client.bootGate.open()
       await observer?.value
-      await eventually { !self.manager.isRefreshing }
+      await waitForState { !self.manager.isRefreshing }
     }
   }
 }

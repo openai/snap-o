@@ -87,7 +87,7 @@ struct LivePreviewThumbnailTests {
       await nextAppearance.run(thumbnail: thumbnail, isSelected: false, pixelSize: CGSize(width: 80, height: 160)) {
         requests += 1
         entered.continuation.yield(())
-        try await suspendUntilCancelled(.zero)
+        try await suspendUntilCancelled()
         return png
       }
     }

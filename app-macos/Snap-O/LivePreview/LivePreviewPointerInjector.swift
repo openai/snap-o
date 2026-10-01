@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 /// Serializes pointer events per source, selects a backend, and keeps each gesture on one backend.
@@ -36,9 +37,8 @@ actor LivePreviewPointerInjector {
 
   private let makePreferredBackend: PreferredBackendFactory
   private let fallbackBackend: any LivePreviewPointerBackend
-  private let now: @Sendable () -> ContinuousClock.Instant
-  private let sleepUntil: @Sendable (ContinuousClock.Instant) async throws -> Void
-  private var nextTouchSend: [String: ContinuousClock.Instant] = [:]
+  private let clock: AnyClock<Duration>
+  private var nextTouchSend: [String: AnyClock<Duration>.Instant] = [:]
   private var deviceStates: [String: DeviceState] = [:]
   private var touchRoutes: [String: TouchRoute] = [:]
   private var pendingTouchEvents: [LivePreviewPointerEvent] = []
@@ -57,20 +57,19 @@ actor LivePreviewPointerInjector {
 
   init(
     makePreferredBackend: @escaping PreferredBackendFactory,
-    fallbackBackend: any LivePreviewPointerBackend,
-    now: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
-    sleepUntil: @escaping @Sendable (ContinuousClock.Instant) async throws -> Void = {
-      try await Task.sleep(until: $0, clock: .continuous)
-    }
+    fallbackBackend: any LivePreviewPointerBackend
   ) {
     self.makePreferredBackend = makePreferredBackend
     self.fallbackBackend = fallbackBackend
-    self.now = now
-    self.sleepUntil = sleepUntil
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
   }
 
-  func prepare(deviceID: String) {
-    guard deviceStates[deviceID] == nil else { return }
+  @discardableResult
+  func prepare(deviceID: String) -> Task<Void, Never>? {
+    if case .preparing(_, let task) = deviceStates[deviceID] { return task }
+    guard deviceStates[deviceID] == nil else { return nil }
 
     let generation = UUID()
     let makePreferredBackend = makePreferredBackend
@@ -95,6 +94,7 @@ actor LivePreviewPointerInjector {
       }
     }
     deviceStates[deviceID] = .preparing(generation: generation, task: task)
+    return task
   }
 
   func enqueue(_ event: LivePreviewPointerEvent) async {
@@ -205,9 +205,9 @@ actor LivePreviewPointerInjector {
   private func flushTouchQueue() async {
     while let pending = pendingTouchEvents.first {
       if pending.action == .move,
-         let deadline = nextTouchSend[pending.deviceID], now() < deadline {
+         let deadline = nextTouchSend[pending.deviceID], clock.now < deadline {
         do {
-          try await sleepUntil(deadline)
+          try await clock.sleep(until: deadline)
         } catch {
           break
         }
@@ -215,7 +215,7 @@ actor LivePreviewPointerInjector {
         continue
       }
       let event = pendingTouchEvents.removeFirst()
-      nextTouchSend[event.deviceID] = now().advanced(by: minimumMoveInterval(for: event.deviceID))
+      nextTouchSend[event.deviceID] = clock.now.advanced(by: minimumMoveInterval(for: event.deviceID))
       do {
         try await sendTouchEvent(event)
       } catch is CancellationError {

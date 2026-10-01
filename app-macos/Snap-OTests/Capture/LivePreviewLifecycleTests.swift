@@ -1,9 +1,12 @@
+import Clocks
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 import Observation
 @testable import Snap_O
 import Testing
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, ImmediateClock()))
 @MainActor
 struct LivePreviewLifecycleTests {
   @Test
@@ -167,15 +170,15 @@ struct LivePreviewLifecycleTests {
     #expect(host.stops == [1, 2, 3, 4, 5])
   }
 
-  @Test
+  @Test(.dependency(\.continuousClock, TestClock()))
   func disconnectingDeviceDuringRetryStopsRecovery() async throws {
     let host = LifecycleHost()
     let lifecycle = try await host.startPreview()
-    host.reconnectGate = LifecycleGate()
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self) var clock
     host.streamEnded.open()
-    try await waitForState { host.reconnectGate?.entered == true }
+    try await waitForState { lifecycle.phase == .waitingToReconnect }
     host.isConnected = false
-    host.reconnectGate?.open()
+    await clock.advance(by: .milliseconds(500))
     try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
     #expect(host.starts == 1 && host.stops == [1])
   }
@@ -186,8 +189,8 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     for attempt in 1 ... 5 {
       try await waitForState { lifecycle.renderer == attempt }
-      host.clock = host.clock.advanced(by: .seconds(60))
-      host.readyAt = becomesReadyBeforeDisconnect ? host.clock : nil
+      host.elapsed += .seconds(60)
+      host.readyAt = becomesReadyBeforeDisconnect ? host.elapsed : nil
       host.streamEnded.open()
     }
     try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
@@ -201,7 +204,7 @@ struct LivePreviewLifecycleTests {
     host.earlyDisconnectsRemaining = 3
     host.streamEnded.open()
     try await waitForState { lifecycle.renderer == 5 }
-    host.clock = host.clock.advanced(by: .seconds(60))
+    host.elapsed += .seconds(60)
     host.streamEnded.open()
     try await waitForState { lifecycle.renderer == 6 }
     #expect(!host.connection.hasFailed)
@@ -209,15 +212,15 @@ struct LivePreviewLifecycleTests {
     await host.connection.cleanupTask?.value
   }
 
-  @Test
+  @Test(.dependency(\.continuousClock, TestClock()))
   func leavingPreviewCancelsUnexpectedDisconnectRecovery() async throws {
     let host = LifecycleHost()
     let lifecycle = try await host.startPreview()
-    host.reconnectGate = LifecycleGate()
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self) var clock
     host.streamEnded.open()
-    try await waitForState { host.reconnectGate?.entered == true }
+    try await waitForState { lifecycle.phase == .waitingToReconnect }
     lifecycle.disappear()
-    host.reconnectGate?.open()
+    await clock.advance(by: .milliseconds(500))
     await host.connection.cleanupTask?.value
     #expect(host.starts == 1 && host.stops == [1])
     #expect(lifecycle.phase == .idle)
@@ -252,14 +255,13 @@ private final class LifecycleGate {
 private final class LifecycleHost {
   let connection = LivePreviewConnection()
   var isConnected = true
-  var clock = ContinuousClock.now
-  var readyAt: ContinuousClock.Instant?
+  var elapsed = Duration.zero
+  var readyAt: Duration?
   var starts = 0
   var stops: [Int] = []
   var failsToStart = false
   var startFailuresRemaining = 0
   var earlyDisconnectsRemaining = 0
-  var reconnectGate: LifecycleGate?
   var startGate: LifecycleGate?
   var stopGate: LifecycleGate?
   var streamEnded = LifecycleGate()
@@ -277,7 +279,7 @@ private final class LifecycleHost {
       self.starts += 1
       await self.startGate?.wait()
       self.streamEnded = LifecycleGate()
-      self.readyAt = self.clock
+      self.readyAt = self.elapsed
       if self.startFailuresRemaining > 0 {
         self.startFailuresRemaining -= 1
         return nil
@@ -294,9 +296,6 @@ private final class LifecycleHost {
     }, waitUntilStop: { _ in
       await self.streamEnded.wait()
       return nil
-    }, readyAt: { _ in self.readyAt }, canReconnect: { self.isConnected }, waitBeforeReconnect: { _ in
-      await self.reconnectGate?.wait()
-      try Task.checkCancellation()
-    }, now: { self.clock })
+    }, streamingDuration: { _ in self.readyAt.map { self.elapsed - $0 } }, canReconnect: { self.isConnected })
   }
 }

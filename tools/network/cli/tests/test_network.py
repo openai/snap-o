@@ -201,25 +201,21 @@ class SSETests(unittest.TestCase):
         self.assertEqual(event["id"], "9")
         self.assertEqual(event["event"], "ready")
 
-    def test_idle_stream_survives_a_delayed_heartbeat(self):
+    def test_stream_timeout_allows_headroom_beyond_the_heartbeat_interval(self):
         message = {"method": "Network.loadingFinished", "snapoSequence": 1}
-
-        def handler(stream, _):
-            # Allow one second of scheduling delay beyond the server's 30-second heartbeat.
-            if wire.stopping.wait(31):
-                return
-            heartbeat = b": keep-alive\n\n"
-            stream.write(f"{len(heartbeat):x}\r\n".encode() + heartbeat + b"\r\n")
-            write_message(stream, message)
-
-        with WireServer(handler) as wire:
-            stream = snapo.NetworkSSE(
-                lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout), "/network"
-            )
-            try:
-                self.assertEqual(stream.read_event()["data"], message)
-            finally:
-                stream.close()
+        payload = b": keep-alive\n\ndata: " + json.dumps(message).encode() + b"\n\n"
+        transport = mock.Mock()
+        transport.socket.makefile.return_value = io.BytesIO(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" + payload
+        )
+        open_socket = mock.Mock(return_value=transport)
+        stream = snapo.NetworkSSE(open_socket, "/network")
+        try:
+            open_socket.assert_called_once_with(10)
+            transport.socket.settimeout.assert_called_once_with(60)
+            self.assertEqual(stream.read_event()["data"], message)
+        finally:
+            stream.close()
 
     def test_partial_and_invalid_events_fail(self):
         for payload in (b'data: {}\n', b'data: "\xff"\n\n', b'data: nope\n\n'):
@@ -394,7 +390,7 @@ usb-phone device product:oriole
 class ADBTests(unittest.TestCase):
     def test_repeated_shutdown_signals_allow_forward_cleanup(self):
         script = f'''
-import runpy, signal, time
+import runpy, signal, sys
 snapo = runpy.run_path({str(SCRIPT)!r})
 signal.signal(signal.SIGINT, snapo["interrupted"])
 signal.signal(signal.SIGTERM, snapo["interrupted"])
@@ -402,7 +398,7 @@ class Adb:
     def command(self, *args, **kwargs):
         if args[1] == "--remove":
             print("removing", flush=True)
-            time.sleep(0.2)
+            assert sys.stdin.readline().strip() == "continue"
             print("removed", flush=True)
         return "27185"
 try:
@@ -412,13 +408,13 @@ try:
 except KeyboardInterrupt:
     pass
 '''
-        process = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        process = subprocess.Popen([sys.executable, "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
         try:
             self.assertEqual(process.stdout.readline().strip(), "ready")
             process.send_signal(signal.SIGINT)
             self.assertEqual(process.stdout.readline().strip(), "removing")
             process.send_signal(signal.SIGTERM)
-            output, _ = process.communicate(timeout=5)
+            output, _ = process.communicate("continue\n", timeout=5)
             self.assertIn("removed", output)
         finally:
             if process.poll() is None:

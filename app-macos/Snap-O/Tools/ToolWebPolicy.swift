@@ -2,6 +2,23 @@ import CryptoKit
 import Foundation
 
 enum ToolWebPolicy {
+  struct Origin {
+    let scheme: String
+    let host: String
+    let port: Int
+  }
+
+  static func acceptsMessage(
+    ownsView: Bool, isMainFrame: Bool, url: URL?, documentURL: URL?, origin: Origin
+  ) -> Bool {
+    guard ownsView, isMainFrame, let url, let documentURL else { return false }
+    var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    components?.fragment = nil
+    let expected = ToolURL.frontend
+    return components?.url == documentURL && origin.scheme == expected.scheme
+      && origin.host == expected.host && origin.port == (expected.port ?? 0)
+  }
+
   static func developmentURL(_ text: String) -> URL? {
     guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
           ["http", "https"].contains(url.scheme?.lowercased() ?? ""),

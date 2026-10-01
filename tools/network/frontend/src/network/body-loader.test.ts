@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bodyLoadPriority, RequestBodyLoader, type BodyLoadJob } from "./body-loader";
 import type { RequestBodies } from "./bridge-types";
 
 describe("RequestBodyLoader", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
   it("limits concurrency and starts selected and visible requests first", async () => {
     const started: string[] = [];
     const loaded: string[] = [];
@@ -29,7 +31,7 @@ describe("RequestBodyLoader", () => {
     expect(started).toEqual(["selected", "visible"]);
 
     pending.get("selected")?.resolve({ requestId: "selected", requestBody: "body" });
-    await nextTask();
+    await flushJobs();
     expect(started).toEqual(["selected", "visible", "background-1"]);
     expect(loaded).toEqual(["selected"]);
 
@@ -47,10 +49,10 @@ describe("RequestBodyLoader", () => {
     loader.retainRecords(new Set([request.recordKey]));
 
     loader.schedule([request]);
-    await nextTask();
+    await flushJobs();
     loader.forgetRecords([request.recordKey]);
     loader.schedule([request]);
-    await nextTask();
+    await flushJobs();
 
     expect(loaded).toEqual(["request", "request"]);
     loader.dispose();
@@ -77,12 +79,12 @@ describe("RequestBodyLoader", () => {
     expect(pending).toHaveLength(1);
 
     pending[0].resolve({ requestId: "request", responseBody: "stale" });
-    await nextTask();
+    await flushJobs();
     expect(loaded).toEqual([]);
     expect(pending).toHaveLength(2);
 
     pending[1].resolve({ requestId: "request", responseBody: "fresh" });
-    await nextTask();
+    await flushJobs();
     expect(loaded).toEqual(["fresh"]);
     loader.dispose();
   });
@@ -106,7 +108,7 @@ describe("RequestBodyLoader", () => {
     loader.retainRecords(new Set([request.recordKey]));
 
     loader.schedule([request]);
-    await nextTask();
+    await flushJobs();
 
     expect(loaded).toEqual([
       { requestId: "request", responseBodyLoadCompleted: true, responseBodyLoadError: "failed" }
@@ -124,7 +126,7 @@ describe("RequestBodyLoader", () => {
     );
     loader.retainRecords(new Set([request.recordKey]));
     loader.schedule([request]);
-    await nextTask();
+    await flushJobs();
     expect(loaded).toEqual([
       { requestId: "request", responseBodyLoadCompleted: true, responseBodyLoadError: "unavailable" }
     ]);
@@ -152,13 +154,13 @@ describe("RequestBodyLoader", () => {
     );
     loader.retainRecords(new Set([request.recordKey]));
     loader.schedule([request, response]);
-    await nextTask();
+    await flushJobs();
     loader.schedule([response]);
     expect(started).toEqual(["request", "response"]);
     failResponse = false;
     loader.forgetJob(response.key);
     loader.schedule([request, response]);
-    await nextTask();
+    await flushJobs();
     expect(started).toEqual(["request", "response", "response"]);
     expect(loaded.at(-1)).toEqual({
       requestId: "request",
@@ -191,6 +193,6 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   return { promise, resolve: resolvePromise };
 }
 
-function nextTask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+function flushJobs(): Promise<void> {
+  return vi.runAllTimersAsync().then(() => {});
 }

@@ -5,9 +5,10 @@ APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-recording-tests.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
+. "$APP_DIR/scripts/test-swift-packages.sh"
 
 # Exercise the recording service with deterministic ADB sessions and real video files.
-xcrun swiftc -swift-version 6 -parse-as-library \
+swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/CaptureTimestampSource.swift \
   Snap-O/Capture/CaptureCoordinator.swift Snap-O/Capture/ShowTouchesOverride.swift \

@@ -49,53 +49,44 @@ struct CaptureReviewPlaybackTests {
     #expect(playback.speed == 0.5)
   }
 
-  @Test @MainActor
-  func rapidScrubbingSettlesOnExactFinalPosition() async throws {
-    let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mp4")
-    defer { try? FileManager.default.removeItem(at: source) }
-    try await makeVideo(at: source)
-    let playback = CaptureReviewPlayback()
-    defer { playback.stop() }
-    await playback.load(source)
-    playback.togglePlayback()
-    playback.setScrubbing(true)
+  @Test
+  func rapidScrubbingSettlesOnExactFinalPosition() throws {
+    var seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.1, tolerance: 1.0 / 15)
+    let firstRequest = seeks.next()
+    let first = try #require(firstRequest)
     for index in 0 ..< 200 {
-      playback.seek(to: Double(index % 9) / 10)
+      seeks.enqueue(time: Double(index % 9) / 10, tolerance: 1.0 / 15)
+      let concurrent = seeks.next()
+      #expect(concurrent == nil)
     }
-    playback.seek(to: 0.4)
-    playback.setScrubbing(false)
-    let deadline = ContinuousClock.now + .seconds(5)
-    while abs(playback.player.currentTime().seconds - 0.4) > 0.001, ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(abs(playback.player.currentTime().seconds - 0.4) < 0.001)
+    seeks.enqueue(time: 0.4, tolerance: 0)
+    let finishedFirst = seeks.complete(first)
+    #expect(finishedFirst)
+    let finalRequest = seeks.next()
+    let final = try #require(finalRequest)
+    #expect(final.time == 0.4 && final.tolerance == 0)
+    #expect(seeks.isSeeking)
+    let finishedFinal = seeks.complete(final)
+    #expect(finishedFinal)
+    let next = seeks.next()
+    #expect(next == nil && !seeks.isSeeking)
   }
 
-  private func makeVideo(at url: URL) async throws {
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-      AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 32, AVVideoHeightKey: 32,
-      AVVideoCompressionPropertiesKey: [AVVideoAllowFrameReorderingKey: false]
-    ])
-    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
-    writer.add(input)
-    try #require(writer.startWriting())
-    writer.startSession(atSourceTime: .zero)
-    var pixel: CVPixelBuffer?
-    try #require(CVPixelBufferCreate(kCFAllocatorDefault, 32, 32, kCVPixelFormatType_32ARGB, nil, &pixel) == kCVReturnSuccess)
-    let buffer = try #require(pixel)
-    CVPixelBufferLockBaseAddress(buffer, [])
-    memset(CVPixelBufferGetBaseAddress(buffer), 80, CVPixelBufferGetDataSize(buffer))
-    CVPixelBufferUnlockBaseAddress(buffer, [])
-    for index in 0 ..< 10 {
-      while !input.isReadyForMoreMediaData {
-        try await Task.sleep(for: .milliseconds(1))
-      }
-      try #require(adaptor.append(buffer, withPresentationTime: CMTime(value: Int64(index), timescale: 10)))
-    }
-    writer.endSession(atSourceTime: CMTime(value: 1, timescale: 1))
-    input.markAsFinished()
-    await writer.finishWriting()
-    try #require(writer.status == .completed)
+  @Test
+  func staleCompletionCannotFinishANewSeek() throws {
+    var seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.1, tolerance: 0)
+    let oldRequest = seeks.next()
+    let old = try #require(oldRequest)
+    seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.7, tolerance: 0)
+    let currentRequest = seeks.next()
+    let current = try #require(currentRequest)
+    let finishedOld = seeks.complete(old)
+    #expect(!finishedOld)
+    #expect(seeks.isSeeking)
+    let finishedCurrent = seeks.complete(current)
+    #expect(finishedCurrent)
   }
 }

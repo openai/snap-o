@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 /// Starts the preferred capture early and hands it to at most one window.
@@ -102,11 +103,15 @@ final class StartupCapturePreparation {
     options: LivePreviewOptions,
     resolveDeviceID: @escaping @Sendable () async -> String?
   ) -> Task<PreparedLivePreview?, Never> {
-    Task.detached(priority: .userInitiated) { [service = livePreview, cleanup = cleanupTask] in
-      await cleanup?.value
-      guard !Task.isCancelled, let deviceID = await resolveDeviceID(), !Task.isCancelled else { return nil }
-      let operation = PreparedLivePreview.startOperation(for: deviceID, options: options, service: service)
-      return await PreparedLivePreview(deviceID: deviceID, options: options, operationTask: operation, service: service)
+    withEscapedDependencies { dependencies in
+      Task.detached(priority: .userInitiated) { [service = livePreview, cleanup = cleanupTask] in
+        await dependencies.yield {
+          await cleanup?.value
+          guard !Task.isCancelled, let deviceID = await resolveDeviceID(), !Task.isCancelled else { return nil }
+          let operation = PreparedLivePreview.startOperation(for: deviceID, options: options, service: service)
+          return await PreparedLivePreview(deviceID: deviceID, options: options, operationTask: operation, service: service)
+        }
+      }
     }
   }
 

@@ -1,10 +1,13 @@
+import Clocks
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 import Observation
 @testable import Snap_O
 import Synchronization
 import Testing
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
 @MainActor
 struct ToolHostObservationTests {
   @Test
@@ -100,7 +103,7 @@ struct ToolHostObservationTests {
     var apps = [first]
     let appTool = AppToolModel(preferences: defaults, discover: {
       ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in }, sleep: suspendUntilCancelled)
+    }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
@@ -149,7 +152,7 @@ struct ToolHostObservationTests {
       scans += 1
       if shouldFail { throw NSError(domain: "ToolHostDiscoveryTests", code: 1) }
       return ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in }, sleep: suspendUntilCancelled)
+    }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
@@ -175,7 +178,7 @@ struct ToolHostObservationTests {
     #expect(host.webContainer == nil)
   }
 
-  @Test(.timeLimit(.minutes(1)))
+  @Test(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
   func cachedUpdatesDoNotCompleteDiscoveryOrClearFailure() async throws {
     let suite = "ToolHostCachedDiscoveryTests." + UUID().uuidString
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -183,12 +186,10 @@ struct ToolHostObservationTests {
     let (updates, continuation) = AsyncStream<Void>.makeStream()
     let (scans, scanContinuation) = AsyncStream<CheckedContinuation<ToolDiscoverySnapshot, Error>>.makeStream()
     let (snapshots, snapshotContinuation) = AsyncStream<AppToolSnapshot>.makeStream()
-    let (polls, pollContinuation) = AsyncStream<Void>.makeStream()
     defer {
       continuation.finish()
       scanContinuation.finish()
       snapshotContinuation.finish()
-      pollContinuation.finish()
     }
     var scanRequests = scans.makeAsyncIterator()
     var publications = snapshots.makeAsyncIterator()
@@ -201,11 +202,7 @@ struct ToolHostObservationTests {
     }, currentDiscovery: {
       reads += 1
       return ToolDiscoverySnapshot(apps: [], revision: UInt64(reads + 10))
-    }, openApp: { _ in }, sleep: { _ in
-      // This test drives scans explicitly; elapsed time must not trigger a retry.
-      for await _ in polls {}
-      try Task.checkCancellation()
-    })
+    }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
@@ -258,7 +255,7 @@ struct ToolHostObservationTests {
     let apps = [first, next]
     let appTool = AppToolModel(preferences: defaults, discover: {
       ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in }, sleep: suspendUntilCancelled)
+    }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)

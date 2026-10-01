@@ -5,6 +5,9 @@ import type { RequestBodies } from "../../../network/bridge-types";
 import type { ToolRecord, RequestRecord, StreamEventRecord } from "../../../network/cdp";
 import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
 
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
 describe("export body readiness", () => {
   const write = vi.fn(async (items: ClipboardItem[]) => {
     await items[0].getType("text/plain");
@@ -97,7 +100,7 @@ describe("export body readiness", () => {
     const item = write.mock.calls[0][0][0];
     const ready = vi.fn();
     void copying.then(ready);
-    await nextTask();
+    await flushJobs();
     expect(ready).not.toHaveBeenCalled();
 
     body.resolve({ requestId: "delayed", requestBody: "late body" });
@@ -176,7 +179,7 @@ describe("HAR body hydration budget", () => {
     for (const id of ["one", "two", "three"]) {
       pending.get(id)?.resolve({ requestId: id, responseBody: id });
     }
-    await nextTask();
+    await flushJobs();
     expect([...pending.keys()]).toEqual(["one", "two", "three", "four"]);
     pending.get("four")?.resolve({ requestId: "four", responseBody: "four" });
 
@@ -282,6 +285,6 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   return { promise, resolve: resolvePromise };
 }
 
-function nextTask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+function flushJobs(): Promise<void> {
+  return vi.runAllTimersAsync().then(() => {});
 }

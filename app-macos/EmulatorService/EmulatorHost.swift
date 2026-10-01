@@ -158,16 +158,20 @@ final class EmulatorHost {
     let process = Process()
     process.executableURL = sdk.appendingPathComponent("emulator/emulator")
     let config = properties(at: URL(fileURLWithPath: device.id).appendingPathComponent("config.ini"))
-    let isResizable = config["hw.device.name"] == "resizable" || !(config["hw.resizable.configs"] ?? "").isEmpty
-    // Display-mode switching requires the UI backend, even when its window is hidden.
-    let windowOption = isResizable ? "-qt-hide-window" : "-no-window"
-    process.arguments = ["-avd", device.avdName, windowOption, "-grpc-use-token"] + (coldBoot ? ["-no-snapshot-load"] : [])
+    process.arguments = Self.launchArguments(avdName: device.avdName, configuration: config, coldBoot: coldBoot)
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = log
     process.standardError = log
     try process.run()
     launches[id] = Launch(process: process, startedAt: Date())
     return try snapshot(serials: serials)
+  }
+
+  static func launchArguments(avdName: String, configuration: [String: String], coldBoot: Bool) -> [String] {
+    let isResizable = configuration["hw.device.name"] == "resizable" || !(configuration["hw.resizable.configs"] ?? "").isEmpty
+    // Display-mode switching requires the UI backend, even when its window is hidden.
+    let windowOption = isResizable ? "-qt-hide-window" : "-no-window"
+    return ["-avd", avdName, windowOption, "-grpc-use-token"] + (coldBoot ? ["-no-snapshot-load"] : [])
   }
 
   func stop(_ id: String, serial: String) throws -> EmulatorInventory {

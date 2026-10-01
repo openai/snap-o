@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D10C00032F70000100C0FFEE /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = D10C00022F70000100C0FFEE /* Dependencies */; };
+		D10C00052F70000100C0FFEE /* DependenciesTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = D10C00042F70000100C0FFEE /* DependenciesTestSupport */; };
+		C10C00032F70000100C0FFEE /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = C10C00022F70000100C0FFEE /* Clocks */; };
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
 		A60000012F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */; };
@@ -95,6 +98,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D10C00032F70000100C0FFEE /* Dependencies in Frameworks */,
 				32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */,
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
 				D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */,
@@ -109,6 +113,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C10C00032F70000100C0FFEE /* Clocks in Frameworks */,
+				D10C00052F70000100C0FFEE /* DependenciesTestSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,6 +184,7 @@
 			);
 			name = "Snap-O";
 			packageProductDependencies = (
+				D10C00022F70000100C0FFEE /* Dependencies */,
 				32C837092E6A5AD10003BDFA /* Sparkle */,
 				D20000022F70000100C0FFEE /* ZIPFoundation */,
 				F40000022F70000100C0FFEE /* NIOHTTP1 */,
@@ -224,6 +231,10 @@
 				E30000022F70000100C0FFEE /* Snap-OTests */,
 			);
 			name = "Snap-OTests";
+			packageProductDependencies = (
+				C10C00022F70000100C0FFEE /* Clocks */,
+				D10C00042F70000100C0FFEE /* DependenciesTestSupport */,
+			);
 			productName = "Snap-OTests";
 			productReference = E30000012F70000100C0FFEE /* Snap-OTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -253,6 +264,8 @@
 			mainGroup = 3234F4482E2EC5030057AE77;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				D10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-dependencies" */,
+				C10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-clocks" */,
 				F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */,
 				B70300012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-protobuf" */,
 				B70200012F70000100C0FFEE /* XCRemoteSwiftPackageReference "grpc-swift-nio-transport" */,
@@ -836,6 +849,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		D10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-dependencies" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-dependencies";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.17.1;
+			};
+		};
+		C10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-clocks" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-clocks";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.1;
+			};
+		};
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -887,6 +916,21 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		D10C00022F70000100C0FFEE /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-dependencies" */;
+			productName = Dependencies;
+		};
+		D10C00042F70000100C0FFEE /* DependenciesTestSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-dependencies" */;
+			productName = DependenciesTestSupport;
+		};
+		C10C00022F70000100C0FFEE /* Clocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C10C00012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-clocks" */;
+			productName = Clocks;
+		};
 		32C837092E6A5AD10003BDFA /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;

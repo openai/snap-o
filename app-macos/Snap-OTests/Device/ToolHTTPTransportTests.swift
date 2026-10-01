@@ -1,11 +1,12 @@
-import AppKit
+import Clocks
 import Darwin
 import Foundation
+import Observation
 @testable import Snap_O
 import Testing
 import WebKit
 
-@Suite("Tool server scheme transport", .serialized)
+@Suite("Tool server scheme transport", .timeLimit(.minutes(1)))
 struct ToolHTTPTransportTests {
   private static let endpoint = ToolURL.api
   private static let reference = ToolServerReference(deviceId: "phone", socketName: "snapo_network_42")
@@ -31,11 +32,22 @@ struct ToolHTTPTransportTests {
     defer { server.close() }
     let adb = server.client()
     let input = try ToolHTTPRequestInput(request: URLRequest(url: Self.endpoint))
-    let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .milliseconds(100)) {
+    let clock = TestClock()
+    let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .seconds(2), scheduleTimeout: { channel, duration in
+      #expect(duration == .seconds(2))
+      let task = Task {
+        try await clock.sleep(for: .seconds(2))
+        channel.close(promise: nil)
+      }
+      return { task.cancel() }
+    }) {
       try await adb.openLocalAbstract(deviceID: Self.reference.deviceId, abstractSocket: Self.reference.socketName)
     }
-    await #expect(throws: (any Error).self) { try await operation.load() }
-    try await eventually { server.cancelledConnections == 1 }
+    let task = Task { try await operation.load() }
+    try await server.waitUntil { server.requests.count == 1 }
+    await clock.advance(by: .seconds(2))
+    await #expect(throws: (any Error).self) { try await task.value }
+    try await server.waitUntil { server.cancelledConnections == 1 }
   }
 
   @Test("Cancellation interrupts a stalled ADB handshake", arguments: [0, 1])
@@ -44,11 +56,11 @@ struct ToolHTTPTransportTests {
     defer { server.close() }
     let operation = try Self.operation(URLRequest(url: Self.endpoint), adb: server.client(timeout: .seconds(10)))
     let task = Task { try await operation.load() }
-    try await eventually { server.commands.count == command + 1 }
+    try await server.waitUntil { server.commands.count == command + 1 }
     task.cancel()
     server.expectClosedConnections()
     await #expect(throws: CancellationError.self) { try await task.value }
-    try await eventually { server.cancelledConnections == 1 }
+    try await server.waitUntil { server.cancelledConnections == 1 }
     #expect(server.connectionCount == 1)
     #expect(server.requests.isEmpty)
   }
@@ -66,7 +78,7 @@ struct ToolHTTPTransportTests {
     }
     let task = Task { try await operation.load() }
     await #expect(throws: CancellationError.self) { try await task.value }
-    try await eventually { server.cancelledConnections == 1 }
+    try await server.waitUntil { server.cancelledConnections == 1 }
     #expect(server.requests.isEmpty)
   }
 
@@ -84,8 +96,7 @@ struct ToolHTTPTransportTests {
     let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
     let task = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "items")))
-    handler.webView(WKWebView(), start: task)
-    try await eventually { task.finished || task.failure != nil }
+    await handler.start(task)?.value
     #expect(task.failure == nil)
     let head = try #require(task.response)
     #expect(head.value(forHTTPHeaderField: "Transfer-Encoding") == nil)
@@ -109,15 +120,15 @@ struct ToolHTTPTransportTests {
     let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
     let task = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "events")))
-    let webView = WKWebView()
-    handler.webView(webView, start: task)
-    try await eventually { server.requests.count == 1 }
+    let running = handler.start(task)
+    try await server.waitUntil { server.requests.count == 1 }
     switch action {
     case "disconnect": handler.authorize(nil)
     case "invalidate": handler.invalidate()
-    default: handler.webView(webView, stop: task)
+    default: handler.stop(task)
     }
-    try await eventually { server.cancelledConnections == 1 }
+    await running?.value
+    try await server.waitUntil { server.cancelledConnections == 1 }
     #expect(task.failure == nil)
     #expect(task.response == nil)
     #expect(!task.finished)
@@ -135,78 +146,39 @@ struct ToolHTTPTransportTests {
       adb: server.client()
     )
     handler.authorize(endpoint)
-    let webView = WKWebView()
     let unknown = try SchemeTask(URLRequest(
       url: #require(URL(string: "snapo://other/api/items"))
     ))
-    handler.webView(webView, start: unknown)
+    handler.start(unknown)
     #expect(unknown.failure != nil)
     handler.invalidate()
     let stale = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "items")))
-    handler.webView(webView, start: stale)
+    handler.start(stale)
     #expect(stale.failure != nil)
     #expect(server.connectionCount == 0)
   }
 
-  @Test("WebKit fetch and EventSource stream through the API path")
+  @Test("scheme requests stream data before the response finishes")
   @MainActor
-  func webKitUsesSchemeHandler() async throws {
-    _ = NSApplication.shared
-    let eventHead = Data(
-      "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".utf8
-    )
-    let server = FakeToolADB(plans: [
-      .response(Self.response(body: #"{"source":"fetch"}"#)),
-      .stream(eventHead + Self.chunk("event: update\ndata: live\n\n"))
-    ])
+  func streamsBeforeEOF() async throws {
+    let eventHead = Data("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".utf8)
+    let event = "event: update\ndata: live\n\n"
+    let server = FakeToolADB(plans: [.stream(eventHead + Self.chunk(event))])
     defer { server.close() }
-    let bridge = ToolWebBridge()
-    bridge.hostStateHandler = { ToolConnectionState() }
-    bridge.isActiveHandler = { true }
-    let container = ToolWebContainer(bridge: bridge, storageIdentifier: nil)
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-      styleMask: [.borderless], backing: .buffered, defer: false
-    )
-    window.contentView = container.webView
-    window.orderBack(nil)
-    var ready = false
-    container.pageReadinessChangedHandler = { ready = $0 }
-    container.setServer(ToolHTTPService.Endpoint(
-      id: UUID(), reference: Self.reference, adb: server.client()
-    ))
-    try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data("<p>Tool</p>".utf8)]))
-    let deadline = ContinuousClock.now + .seconds(10)
-    while !ready, ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    try #require(ready)
-
-    let fetched = try await container.webView.callAsyncJavaScript(
-      "return await fetch('/api/items', {mode: 'same-origin'}).then(response => response.text());",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? String
-    #expect(fetched == #"{"source":"fetch"}"#)
-    let event = try await container.webView.callAsyncJavaScript(
-      """
-      return await new Promise((resolve, reject) => {
-        const source = new EventSource('/api/events');
-        const timeout = setTimeout(() => { source.close(); reject(new Error('EventSource timed out')); }, 2000);
-        source.addEventListener('update', event => { clearTimeout(timeout); source.close(); resolve(event.data); });
-        source.onerror = () => { clearTimeout(timeout); source.close(); reject(new Error('EventSource failed')); };
-      });
-      """,
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? String
-    #expect(event == "live", "Deliver events without waiting for the HTTP response to finish")
-    try await eventually { server.cancelledConnections == 1 }
-    #expect(server.requests.map { $0.components(separatedBy: "\r\n")[0] } == [
-      "GET /items HTTP/1.1", "GET /events HTTP/1.1"
-    ])
-
-    container.stop()
-    await container.finishStopping()
-    window.orderOut(nil)
+    let handler = ToolSchemeHandler()
+    handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
+    defer { handler.invalidate() }
+    let request = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "events")))
+    let running = handler.start(request)
+    try await waitForState { !request.body.isEmpty || request.failure != nil }
+    #expect(request.failure == nil && !request.finished)
+    #expect(request.body == Data(event.utf8))
+    #expect(request.response?.value(forHTTPHeaderField: "Content-Type") == "text/event-stream")
+    #expect(server.requests.map { $0.components(separatedBy: "\r\n")[0] } == ["GET /events HTTP/1.1"])
+    handler.stop(request)
+    await running?.value
+    try await server.waitUntil { server.cancelledConnections == 1 }
+    #expect(!request.finished && request.failure == nil)
   }
 
   private static func operation(_ request: URLRequest, adb: ADBClient) throws -> ToolHTTPRequestOperation {
@@ -223,14 +195,6 @@ struct ToolHTTPTransportTests {
   private static func chunk(_ text: String) -> Data {
     Data("\(String(text.utf8.count, radix: 16))\r\n\(text)\r\n".utf8)
   }
-
-  private func eventually(isolation: isolated (any Actor)? = #isolation, _ condition: () -> Bool) async throws {
-    for _ in 0 ..< 200 {
-      if condition() { return }
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    Issue.record("Condition did not become true")
-  }
 }
 
 private extension ToolHTTPRequestOperation {
@@ -242,6 +206,7 @@ private extension ToolHTTPRequestOperation {
 }
 
 @MainActor
+@Observable
 private final class SchemeTask: NSObject, @preconcurrency WKURLSchemeTask {
   let request: URLRequest
   var failure: Error?
@@ -278,6 +243,7 @@ private final class FakeToolADB: @unchecked Sendable {
   }
 
   private let lock = NSLock()
+  private let changed = TestSignal()
   private let workers = DispatchGroup()
   private var plans: [Plan]
   private var peers: [ADBSocketConnection] = []
@@ -304,6 +270,14 @@ private final class FakeToolADB: @unchecked Sendable {
 
   var connectionCount: Int {
     lock.withLock { peers.count }
+  }
+
+  func waitUntil(_ condition: @Sendable () -> Bool) async throws {
+    while true {
+      let revision = changed.revision
+      if condition() { return }
+      try await changed.wait(after: revision)
+    }
   }
 
   func expectClosedConnections() {
@@ -349,9 +323,11 @@ private final class FakeToolADB: @unchecked Sendable {
           guard let command = try peer.readLengthPrefixedPayload(),
                 let text = String(data: command, encoding: .utf8) else { return }
           self.lock.withLock { self.storedCommands.append(text) }
+          self.changed.signal()
           if case .stallHandshake(command: index) = plan {
             if try peer.readChunk(maxLength: 1) == nil {
               self.lock.withLock { self.storedCancellations += 1 }
+              self.changed.signal()
             }
             return
           }
@@ -359,6 +335,7 @@ private final class FakeToolADB: @unchecked Sendable {
         }
         let request = try Self.readRequest(from: peer)
         self.lock.withLock { self.storedRequests.append(request) }
+        self.changed.signal()
         switch plan {
         case .response(let data):
           try peer.writeFully(data)
@@ -366,6 +343,7 @@ private final class FakeToolADB: @unchecked Sendable {
           try peer.writeFully(data)
           if try peer.readChunk(maxLength: 1) == nil {
             self.lock.withLock { self.storedCancellations += 1 }
+            self.changed.signal()
           }
         case .stallHandshake:
           Issue.record("Expected the handshake to stall")
@@ -373,6 +351,7 @@ private final class FakeToolADB: @unchecked Sendable {
       } catch {
         if case .stream = plan {
           self.lock.withLock { self.storedCancellations += 1 }
+          self.changed.signal()
         }
       }
     }

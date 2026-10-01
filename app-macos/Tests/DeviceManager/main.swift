@@ -55,29 +55,19 @@ func ignoresDeadProcessLock(_ fixture: HostFixture) throws {
   try expect(try fixture.host().snapshot(serials: []).devices.first?.canStart == true, "A stale lock must not prevent restarting")
 }
 
-func launchesResizableWithHiddenUI(_ fixture: HostFixture) throws {
-  try fixture.write("sdk/emulator/emulator", """
-  #!/bin/sh
-  if [ "$1" = "-list-avds" ]; then
-    printf 'Test\\n'
-  else
-    printf '%s\\n' "$@" > "$0.arguments"
-  fi
-  """)
-  let output = fixture.root.appendingPathComponent("sdk/emulator/emulator.arguments")
-  for (configuration, expected) in [("hw.device.name=resizable", "-qt-hide-window"), ("", "-no-window")] {
-    try fixture.write("avds/Test.avd/config.ini", "avd.ini.displayname=Test\n" + configuration)
-    try? FileManager.default.removeItem(at: output)
-    _ = try fixture.host().start(fixture.avd.path, coldBoot: false, serials: [])
-    let deadline = Date().addingTimeInterval(2)
-    while !FileManager.default.fileExists(atPath: output.path), Date() < deadline {
-      Thread.sleep(forTimeInterval: 0.01)
+func launchesResizableWithHiddenUI(_: HostFixture) throws {
+  for (configuration, expected): ([String: String], String) in [
+    (["hw.device.name": "resizable"], "-qt-hide-window"),
+    (["hw.resizable.configs": "phone,tablet"], "-qt-hide-window"),
+    ([:], "-no-window")
+  ] {
+    for coldBoot in [false, true] {
+      let arguments = EmulatorHost.launchArguments(avdName: "Test", configuration: configuration, coldBoot: coldBoot)
+      try expect(
+        arguments == ["-avd", "Test", expected, "-grpc-use-token"] + (coldBoot ? ["-no-snapshot-load"] : []),
+        "Resizable devices need the hidden UI backend; other devices remain headless"
+      )
     }
-    let arguments = try String(contentsOf: output, encoding: .utf8).split(separator: "\n")
-    try expect(
-      arguments == ["-avd", "Test", Substring(expected), "-grpc-use-token"],
-      "Resizable devices need the hidden UI backend; other devices remain headless"
-    )
   }
 }
 

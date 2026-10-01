@@ -4,14 +4,6 @@ import WebKit
 
 @MainActor
 final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
-  private struct PendingPageEvent {
-    let name: String
-    let payload: Any
-  }
-
-  private static let maximumPendingPageEvents = 2048
-  private static let maximumPageEventBatchSize = 64
-
   let webView: WKWebView
   var pageReadinessChangedHandler: ((Bool) -> Void)?
   var pageLoadFailedHandler: ((String) -> Void)?
@@ -26,10 +18,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   private var documentURL: URL?
   private let ruleListIdentifier = "snapo.inspector." + UUID().uuidString
   private var recoveryTask: Task<Void, Never>?
-  private var pendingPageEvents: [PendingPageEvent] = []
-  private var pageEventDeliveryGeneration: UInt = 0
-  private var inFlightPageEventCount = 0
-  private var isPageEventBatchInFlight = false
+  private var pageEvents = ToolPageEventQueue()
   private var isPageReady = false {
     didSet {
       guard isPageReady != oldValue else { return }
@@ -64,12 +53,13 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     webView.allowsLinkPreview = false
     bridge.webView = webView
     bridge.acceptsMessage = { [weak self] message in
-      guard let self, !isStopped, policyInstalled, message.webView === webView,
-            message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, ownsPage(url) else { return false }
+      guard let self, !isStopped, policyInstalled else { return false }
       let origin = message.frameInfo.securityOrigin
-      let expected = ToolURL.frontend
-      return origin.protocol == expected.scheme && origin.host == expected.host
-        && origin.port == (expected.port ?? 0)
+      return ToolWebPolicy.acceptsMessage(
+        ownsView: message.webView === webView, isMainFrame: message.frameInfo.isMainFrame,
+        url: message.frameInfo.request.url, documentURL: documentURL,
+        origin: .init(scheme: origin.protocol, host: origin.host, port: origin.port)
+      )
     }
     bridge.colorPanelClosedHandler = { [weak self] id in
       self?.sendPageEvent(name: "host:color-closed", payload: id)
@@ -151,20 +141,12 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   #if DEBUG
   func showWebInspector() {
     guard !isStopped, isPageReady else { return }
-    // WebKit's in-app inspector uses private API, so keep it out of release builds.
     let selector = NSSelectorFromString("_inspector")
-    guard webView.responds(to: selector),
-          let inspector = webView.perform(selector)?.takeUnretainedValue() as? NSObject,
-          inspector.responds(to: NSSelectorFromString("setDelegate:")),
-          inspector.responds(to: NSSelectorFromString("show")),
-          inspector.responds(to: NSSelectorFromString("detach")) else {
-      NSSound.beep()
-      return
+    let inspector = webView.responds(to: selector)
+      ? webView.perform(selector)?.takeUnretainedValue() as? NSObject : nil
+    ToolWebInspector.show(inspector, delegate: self) {
+      webView.configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
     }
-    webView.configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
-    inspector.perform(NSSelectorFromString("setDelegate:"), with: self)
-    inspector.perform(NSSelectorFromString("show"))
-    inspector.perform(NSSelectorFromString("detach"))
   }
 
   @objc
@@ -181,7 +163,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
 
   func sendPageEvent(name: String, payload: some Encodable) {
     guard !isStopped, let payload = try? ToolWebBridge.jsonObject(payload) else { return }
-    enqueue(PendingPageEvent(name: name, payload: payload))
+    enqueue(ToolPageEventQueue.Event(name: name, payload: payload))
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -191,7 +173,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-    let needsRecovery = (isPageReady || isPageEventBatchInFlight) && recoveryTask == nil
+    let needsRecovery = (isPageReady || pageEvents.isInFlight) && recoveryTask == nil
     isPageReady = false
     if needsRecovery {
       recoverPage()
@@ -223,7 +205,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
         recoveryTask = nil
         return
       }
-      pendingPageEvents.removeAll()
+      pageEvents.reset()
       loadTool()
       recoveryTask = nil
     }
@@ -290,28 +272,19 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     completionHandler(nil)
   }
 
-  private func enqueue(_ event: PendingPageEvent) {
-    if pendingPageEvents.count + inFlightPageEventCount >= Self.maximumPendingPageEvents {
+  private func enqueue(_ event: ToolPageEventQueue.Event) {
+    guard pageEvents.enqueue(event) else {
       // Reload if the page cannot keep up with host state changes.
       recoverPage()
       return
     }
-    pendingPageEvents.append(event)
     sendNextPageEventBatchIfNeeded()
   }
 
   private func sendNextPageEventBatchIfNeeded() {
-    guard isPageReady,
-          !isPageEventBatchInFlight,
-          !pendingPageEvents.isEmpty else { return }
-
-    let batchSize = min(pendingPageEvents.count, Self.maximumPageEventBatchSize)
-    let events = Array(pendingPageEvents.prefix(batchSize))
-    pendingPageEvents.removeFirst(batchSize)
-    isPageEventBatchInFlight = true
-    inFlightPageEventCount = batchSize
-    let generation = pageEventDeliveryGeneration
-    let arguments = events.map { event in
+    guard let batch = pageEvents.next(isReady: isPageReady) else { return }
+    let generation = batch.generation
+    let arguments = batch.events.map { event in
       ["name": event.name, "payload": event.payload]
     }
 
@@ -339,9 +312,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func pageEventBatchDidFinish(generation: UInt, succeeded: Bool) {
-    guard generation == pageEventDeliveryGeneration else { return }
-    isPageEventBatchInFlight = false
-    inFlightPageEventCount = 0
+    guard pageEvents.complete(generation: generation) else { return }
     guard succeeded else {
       recoverPage()
       return
@@ -350,12 +321,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func invalidatePageEventDelivery(clearPending: Bool) {
-    pageEventDeliveryGeneration &+= 1
-    isPageEventBatchInFlight = false
-    inFlightPageEventCount = 0
-    if clearPending {
-      pendingPageEvents.removeAll()
-    }
+    pageEvents.reset(clearPending: clearPending)
   }
 
   private func loadTool() {
@@ -374,5 +340,71 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
     components?.fragment = nil
     return components?.url == documentURL
+  }
+}
+
+#if DEBUG
+@MainActor
+enum ToolWebInspector {
+  static func show(
+    _ inspector: NSObject?, delegate: NSObject, enable: () -> Void,
+    unavailable: () -> Void = { NSSound.beep() }
+  ) {
+    // The local inspector uses private API, so keep it out of release builds.
+    guard let inspector, ["setDelegate:", "show", "detach"].allSatisfy({ inspector.responds(to: NSSelectorFromString($0)) }) else {
+      unavailable()
+      return
+    }
+    enable()
+    inspector.perform(NSSelectorFromString("setDelegate:"), with: delegate)
+    inspector.perform(NSSelectorFromString("show"))
+    inspector.perform(NSSelectorFromString("detach"))
+  }
+}
+#endif
+
+/// Keeps delivery ordered and ignores callbacks from a previous page.
+struct ToolPageEventQueue {
+  struct Event {
+    let name: String
+    let payload: Any
+  }
+
+  struct Batch {
+    let generation: UInt
+    let events: [Event]
+  }
+
+  private var pending: [Event] = []
+  private var generation: UInt = 0
+  private var inFlightCount = 0
+  var isInFlight: Bool {
+    inFlightCount > 0
+  }
+
+  mutating func enqueue(_ event: Event) -> Bool {
+    guard pending.count + inFlightCount < 2048 else { return false }
+    pending.append(event)
+    return true
+  }
+
+  mutating func next(isReady: Bool) -> Batch? {
+    guard isReady, !isInFlight, !pending.isEmpty else { return nil }
+    let events = Array(pending.prefix(64))
+    pending.removeFirst(events.count)
+    inFlightCount = events.count
+    return Batch(generation: generation, events: events)
+  }
+
+  mutating func complete(generation: UInt) -> Bool {
+    guard self.generation == generation else { return false }
+    inFlightCount = 0
+    return true
+  }
+
+  mutating func reset(clearPending: Bool = true) {
+    generation &+= 1
+    inFlightCount = 0
+    if clearPending { pending.removeAll() }
   }
 }

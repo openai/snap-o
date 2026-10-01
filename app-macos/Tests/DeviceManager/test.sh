@@ -27,6 +27,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -target arm64-apple-macosx26.0 \
   "$APP_ROOT/Snap-O/Device/Emulators/EmulatorConnection.swift" \
   "$APP_ROOT/Snap-O/DeviceManager/DeviceManagerEntry.swift" \
   "$APP_ROOT/Snap-O/DeviceManager/DeviceManager.swift" \
+  "$APP_ROOT/Snap-OTests/AsyncTestSupport.swift" \
   "$APP_ROOT/Tests/Support/TestGate.swift" \
   "$APP_ROOT/Tests/DeviceManager/DeviceInventoryFakes.swift" \
   "$APP_ROOT/Tests/DeviceManager/DeviceInventoryTests.swift" -o "$OUTPUT/device-inventory-tests"
