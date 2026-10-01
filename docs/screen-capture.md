@@ -38,7 +38,7 @@ Live Preview shows floating controls beside the Capture window. Use **Back**, **
 
 Physical devices and emulators offer **Rotate Left** and **Rotate Right**. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.
 
-Right-click the controls and choose **Position → Left of Window** or **Position → Below Capture Pane**. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.
+Right-click the controls and choose **Position → Left of Window** or **Position → Below Capture Pane**. Snap-O remembers this position. The controls stay anchored outside the window, even when that places them offscreen. They hide when Snap-O becomes inactive.
 
 ## Keyboard input
 

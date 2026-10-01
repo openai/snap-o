@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct DeviceControlsPanelTests {
-  private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
   private let window = CGRect(x: 200, y: 150, width: 1000, height: 700)
   private let capture = CGRect(x: 200, y: 150, width: 360, height: 640)
 
@@ -13,44 +12,38 @@ struct DeviceControlsPanelTests {
   func controlsFloatOutsideWindowInBothPositions() {
     let left = DeviceControlsAnchorView.panelFrame(
       placement: .left, size: CGSize(width: 36, height: 400),
-      windowFrame: window, captureFrame: capture, screenFrame: screen
+      windowFrame: window, captureFrame: capture
     )
     #expect(left.maxX == window.minX - 8)
     #expect(left.maxY == capture.maxY)
     let below = DeviceControlsAnchorView.panelFrame(
       placement: .below, size: CGSize(width: 340, height: 44),
-      windowFrame: window, captureFrame: capture, screenFrame: screen
+      windowFrame: window, captureFrame: capture
     )
     #expect(below.maxY == window.minY - 8)
     #expect(below.midX == capture.midX)
   }
 
-  @Test(arguments: [DeviceControlsPlacement.left, .below], [360.0, 1440.0])
-  func controlsRemainOnScreenNearEdges(_ placement: DeviceControlsPlacement, windowWidth: CGFloat) {
-    // A second screen can have negative coordinates.
-    let screen = CGRect(x: -1440, y: -300, width: 1440, height: 900)
-    let window = CGRect(x: -1440, y: -300, width: windowWidth, height: 700)
+  @Test(arguments: [DeviceControlsPlacement.left, .below], [
+    CGRect(x: 0, y: 0, width: 360, height: 700),
+    CGRect(x: 0, y: 0, width: 1000, height: 700),
+    CGRect(x: -1440, y: -300, width: 360, height: 700),
+    CGRect(x: -1440, y: -300, width: 1000, height: 700)
+  ])
+  func controlsKeepTheirAnchorAtScreenEdges(_ placement: DeviceControlsPlacement, window: CGRect) {
+    let capture = CGRect(x: window.minX, y: window.minY, width: 360, height: 640)
     let size = placement == .left ? CGSize(width: 36, height: 400) : CGSize(width: 340, height: 44)
     let frame = DeviceControlsAnchorView.panelFrame(
-      placement: placement, size: size, windowFrame: window, captureFrame: window, screenFrame: screen
+      placement: placement, size: size, windowFrame: window, captureFrame: capture
     )
-    #expect(screen.contains(frame))
     #expect(frame.size == size)
-  }
-
-  @Test(arguments: [-1440.0, 0.0], [43.0, 44.0])
-  func controlsUseRightSideOnlyWhenLeftSideDoesNotFit(screenX: CGFloat, availableSpace: CGFloat) {
-    let screen = screen.offsetBy(dx: screenX, dy: 0)
-    var window = window
-    window.origin.x = screen.minX + availableSpace
-    let frame = DeviceControlsAnchorView.panelFrame(
-      placement: .left, size: CGSize(width: 36, height: 400),
-      windowFrame: window, captureFrame: capture, screenFrame: screen
-    )
-    if availableSpace < 44 {
-      #expect(frame.minX == window.maxX + 8)
-    } else {
+    #expect(!frame.intersects(window))
+    if placement == .left {
       #expect(frame.maxX == window.minX - 8)
+      #expect(frame.maxY == capture.maxY)
+    } else {
+      #expect(frame.midX == capture.midX)
+      #expect(frame.maxY == window.minY - 8)
     }
   }
 

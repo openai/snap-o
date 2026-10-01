@@ -125,8 +125,7 @@ final class DeviceControlsAnchorView: NSView {
     let captureFrame = window.convertToScreen(convert(bounds, to: nil))
     let size = host.fittingSize
     let frame = Self.panelFrame(
-      placement: placement, size: size, windowFrame: window.frame, captureFrame: captureFrame,
-      screenFrame: window.screen?.visibleFrame ?? window.frame
+      placement: placement, size: size, windowFrame: window.frame, captureFrame: captureFrame
     )
     if panel.frame != frame { panel.setFrame(frame, display: true) }
     panel.appearance = window.effectiveAppearance
@@ -137,26 +136,19 @@ final class DeviceControlsAnchorView: NSView {
 
   static func panelFrame(
     placement: DeviceControlsPlacement, size: CGSize,
-    windowFrame: CGRect, captureFrame: CGRect, screenFrame: CGRect
+    windowFrame: CGRect, captureFrame: CGRect
   ) -> CGRect {
     let gap: CGFloat = 8
     let origin: CGPoint
     switch placement {
     case .left:
-      let leftX = windowFrame.minX - gap - size.width
-      let x = leftX >= screenFrame.minX ? leftX : windowFrame.maxX + gap
-      origin = CGPoint(x: x, y: captureFrame.maxY - size.height)
+      origin = CGPoint(x: windowFrame.minX - gap - size.width, y: captureFrame.maxY - size.height)
     case .hidden:
       return .zero
     case .below:
       origin = CGPoint(x: captureFrame.midX - size.width / 2, y: windowFrame.minY - gap - size.height)
     }
-    // Keep the controls reachable at screen edges without resizing or moving the capture window.
-    return CGRect(
-      x: min(max(origin.x, screenFrame.minX), max(screenFrame.minX, screenFrame.maxX - size.width)),
-      y: min(max(origin.y, screenFrame.minY), max(screenFrame.minY, screenFrame.maxY - size.height)),
-      width: size.width, height: size.height
-    )
+    return CGRect(origin: origin, size: size)
   }
 }
 
