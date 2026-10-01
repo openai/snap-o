@@ -25,7 +25,7 @@ From the repository root:
 python3 release/validate_authoring.py --output /tmp/snapo-authoring
 ```
 
-Use a new or empty directory outside the checkout. Requirements: JDK 17, Android SDK 36, Python 3, and Node.js 22.12 or later. The validation uses the repository's npm registry for downloads. There are no credential or signing requirements for local staging.
+Use a new or empty directory outside the checkout. Requirements: JDK 17, Android SDK 36, Python 3, and Node.js 22.13+ (22.x) or 24+. The validation uses the repository's npm registry for downloads. There are no credential or signing requirements for local staging.
 
 The command stages three Maven publications, checks their metadata and embedded SDK files, and builds a copied [Example tool](../examples/tool/README.md). The consumer resolves real package artifacts, with no composite build or SDK source dependency. It builds debug and release APKs, runs the example's Android and frontend tests, and runs Android lint. It checks that the debug APK includes the generated frontend ZIP and the release APK does not. It also checks that the bundled Example descriptor has its required icon and generated host API version, without a synthetic protocol version.
 

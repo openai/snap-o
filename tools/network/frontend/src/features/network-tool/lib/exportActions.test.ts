@@ -121,12 +121,10 @@ describe("export body readiness", () => {
 
 describe("HAR body hydration budget", () => {
   it("counts existing cached bodies before hydrating missing bodies", async () => {
-    const loadBodies = vi.fn(
-      async (input: { requestId: string }): Promise<RequestBodies> => ({
-        requestId: input.requestId,
-        responseBody: "new"
-      })
-    );
+    const loadBodies = vi.fn(async (input: { requestId: string }): Promise<RequestBodies> => ({
+      requestId: input.requestId,
+      responseBody: "new"
+    }));
     const cached = request("cached", { requestBody: "12", responseBody: "12" });
     const missing = request("missing");
 
@@ -138,12 +136,10 @@ describe("HAR body hydration budget", () => {
   });
 
   it("stops accumulating hydrated bodies after the aggregate budget is reached", async () => {
-    const loadBodies = vi.fn(
-      async (input: { requestId: string }): Promise<RequestBodies> => ({
-        requestId: input.requestId,
-        responseBody: input.requestId === "first" ? "1234" : "ab"
-      })
-    );
+    const loadBodies = vi.fn(async (input: { requestId: string }): Promise<RequestBodies> => ({
+      requestId: input.requestId,
+      responseBody: input.requestId === "first" ? "1234" : "ab"
+    }));
 
     const result = await hydrateRecordsForHar(
       { loadBodies },

@@ -19,26 +19,26 @@
   "dependencies": {
     "@snap-o/tool-host": "file:../../../tool-sdk/host",
     "preact": "^10.29.8",
-    "lucide-preact": "^0.468.0"
+    "lucide-preact": "^0.577.0"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "preact-render-to-string": "^6.7.0",
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.2.1",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.5.0",
+    "globals": "^17.12.0",
     "jsdom": "^27.4.0",
-    "prettier": "^3.8.3",
-    "stylelint": "^16.26.0",
+    "prettier": "^3.9.9",
+    "stylelint": "^16.26.1",
     "stylelint-config-standard": "^39.0.1",
-    "typescript": "^5.3.3",
-    "typescript-eslint": "^8.59.1",
-    "vite": "^8.0.9",
-    "vitest": "^4.1.9"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.13.0 || >=24.0.0"
   }
 }
