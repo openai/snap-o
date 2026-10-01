@@ -25,17 +25,33 @@ struct DeviceControlsPanelTests {
     #expect(below.midX == capture.midX)
   }
 
-  @Test(arguments: [DeviceControlsPlacement.left, .below])
-  func controlsRemainOnScreenNearEdges(_ placement: DeviceControlsPlacement) {
+  @Test(arguments: [DeviceControlsPlacement.left, .below], [360.0, 1440.0])
+  func controlsRemainOnScreenNearEdges(_ placement: DeviceControlsPlacement, windowWidth: CGFloat) {
     // A second screen can have negative coordinates.
     let screen = CGRect(x: -1440, y: -300, width: 1440, height: 900)
-    let window = CGRect(x: -1440, y: -300, width: 360, height: 700)
+    let window = CGRect(x: -1440, y: -300, width: windowWidth, height: 700)
     let size = placement == .left ? CGSize(width: 36, height: 400) : CGSize(width: 340, height: 44)
     let frame = DeviceControlsAnchorView.panelFrame(
       placement: placement, size: size, windowFrame: window, captureFrame: window, screenFrame: screen
     )
     #expect(screen.contains(frame))
     #expect(frame.size == size)
+  }
+
+  @Test(arguments: [-1440.0, 0.0], [43.0, 44.0])
+  func controlsUseRightSideOnlyWhenLeftSideDoesNotFit(screenX: CGFloat, availableSpace: CGFloat) {
+    let screen = screen.offsetBy(dx: screenX, dy: 0)
+    var window = window
+    window.origin.x = screen.minX + availableSpace
+    let frame = DeviceControlsAnchorView.panelFrame(
+      placement: .left, size: CGSize(width: 36, height: 400),
+      windowFrame: window, captureFrame: capture, screenFrame: screen
+    )
+    if availableSpace < 44 {
+      #expect(frame.minX == window.maxX + 8)
+    } else {
+      #expect(frame.maxX == window.minX - 8)
+    }
   }
 
   @Test

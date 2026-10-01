@@ -143,7 +143,9 @@ final class DeviceControlsAnchorView: NSView {
     let origin: CGPoint
     switch placement {
     case .left:
-      origin = CGPoint(x: windowFrame.minX - gap - size.width, y: captureFrame.maxY - size.height)
+      let leftX = windowFrame.minX - gap - size.width
+      let x = leftX >= screenFrame.minX ? leftX : windowFrame.maxX + gap
+      origin = CGPoint(x: x, y: captureFrame.maxY - size.height)
     case .hidden:
       return .zero
     case .below:
