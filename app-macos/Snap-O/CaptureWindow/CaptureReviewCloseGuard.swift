@@ -23,12 +23,6 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   }
 
   static func confirmReplacement(discard: () throws -> Void) -> Bool {
-    let alert = NSAlert()
-    alert.messageText = "Discard unsaved captures?"
-    alert.informativeText = "Save these captures with the checkmark first, or discard them to continue."
-    alert.addButton(withTitle: "Keep Reviewing")
-    alert.addButton(withTitle: "Discard")
-    guard alert.runModal() == .alertSecondButtonReturn else { return false }
     do {
       try discard()
       return true
@@ -47,15 +41,6 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
     guard !pending.contains(where: \.isSaving) else { return false }
     if let sheetOwner = pending.first(where: { $0.window?.attachedSheet != nil }) {
       sheetOwner.window?.makeKeyAndOrderFront(nil)
-      return false
-    }
-    let alert = NSAlert()
-    alert.messageText = "Discard unsaved captures?"
-    alert.informativeText = "These captures are not in Capture History. Return to review to save them, or discard them before closing."
-    alert.addButton(withTitle: "Review Captures")
-    alert.addButton(withTitle: "Discard")
-    guard alert.runModal() == .alertSecondButtonReturn else {
-      pending.first?.window?.makeKeyAndOrderFront(nil)
       return false
     }
     do {
