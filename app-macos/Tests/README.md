@@ -1,5 +1,8 @@
 # Native test synchronization
 
+CI uses Xcode 26.4.1. Use the same version for local validation; Xcode 26.1.1
+fails to compile the locked dependency test support. The app still targets macOS 26+.
+
 Test one behavior at a time. Use controlled inputs for everything outside that
 behavior, including discovery, device operations, framework results, and time.
 
@@ -58,6 +61,10 @@ products through `scripts/test-swift-packages.sh`.
 Set `SNAPO_DERIVED_DATA` to an existing `build-for-testing` output to avoid rebuilding;
 CI passes the output from its native test build. Without it, these scripts build
 the test dependencies first.
+
+The standalone startup, session, and recovery executables use
+`withMainSerialExecutor` from swift-concurrency-extras to control task scheduling.
+Its executor override is global, so keep it out of parallel Xcode test suites.
 
 All native suites share observation and signal helpers in
 `Snap-OTests/AsyncTestSupport.swift`. Standalone gates live in

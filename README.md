@@ -67,7 +67,7 @@ Start with [Build a tool](docs/plugins.md). See [tool development](tools/README.
 
 ## Build from source
 
-Requires Xcode 26 or later and Android Platform Tools.
+Requires Xcode 26.4.1 or later and Android Platform Tools.
 
 1. Clone this repository.
 2. Open `app-macos/Snap-O.xcodeproj` in Xcode, then build and run.

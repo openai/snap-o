@@ -59,7 +59,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 15
     env:
-      XCODE_VERSION: '26.1.1'
+      XCODE_VERSION: '26.4.1'
     defaults:
       run:
         working-directory: app-macos

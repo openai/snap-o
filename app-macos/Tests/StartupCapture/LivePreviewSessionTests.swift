@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Clocks
+import ConcurrencyExtras
 import Dependencies
 import Foundation
 import OSLog
@@ -136,38 +137,40 @@ actor ADBService {
 @MainActor
 struct LivePreviewSessionTests {
   static func main() async throws {
-    try await withDependencies {
-      $0.context = .test
-      $0.continuousClock = TestClock()
-    } operation: {
-      try await readinessWaitersReceiveFirstFormat()
-      await streamingDurationStartsAtFirstFormat()
-      await cancellationReleasesReadinessWaiters()
-      try await independentFramesKeepLatest()
-      try formatChangesUpdateMedia()
-      try await emulatorFramesDoNotWaitForBoot()
-      try await emulatorDensityUpdatesAfterBoot()
-      try await emulatorTouchSettingsAreRestored()
-      try await stoppingEmulatorCancelsBootSetup()
-      try await sourceFailureReleasesReadinessWaiters()
-      cancellationStopsSourceOnce()
-      await showTouchesRestoration()
-      await touchSettingWaitsAreBounded()
-      try await shutdownDuringTouchSetup()
-      try await startupRestoresSettings()
-      try await startupWaitsForBoot()
-      try await readyDeviceDoesNotWait()
-      try await physicalPreviewWakesDevice()
-      try await physicalPreviewWaitsForWakeBeforeStartingSource()
-      try await wakeFailureDoesNotPreventPreview()
-      try await cancellationDuringWakeDoesNotStartSource()
-      try await physicalPreviewDoesNotQueryDensity()
-      try await bootQueriesRetryWithBackoff()
-      for shutdown in [false, true] {
-        try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
-        try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
+    try await withMainSerialExecutor {
+      try await withDependencies {
+        $0.context = .test
+        $0.continuousClock = TestClock()
+      } operation: {
+        try await readinessWaitersReceiveFirstFormat()
+        await streamingDurationStartsAtFirstFormat()
+        await cancellationReleasesReadinessWaiters()
+        try await independentFramesKeepLatest()
+        try formatChangesUpdateMedia()
+        try await emulatorFramesDoNotWaitForBoot()
+        try await emulatorDensityUpdatesAfterBoot()
+        try await emulatorTouchSettingsAreRestored()
+        try await stoppingEmulatorCancelsBootSetup()
+        try await sourceFailureReleasesReadinessWaiters()
+        cancellationStopsSourceOnce()
+        await showTouchesRestoration()
+        await touchSettingWaitsAreBounded()
+        try await shutdownDuringTouchSetup()
+        try await startupRestoresSettings()
+        try await startupWaitsForBoot()
+        try await readyDeviceDoesNotWait()
+        try await physicalPreviewWakesDevice()
+        try await physicalPreviewWaitsForWakeBeforeStartingSource()
+        try await wakeFailureDoesNotPreventPreview()
+        try await cancellationDuringWakeDoesNotStartSource()
+        try await physicalPreviewDoesNotQueryDensity()
+        try await bootQueriesRetryWithBackoff()
+        for shutdown in [false, true] {
+          try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
+          try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
+        }
+        print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
       }
-      print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
     }
   }
 

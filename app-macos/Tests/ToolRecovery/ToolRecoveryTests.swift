@@ -1,4 +1,5 @@
 import Clocks
+import ConcurrencyExtras
 import Dependencies
 import Foundation
 
@@ -17,20 +18,22 @@ enum SnapOLog {
 @MainActor
 struct ToolRecoveryTests {
   static func main() async throws {
-    try await withDependencies {
-      $0.context = .test
-      $0.continuousClock = TestClock()
-    } operation: {
-      try await reconnectsAfterCooldown()
-      try await waitsForInitialDevices()
-      try await propagatesScanFailures()
-      try await cachesOnlyTheSameProcess()
-      try await retriesFailedDeviceProperties()
-      try await refreshesSiblingDescriptors()
-      try await filtersSocketFloods()
-      try await mixedCompatibility()
-      try await preservesMetadataAfterFailure()
-      try await restartsCanceledLegacyProbe()
+    try await withMainSerialExecutor {
+      try await withDependencies {
+        $0.context = .test
+        $0.continuousClock = TestClock()
+      } operation: {
+        try await reconnectsAfterCooldown()
+        try await waitsForInitialDevices()
+        try await propagatesScanFailures()
+        try await cachesOnlyTheSameProcess()
+        try await retriesFailedDeviceProperties()
+        try await refreshesSiblingDescriptors()
+        try await filtersSocketFloods()
+        try await mixedCompatibility()
+        try await preservesMetadataAfterFailure()
+        try await restartsCanceledLegacyProbe()
+      }
     }
   }
 
