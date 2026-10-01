@@ -41,7 +41,7 @@ final class FileStore: Sendable {
     return directory.appendingPathComponent(filename)
   }
 
-  func discardPreviews(_ captures: [CaptureMedia]) throws {
+  func discardPreviews(_ captures: [CaptureMedia]) {
     let root = baseDir.resolvingSymlinksInPath().standardizedFileURL.path + "/"
     for capture in captures {
       guard let url = capture.media.url else { continue }
@@ -49,7 +49,11 @@ final class FileStore: Sendable {
       // Never remove history entries or externally supplied files through draft cleanup.
       guard path.hasPrefix(root) else { continue }
       if FileManager.default.fileExists(atPath: path) {
-        try FileManager.default.removeItem(at: url)
+        do {
+          try FileManager.default.removeItem(at: url)
+        } catch {
+          log.error("Failed to delete temporary capture: \(error.localizedDescription)")
+        }
       }
     }
   }

@@ -72,7 +72,7 @@ struct CaptureReviewView: View {
         defer { controller.isSavingReview = false }
         let captures = controller.mediaList
         var exports: [CaptureMedia] = []
-        defer { try? controller.fileStore.discardPreviews(exports) }
+        defer { controller.fileStore.discardPreviews(exports) }
         for capture in captures {
           guard let kind = capture.media.saveKind else { continue }
           let destination = controller.fileStore.makePreviewDestination(
@@ -83,8 +83,7 @@ struct CaptureReviewView: View {
           ))
         }
         try await history.repository.saveReviewedCaptures(exports, name: name, selectedID: controller.selectedMediaID)
-        // The durable copy is complete; temporary-file cleanup must not cause a duplicate save.
-        try? controller.fileStore.discardPreviews(captures)
+        controller.fileStore.discardPreviews(captures)
         isNaming = false
         controller.isSavingReview = false
         await controller.finishCaptureReview()
@@ -154,13 +153,9 @@ struct CaptureReviewView: View {
 
   private func discard() {
     guard !isFinishing else { return }
-    do {
-      try controller.fileStore.discardPreviews(controller.mediaList)
-      isFinishing = true
-      Task { await controller.finishCaptureReview() }
-    } catch {
-      errorMessage = error.localizedDescription
-    }
+    controller.fileStore.discardPreviews(controller.mediaList)
+    isFinishing = true
+    Task { await controller.finishCaptureReview() }
   }
 
   private func makeDragItem(_ capture: CaptureMedia, frame: CGRect) -> NSDraggingItem? {

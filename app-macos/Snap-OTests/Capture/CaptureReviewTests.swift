@@ -86,8 +86,29 @@ struct CaptureReviewTests {
     let store = FileStore(baseDir: root.appendingPathComponent("drafts"))
     let capture = try makeCapture("one", directory: root.appendingPathComponent("drafts"))
     let external = try makeCapture("two", directory: root.appendingPathComponent("other"))
-    try store.discardPreviews([capture, external])
+    store.discardPreviews([capture, external])
     #expect(try FileManager.default.fileExists(atPath: #require(external.media.url).path))
+  }
+
+  @Test
+  func discardContinuesAfterFileRemovalFails() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = FileStore(baseDir: root)
+    let locked = try makeCapture("locked", directory: root)
+    let removable = try makeCapture("removable", directory: root)
+    let lockedURL = try #require(locked.media.url)
+    let removableURL = try #require(removable.media.url)
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: lockedURL.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: lockedURL.path) }
+    #expect(throws: (any Error).self) {
+      try FileManager.default.removeItem(at: lockedURL)
+    }
+
+    store.discardPreviews([locked, removable])
+
+    #expect(FileManager.default.fileExists(atPath: lockedURL.path))
+    #expect(!FileManager.default.fileExists(atPath: removableURL.path))
   }
 
   private func withRepository(

@@ -159,7 +159,7 @@ struct CaptureCropExportTests {
       #expect(try Data(contentsOf: exported) == Data(contentsOf: source))
     }
 
-    try store.discardPreviews([capture])
+    store.discardPreviews([capture])
     #expect(!FileManager.default.fileExists(atPath: source.path))
     #expect(FileManager.default.fileExists(atPath: exported.path))
     #expect(!exporter.isPreparing)

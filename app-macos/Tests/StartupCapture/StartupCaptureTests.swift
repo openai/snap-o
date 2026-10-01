@@ -49,7 +49,9 @@ struct StartupCaptureTests {
     await tearDownDuringQueuedCommand(recordsVideo: false)
     await disconnectDuringQueuedCommand()
     await commandAfterPreparedPreviewReady()
-    await captureReviewRequiresDecision()
+    await captureReviewAllowsReplacement { await $0.startRecording() }
+    await captureReviewAllowsReplacement { await $0.startLivePreview() }
+    await captureReviewAllowsReplacement { await $0.captureScreenshots() }
     await cancelledQueuedCommand()
     await commandDuringAutomaticPreview(recordsVideo: true, previewReadyFirst: true)
     await commandDuringAutomaticPreview(recordsVideo: false, previewReadyFirst: true)
@@ -1000,7 +1002,6 @@ struct StartupCaptureTests {
     await fixture.displayGate.open()
     await fixture.controller.start()
     await eventually { !fixture.controller.isProcessing && fixture.controller.canStartRecordingNow }
-    fixture.controller.discardReview = { true }
     await fixture.readyGate.open()
     await fixture.stopGate.open()
     await fixture.controller.startRecording()
@@ -1042,20 +1043,32 @@ struct StartupCaptureTests {
     precondition(cropped.width == 4 && cropped.height == 4)
   }
 
-  static func captureReviewRequiresDecision() async {
+  static func captureReviewAllowsReplacement(_ startCapture: @MainActor (CaptureWindowController) async -> Void) async {
     let fixture = ControllerFixture()
     AppSettings.shared.startupCaptureMode = .screenshot
     await fixture.displayGate.open()
     await fixture.readyGate.open()
     await fixture.stopGate.open()
-    await fixture.controller.start()
-    await eventually { fixture.controller.isReviewingCapture && !fixture.controller.isProcessing }
-    let ids = fixture.controller.mediaList.map(\.id)
-    await fixture.controller.startRecording()
-    await fixture.controller.startLivePreview()
-    await fixture.controller.captureScreenshots()
-    precondition(fixture.controller.mediaList.map(\.id) == ids, "Unresolved captures must not be replaced")
-    await fixture.controller.tearDown()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.isReviewingCapture && !controller.isProcessing }
+    let ids = controller.mediaList.map(\.id)
+    controller.reviewCrops[ids[0]] = CGRect(x: 0, y: 0, width: 0.5, height: 1)
+
+    controller.isSavingReview = true
+    await startCapture(controller)
+    precondition(controller.mediaList.map(\.id) == ids, "A save in progress must keep its captures")
+    precondition(controller.fileStore.discardedCaptureIDs.isEmpty)
+
+    controller.isSavingReview = false
+    await startCapture(controller)
+    await eventually {
+      !controller.isProcessing && (controller.isRecording || controller.isLivePreviewActive || controller.isReviewingCapture)
+    }
+    precondition(Set(controller.mediaList.map(\.id)).isDisjoint(with: ids), "New captures must replace unsaved captures")
+    precondition(controller.fileStore.discardedCaptureIDs == [ids], "Replacing captures must clean up their temporary files")
+    precondition(controller.reviewCrops.isEmpty)
+    await controller.tearDown()
   }
 
   static func stopShowsRecordings() async {

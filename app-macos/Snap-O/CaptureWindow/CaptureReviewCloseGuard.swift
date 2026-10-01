@@ -5,7 +5,7 @@ import SwiftUI
 struct CaptureReviewCloseGuard: NSViewRepresentable {
   let captureIDs: [UUID]
   var isSaving = false
-  let discard: () throws -> Void
+  let discard: () -> Void
 
   private static let views = NSHashTable<GuardView>.weakObjects()
 
@@ -22,17 +22,7 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
     view.discard = discard
   }
 
-  static func discardForReplacement(discard: () throws -> Void) -> Bool {
-    do {
-      try discard()
-      return true
-    } catch {
-      NSAlert(error: error).runModal()
-      return false
-    }
-  }
-
-  static func discardBeforeClosing(in window: NSWindow? = nil) -> Bool {
+  static func prepareToClose(in window: NSWindow? = nil) -> Bool {
     let pending = views.allObjects.filter {
       $0.window != nil && (window == nil || $0.window === window)
         && !$0.captureIDs.isEmpty && !$0.didDiscard
@@ -43,23 +33,17 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
       sheetOwner.window?.makeKeyAndOrderFront(nil)
       return false
     }
-    do {
-      for view in pending {
-        try view.discard?()
-        view.didDiscard = true
-      }
-      return true
-    } catch {
-      let failure = NSAlert(error: error)
-      failure.runModal()
-      return false
+    for view in pending {
+      view.discard?()
+      view.didDiscard = true
     }
+    return true
   }
 
   final class GuardView: NSView {
     var captureIDs: [UUID] = []
     var isSaving = false
     var didDiscard = false
-    var discard: (() throws -> Void)?
+    var discard: (() -> Void)?
   }
 }
