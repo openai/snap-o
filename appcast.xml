@@ -8,6 +8,17 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 13.0.2</title>
+        <description sparkle:format="markdown"><![CDATA[- No more prompt when discarding unsaved captures.
+]]></description>
+        <pubDate>Thu, 01 Oct 2026 15:24:59 +0000</pubDate>
+        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20261001.01</sparkle:version>
+        <sparkle:shortVersionString>13.0.2</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/13.0.2/Snap-O.dmg" length="8206271" type="application/octet-stream" sparkle:edSignature="qnP5HO9nuEnYihKsfUQAy89eLo3hjpKDuWoiz/Wq+ExgENWvTCRe86G4iR36khRENjbG0udTScoD9d2odorxDQ==" />
+    </item>
+
+    <item>
         <title>Snap‑O 13.0.1</title>
         <description sparkle:format="markdown"><![CDATA[- Fixed dragging full and cropped recordings from capture review into apps such as Slack, with accurate video previews and export progress.
 ]]></description>
