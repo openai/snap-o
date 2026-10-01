@@ -9,7 +9,354 @@
 
     <item>
         <title>Snap‑O 13.0.2</title>
-        <description sparkle:format="markdown"><![CDATA[- No more prompt when discarding unsaved captures.
+        <description sparkle:format="html"><![CDATA[
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+:root { color-scheme: light dark; }
+body { font: 13px -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.5; margin: 16px; }
+section { margin-bottom: 24px; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+h3 { font-size: 13px; }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+a { color: -webkit-link; }
+section.sparkle-installed-version,
+section.sparkle-installed-version ~ section { display: none; }
+</style>
+</head>
+<body>
+<section data-sparkle-version="20261001.01">
+<h2>13.0.2</h2>
+<ul>
+<li>No more prompt when discarding unsaved captures.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260930.02">
+<h2>13.0.1</h2>
+<ul>
+<li>Fixed dragging full and cropped recordings from capture review into apps such as Slack, with accurate video previews and export progress.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260930.01">
+<h2>13.0.0</h2>
+<ul>
+<li>Review and crop screenshots or recordings before saving them to Capture History or dragging a copy into another app.</li>
+<li>Use ⇧⌘V to both start and stop recording.</li>
+<li>Android tool builds recover automatically from damaged managed Node installations.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260925.01">
+<h2>12.0.0</h2>
+<ul>
+<li>Type, copy, and paste directly in Live Preview.</li>
+<li>Screen recording now has a live preview so you can continue interacting with the device in Snap-O while you record.</li>
+<li>Rotate physical devices and emulators with the same controls and keyboard shortcuts.</li>
+<li>Use new capture shortcuts: ⇧⌘S for screenshots, ⇧⌘V for recording, and ⌘Y for Capture History.</li>
+<li>Delete selected captures with Delete or ⌘Delete.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260923.01">
+<h2>11.2.0</h2>
+<ul>
+<li>Select multiple captures in Capture History and delete them together.</li>
+<li>Start Live Preview faster.</li>
+<li>Recognize running emulators sooner and keep device names consistent across windows.</li>
+<li>Fix a crash when an emulator connection fails or is cancelled.</li>
+<li>Place Volume Up above Volume Down in the left control bar.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260922.01">
+<h2>11.1.0</h2>
+<ul>
+<li>Floating device control bar with Back, Home, app switcher, volume, power, and supported emulator controls.</li>
+<li>Two-finger gestures: hold Option before clicking and dragging. Hold Shift as well to move both touch points together.</li>
+<li>Drag files into Live Preview to copy them to your device or emulator. Drop APKs to install them.</li>
+<li>Emulator Live Preview now uses gRPC screen streaming, so you can see the screen earlier during boot.</li>
+<li>Clipboard sync between your Mac and the device in the focused Live Preview window.</li>
+<li>Fixed an issue where one device disconnecting or failing could stop recordings on other devices.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260921.01">
+<h2>11.0.0</h2>
+<ul>
+<li>New: Device Manager -- Manage existing Android emulators and connected devices. Start, stop, or cold boot emulators, then open them directly in Live Preview.</li>
+<li>Command-drag instead of Option-drag from Live Preview to export a screenshot while ordinary dragging controls the device.</li>
+</ul>
+<p>Device Manager uses your existing Android SDK and AVDs. SDK installation, AVD creation and editing, and a custom SDK location picker are not included in this version.</p>
+</section>
+<section data-sparkle-version="20260918.01">
+<h2>10.1.0</h2>
+<ul>
+<li>Device previews in Live Preview make it easier to see which screen you’re switching to.</li>
+<li>Capture names carry through when saving or sharing screenshots and recordings.</li>
+<li>Live Preview connects automatically when Android finishes booting.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260917.01">
+<h2>10.0.0</h2>
+<ul>
+<li>Capture History keeps screenshots and recordings after windows close or Snap-O restarts. Name captures and manage storage and retention.</li>
+<li>Copy screenshots with visible confirmation, and copy Network request text, cURL commands, and images without extra confirmation prompts.</li>
+<li>Tool choices refresh correctly when an inspected app restarts or you switch processes.</li>
+<li>Show or hide the Capture and Tool panes from the View menu, and open Capture History from the toolbar.</li>
+<li>Updated the app icon with a green aperture and starfield.</li>
+</ul>
+<p>For tool authors, normal Gradle builds now use the frontend lockfile. Run <code>installSnapoToolDependencies</code> when you need to update dependencies.</p>
+</section>
+<section data-sparkle-version="20260915.01">
+<h2>9.0.0</h2>
+<h2>Upgrade requirements</h2>
+<ul>
+<li>Requires <strong>macOS 26 or later</strong>.</li>
+<li>Upgrade your Android Network and Tweaks dependencies to <strong>9.0.0</strong> and rebuild your app alongside this Mac update. The new tool protocols are incompatible with 8.0.0 clients and libraries. Keep using <a href="https://github.com/openai/snap-o/releases/tag/8.0.0">Snap-O 8.0.0</a> if you cannot update macOS or rebuild your Android app yet.</li>
+</ul>
+<h2>What's new</h2>
+<ul>
+<li>Tools now ship their frontends inside Android libraries. Network and Tweaks load the frontend that matches the installed app, allowing tools to evolve independently of the Mac app.</li>
+<li>Build custom tools with the Tool Packager Gradle plugin and Android core library. The Gradle plugin bundles the host JavaScript SDK and prepares the frontend automatically.</li>
+<li>Set your app's tool order with <code>snapo.tool_order</code> manifest metadata.</li>
+<li>Network and Tweaks have independent Python CLIs, available directly or through <code>snapo network</code> and <code>snapo tweaks</code>.</li>
+<li>The native tool picker manages app selection and reconnection, and explains when an installed tool needs updating.</li>
+<li>The Mac app now runs in App Sandbox.</li>
+</ul>
+<p><a href="https://github.com/openai/snap-o/compare/8.0.0...9.0.0">Full changelog</a></p>
+</section>
+<section data-sparkle-version="20260908.01">
+<h2>8.0.0</h2>
+<ul>
+<li>New Tweak type: Bézier curves.</li>
+<li>Collapse Tweaks sections and adjust values with more compact sliders.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260903.00">
+<h2>6.0.0</h2>
+<ul>
+<li>Prototype Android API changes with Python route handlers. Mock or modify responses, add delays, and reload edits while the app runs.</li>
+<li>Try API overrides with the shared Tasks demos for OkHttp and Ktor.</li>
+</ul>
+<p>API overrides require the Snap-O 6.0.0 Android OkHttp integration. HttpURLConnection and WebSocket traffic remain inspection-only.</p>
+</section>
+<section data-sparkle-version="20260831.00">
+<h2>5.1.0</h2>
+<ul>
+<li>Open Android apps from Network and Tweaks inspector waiting screens.</li>
+<li>Select an available app at startup when the previous app or inspector is unavailable.</li>
+<li>Retry failed Live Preview connections with Connect instead of repeated automatic attempts.</li>
+<li>Fix an issue where the Android keyboard could repeatedly show and hide while Live Preview was connecting.</li>
+<li>Fix wobbling loading indicators.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260825.00">
+<h2>5.0.0</h2>
+<h2>Live Preview</h2>
+<ul>
+<li>Snap-O now opens in Live Preview by default.</li>
+<li>Hold Option and drag from the preview to share a screenshot.</li>
+<li>Smoother dragging when controlling your device, with lower CPU use.</li>
+</ul>
+<h2>App Inspector</h2>
+<ul>
+<li>Network and Tweaks share one picker row per running app process.</li>
+<li>Inspector selection and captured content are preserved across reconnects.</li>
+</ul>
+<h2>Network Inspector</h2>
+<ul>
+<li>Save exclusion filters to hide recurring traffic, or exclude a host by right-clicking a request.</li>
+<li>Clearer request details and SSE status, with explanations for unavailable response bodies and a Retry button for failed loads.</li>
+<li>Fixed arrow-key navigation and copying request details, payloads, and stream events.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260807.00">
+<h2>4.1.0</h2>
+<ul>
+<li>Inspect and adjust app-owned settings live, including values shared across Compose components.</li>
+<li>Select Kotlin enum values and run app-defined actions from the Mac inspector, Android overlay, or Snap-O CLI.</li>
+<li>Track changed settings accurately and reset them using each app's own reset behavior.</li>
+<li>Apply valid tweak edits even when another edit in the same batch is rejected.</li>
+<li>Keep app discovery responsive when another connected Android app freezes.</li>
+<li>Accept tweak text values beginning with a dash in the CLI.</li>
+<li>Android integration: place SnapOTweakOverlay() after app content in a fullscreen Box; the previous content-wrapping overload was removed.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260730.00">
+<h2>4.0.0</h2>
+<ul>
+<li>Introducing Snap-O Tweaks: adjust Android colors, typography, animations, text, and other UI values live.</li>
+<li>Edit tweaks from the Mac App Inspector or a floating Android overlay.</li>
+<li>Find previously adjusted tweaks even after leaving their screen.</li>
+<li>Switch between Network and Tweaks inspection for each connected app.</li>
+<li>Inspect network requests and view, change, reset, or watch tweaks using the Snap-O CLI and Codex skills.</li>
+<li>Live Preview displays static screens and final frames more reliably.</li>
+<li>Network capture correctly handles request bodies that close their output stream.</li>
+<li>The Logcat viewer has been removed.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260714.00">
+<h2>3.2.0</h2>
+<ul>
+<li>Live Preview starts faster and supports Android’s “Show taps.”</li>
+<li>Network Inspector is faster, reconnects more reliably, shows when responses are still loading, and previews images.</li>
+<li>Cleaner capture screen and minor workspace improvements.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260624.00">
+<h2>3.1.0</h2>
+<ul>
+<li>Window/layout improvements and bug fixes</li>
+<li>Recorded video stops playback when window is completely obscured</li>
+</ul>
+</section>
+<section data-sparkle-version="20260622.01">
+<h2>3.0.0</h2>
+<ul>
+<li>Network Inspector is no longer a separate, inner helper app.</li>
+<li>You can toggle the Capture and Network Inspector views separately per window.</li>
+<li>In other words, if you only use Network Inspector, you could hide the Capture View, and every new window will just show you the Network Inspector.</li>
+<li>A new native toolbar for Network Inspector.</li>
+<li>Since it now uses a WKWebView instead of Electron, download size is back down to the tiniest it's ever been: ~2.36MB.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260618.01">
+<h2>2.1.1</h2>
+<ul>
+<li>Snap-O's window toolbar is now two lines, making it possible to see all the buttons.</li>
+<li>Richer <a href="https://openai.github.io/snap-o/network-inspector.html" rel="nofollow">network inspector guide</a>.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260611.00">
+<h2>2.0.1</h2>
+<h3>Network Inspector</h3>
+<ul>
+<li><strong>Breaking change:</strong> Protocol has changed. Snap-O servers are now feature-based. You will need to have Snap-O Network Inspector 2.0.1 to inspect network requests for apps that include snapo-link-android 2.0.1</li>
+<li>Network Inspector is now an Electron-based app</li>
+<li>Now distributed via DMG</li>
+</ul>
+</section>
+<section data-sparkle-version="20260511.00">
+
+</section>
+<section data-sparkle-version="20260210.00">
+<h2>1.0.0</h2>
+<p>This rollup includes the changes that landed in 0.21.2 and 0.21.3 (those weren’t pushed as standalone official releases).</p>
+<h3>Why 1.0.0 now</h3>
+<ul>
+<li>jpackage DMG packaging doesn’t allow a 0 major version! so we needed to move off 0.x.</li>
+<li>Snap-O has also come a long way in reliability and UX, so it might be a good point for a major milestone anyways.</li>
+</ul>
+<h3>Updates</h3>
+<ul>
+<li><strong>New CLI tool:</strong> added <code>snapo network ...</code> commands for request/event inspection directly from terminal.</li>
+<li><strong>Export HAR (sanitized):</strong> added export support (sanitized by default), plus remembered export folder.</li>
+<li><strong>Multi-window + multi-client support:</strong> better behavior when multiple app windows/connections are active.</li>
+<li>CDP-based network inspection: moved to a Chrome DevTools Protocol-style network model, with better event semantics.</li>
+<li>General polish: dependency/build updates and small UI cleanups across the desktop inspector.</li>
+</ul>
+</section>
+<section data-sparkle-version="20260116.00">
+<h2>0.19.0</h2>
+<ul>
+<li>Fix Network Inspector app icon sizing</li>
+<li>Exclusion URL filter</li>
+<li>Better handling of large (e.g. 3+MB JSON payloads)</li>
+</ul>
+<p>Exclusion filters in the search field:</p>
+<ul>
+<li><code>data</code> will match "data"</li>
+<li><code>-data</code> will match anything that doesn't contain "data"</li>
+<li><code>"-data"</code> will match "-data"</li>
+<li><code>-"-data"</code> will match anything that doesn't contain "-data"</li>
+</ul>
+</section>
+<section data-sparkle-version="20260115.02">
+<h2>0.18.0</h2>
+<p>Network Inspector is now a helper app written with Kotlin Multiplatform. It's still packaged inside Snap-O.app, but as an inner helper app.</p>
+<p>Now that KMP has been introduced, it'd be nice if everything ended up with KMP. With a nice AVPlayerView in a Swing panel, maybe it's possible..</p>
+</section>
+<section data-sparkle-version="20260113.00">
+<h2>0.17.0</h2>
+<p>Some payload format updates.</p>
+<p>Network events are now wrapped in a "FeatureEvent" payload wrapper, to support other features sending messages via the "Snap-O Link Server" in the future.</p>
+</section>
+<section data-sparkle-version="20251204.00">
+<h2>0.16.0</h2>
+<p>Liquid glass support</p>
+</section>
+<section data-sparkle-version="20251125.00">
+<h2>0.15.0</h2>
+<ul>
+<li>Max response payload size: 5MB</li>
+<li>Image preview support</li>
+<li>Change sort order of network requests</li>
+<li>"Waiting for ADB server..." alert will not trigger while Snap-O is in the background.</li>
+</ul>
+</section>
+<section data-sparkle-version="20251117.01">
+<h2>0.14.1</h2>
+<p>Maintains window order when re-opening Snap-O.</p>
+</section>
+<section data-sparkle-version="20251117.00">
+<h2>0.14.0</h2>
+<p>Logcat Viewer by <a class="user-mention notranslate" data-hovercard-type="user" data-hovercard-url="/users/angus-oai/hovercard" data-octo-click="hovercard-link-click" data-octo-dimensions="link_type:self" href="https://github.com/angus-oai">@angus-oai</a></p>
+<p>Tools now available from the capture window toolbar.</p>
+</section>
+<section data-sparkle-version="20251029.02">
+<h2>0.13.0</h2>
+<p>Network Inspector will re-open on launch.</p>
+</section>
+<section data-sparkle-version="20251029.01">
+<h2>0.12.0</h2>
+<p>Collapsible JSON pretty printing view<br>
+More performant handling of large response bodies</p>
+</section>
+<section data-sparkle-version="20250929.01">
+<h2>0.11.0</h2>
+<p>Early work on network inspector (alpha)</p>
+</section>
+<section data-sparkle-version="20250919.01">
+<h2>0.10.0</h2>
+<ol>
+<li>"Bug Report" option for screen recording (<code>--bugreport</code>)</li>
+<li>"Show Touches on Capture" works again</li>
+<li>Preview strip improvements: Drag 'n drop from the thumbnails, and device name hints</li>
+<li>Ensure each simultaneous capture gets a unique filename</li>
+</ol>
+</section>
+<section data-sparkle-version="20250918.01">
+<h2>0.9.0</h2>
+<p>Removed most of the animated transitions throughout the app, to make it feel even snappier.</p>
+</section>
+<section data-sparkle-version="20250917.01">
+<h2>0.8.0</h2>
+<p><strong>Simultaneous device captures</strong></p>
+<p>Don't capture the wrong device by accident, anymore. Capture all of them!</p>
+<ol>
+<li>When you take a screenshot or screen recording, Snap-O does it across all your connected devices simultaneously.</li>
+<li>Next/Previous Device now moves between the captures you had just taken.</li>
+<li>Screen recordings only show up if they have a non-zero duration.</li>
+</ol>
+</section>
+<section data-sparkle-version="20250911.01">
+<h2>0.7.0</h2>
+<p>Snap-O floats over other windows during a screen recording, to make it easier to use alongside an emulator in Android Studio.</p>
+</section>
+<section data-sparkle-version="20250910.01">
+<h2>0.6.0</h2>
+<ol>
+<li>Faster time to first screenshot</li>
+<li>ADB path no longer needs to be set</li>
+<li>Live Preview has some basic touch support</li>
+<li>Other UX/perf improvements</li>
+</ol>
+</section>
+<section data-sparkle-version="6">
+<h2>0.5.0</h2>
+<p>Initial Snap-O release!</p>
+</section>
+</body>
+</html>
 ]]></description>
         <pubDate>Thu, 01 Oct 2026 15:24:59 +0000</pubDate>
         <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
