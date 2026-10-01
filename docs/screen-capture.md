@@ -92,7 +92,7 @@ New screenshots and recordings stay in review until you save or discard them. Dr
 
 Click the checkmark (**Save to History**) to keep all captures in the review with their crops. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
 
-Starting another capture, returning to Live Preview, or closing the window prompts you before discarding unsaved captures.
+Starting another capture, returning to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
