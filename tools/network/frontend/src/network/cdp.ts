@@ -23,9 +23,7 @@ export interface Header {
 }
 
 export type RequestStatus =
-  | { kind: "pending" }
-  | { kind: "success"; code: number }
-  | { kind: "failure"; message?: string | null };
+  { kind: "pending" } | { kind: "success"; code: number } | { kind: "failure"; message?: string | null };
 
 export interface RequestRecord {
   kind: "request";

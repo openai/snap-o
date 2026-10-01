@@ -33,7 +33,7 @@ Gradle downloads Node.js and uses its bundled npm for frontend builds and develo
 
 Run one command per terminal. In Snap-O, choose Develop → Use Development Server and enter the URL printed by the server. The Network server also serves `/preview.html` with synthetic request examples.
 
-To check a frontend directly, use Node.js 22.12 or later and run these commands from its `frontend/` directory:
+To check a frontend directly, use Node.js 22.13+ (22.x) or 24+. Run these commands from its `frontend/` directory:
 
 ```sh
 npm ci --registry=https://openai.firewall.socket.dev/npm/
