@@ -18,12 +18,15 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   private var appearsActive
   @Environment(\.scenePhase)
   private var scenePhase
+  @Environment(\.livePreviewLoadingMessage)
+  private var loadingMessage
   let fileStore: FileStore
   private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
   @State private var clipboardFocus = ClipboardSyncFocus()
   @State private var keyboard: LivePreviewKeyboard
+  @State private var readyRendererID: UUID?
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
@@ -56,6 +59,9 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
           thumbnail: lifecycle.connection?.thumbnail,
           keyboard: settings.keyboardInput ? keyboard : nil
         )
+        if readyRendererID != renderer.operation.id {
+          WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: loadingMessage(deviceID))
+        }
       } else if lifecycle.connection?.hasFailed == true {
         VStack(spacing: 8) {
           Text("Live preview unavailable")
@@ -66,7 +72,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
         }
         .padding(16)
       } else if lifecycle.isConnecting {
-        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: "Connecting to device")
+        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: loadingMessage(deviceID))
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -119,6 +125,14 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     }
     .onChange(of: appearsActive && scenePhase == .active, initial: true) {
       clipboardFocus.update(focused: appearsActive, appActive: scenePhase == .active)
+    }
+    .task(id: lifecycle.renderer?.operation.id) {
+      guard let renderer = lifecycle.renderer else { return }
+      do {
+        _ = try await renderer.session.waitUntilReady()
+        try Task.checkCancellation()
+        readyRendererID = renderer.operation.id
+      } catch {}
     }
     .onAppear { lifecycle.appear() }
     .onChange(of: lifecycle.connection?.restartID) { lifecycle.restart() }

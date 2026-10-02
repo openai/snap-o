@@ -37,6 +37,10 @@ struct CaptureToolbar: View {
   let toolPaneVisibleWidth: CGFloat
   let transitioningPane: WorkspaceLayoutTransition.Pane?
   let titlebarHeight: CGFloat
+  let deviceOptions: [CaptureDeviceOption]
+  let deviceSelection: DeviceOpenRequest?
+  let showsDevicePicker: Bool
+  let selectDevice: (DeviceOpenRequest) -> Void
 
   @Environment(\.openWindow)
   private var openWindow
@@ -90,7 +94,9 @@ struct CaptureToolbar: View {
     HStack(spacing: 15) {
       captureControls()
 
-      if !controller.isRecording, !controller.isReviewingCapture, let progress = controller.captureProgressText {
+      if !controller.isRecording, showsDevicePicker, !deviceOptions.isEmpty {
+        CaptureDevicePicker(devices: deviceOptions, selection: deviceSelection, select: selectDevice)
+      } else if !controller.isRecording, !controller.isReviewingCapture, let progress = controller.captureProgressText {
         captureProgress(progress)
       }
     }

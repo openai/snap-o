@@ -39,6 +39,10 @@ struct CaptureWindow: View {
   @Environment(\.accessibilityReduceMotion)
   private var reduceMotion
 
+  private let deviceManager: DeviceManager
+  @State private var deviceOpenStatus: String?
+  @State private var deviceOpenSerial: String?
+  @State private var deviceOpenError: String?
   @State private var controller: CaptureWindowController
   @State private var workspace: WorkspaceLayoutController
   @State private var toolSession: ToolSession
@@ -53,6 +57,7 @@ struct CaptureWindow: View {
     adbService: ADBService,
     initialWorkspace: WorkspaceLayoutSnapshot? = nil
   ) {
+    self.deviceManager = deviceManager
     let captureController = CaptureWindowController(
       captureServices: captureServices,
       deviceManager: deviceManager,
@@ -78,6 +83,15 @@ struct CaptureWindow: View {
       .task {
         await controller.start()
       }
+      .task(id: controller.deviceOpenRequest) {
+        await openRequestedDevice()
+      }
+      .alert("Open Device", isPresented: Binding(
+        get: { deviceOpenError != nil },
+        set: { if !$0 { deviceOpenError = nil } }
+      )) {
+        Button("OK") { deviceOpenError = nil }
+      } message: { Text(deviceOpenError ?? "") }
       .task(id: controller.mediaList.map(\.id)) {
         await history.repository.protect(Set(controller.mediaList.map(\.id)), owner: historyProtectionID)
         await synchronizeCaptureHistory()
@@ -158,9 +172,9 @@ struct CaptureWindow: View {
         WindowCommandRegistration { command in
           workspace.revealCapture()
           Task { await handle(command, controller: controller) }
-        } preview: { deviceID in
+        } openDevice: { request in
           workspace.revealCapture()
-          Task { await controller.showLivePreview(deviceID: deviceID) }
+          controller.deviceOpenRequest = request
         } thumbnail: { deviceID in
           controller.livePreviewConnection(for: deviceID)?.thumbnail
         }
@@ -168,9 +182,83 @@ struct CaptureWindow: View {
       )
   }
 
+  private func openRequestedDevice() async {
+    deviceOpenStatus = nil
+    deviceOpenSerial = nil
+    guard let request = controller.deviceOpenRequest else { return }
+    deviceOpenError = nil
+    defer {
+      if !Task.isCancelled, controller.deviceOpenRequest == request {
+        deviceOpenStatus = nil
+        controller.deviceOpenRequest = nil
+      }
+    }
+    let resolver = DeviceOpenResolver {
+      DeviceOpenSnapshot(
+        connectedSerials: Set(deviceManager.connectedDevices.map(\.id)),
+        emulators: deviceManager.entries.compactMap {
+          guard case .emulator(let device) = $0 else { return nil }
+          return device
+        },
+        hasLoaded: deviceManager.hasLoaded,
+        isRefreshing: deviceManager.isRefreshing || !deviceManager.matchingSerials.isEmpty,
+        loadError: deviceManager.loadError,
+        actions: deviceManager.actions,
+        launchErrors: deviceManager.launchErrors
+      )
+    } start: { device in
+      deviceManager.start(device)
+    }
+    do {
+      let serial = try await resolver.resolve(request) { deviceOpenStatus = $0 }
+      try Task.checkCancellation()
+      guard controller.deviceOpenRequest == request else { return }
+      deviceOpenSerial = serial
+      deviceOpenStatus = "Opening"
+      await controller.showLivePreview(deviceID: serial)
+    } catch is CancellationError {
+      return
+    } catch {
+      guard !Task.isCancelled, controller.deviceOpenRequest == request else { return }
+      deviceOpenError = error.localizedDescription
+    }
+  }
+
+  private var livePreviewDeviceOptions: [CaptureDeviceOption] {
+    deviceManager.entries.compactMap { entry in
+      let status: String? = if case .emulator(let device) = entry {
+        deviceManager.startupStatus(for: device)
+      } else {
+        nil
+      }
+      return CaptureDeviceOption(entry: entry, startupStatus: status)
+    }
+  }
+
+  private var captureDeviceTitle: String? {
+    if let request = controller.deviceOpenRequest {
+      switch request {
+      case .serial(let serial):
+        return deviceTitle(for: serial)
+      case .avd(let name, _):
+        return deviceManager.emulators.first { $0.avdName == name }?.title ?? name
+      }
+    }
+    if controller.isLivePreviewActive, let serial = controller.loadingPreviewDeviceID {
+      return deviceTitle(for: serial)
+    }
+    return controller.currentCaptureDeviceTitle
+  }
+
+  private func deviceTitle(for serial: String) -> String {
+    deviceManager.entries.first { $0.serial == serial }?.title
+      ?? deviceManager.connectedDevices.first { $0.id == serial }?.displayTitle
+      ?? serial
+  }
+
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
-    return CapturePaneTitle(title: controller.currentCaptureDeviceTitle ?? "Snap-O") {
+    return CapturePaneTitle(title: captureDeviceTitle ?? "Snap-O") {
       openWindow(id: "device-manager")
     }
   }
@@ -178,7 +266,7 @@ struct CaptureWindow: View {
   private func navigationTitle(for layout: WorkspaceLayout) -> String {
     switch layout {
     case .capture:
-      return controller.navigationTitle
+      return captureDeviceTitle ?? controller.navigationTitle
     case .tool, .both:
       guard let model = toolSession.model,
             let toolName = model.selectedToolApp?.tools.first(where: {
@@ -241,8 +329,12 @@ struct CaptureWindow: View {
           capturePaneVisibleWidth: captureVisibleWidth,
           toolPaneVisibleWidth: toolVisibleWidth,
           transitioningPane: layoutTransition?.pane,
-          titlebarHeight: titlebarHeight
-        )
+          titlebarHeight: titlebarHeight,
+          deviceOptions: livePreviewDeviceOptions,
+          deviceSelection: controller.deviceOpenRequest ?? controller.loadingPreviewDeviceID.map { .serial($0) },
+          showsDevicePicker: controller.deviceOpenRequest != nil || controller.isLivePreviewActive
+            || (!controller.isReviewingCapture && settings.startupCaptureMode == .livePreview)
+        ) { controller.deviceOpenRequest = $0 }
 
         captureWorkspace(
           controller: controller,
@@ -458,6 +550,19 @@ struct CaptureWindow: View {
         }
       }
     }
+    .opacity(pendingDeviceOpenStatus == nil ? 1 : 0)
+    .allowsHitTesting(pendingDeviceOpenStatus == nil)
+    .accessibilityHidden(pendingDeviceOpenStatus != nil)
+    .overlay {
+      if let status = pendingDeviceOpenStatus {
+        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: status) {
+          controller.deviceOpenRequest = nil
+          deviceOpenStatus = nil
+          deviceOpenSerial = nil
+        }
+      }
+    }
+    .environment(\.livePreviewLoadingMessage, livePreviewLoadingMessage)
     .safeAreaInset(edge: .top, spacing: 0) {
       if controller.currentCapture != nil, !controller.screenshotFailures.isEmpty {
         ScreenshotFailureBanner(
@@ -499,6 +604,22 @@ struct CaptureWindow: View {
     }
     .clipped()
     .background(captureAreaBackground)
+  }
+
+  private var pendingDeviceOpenStatus: String? {
+    if let serial = deviceOpenSerial, controller.isLivePreviewActive,
+       controller.currentCapture?.device.id == serial { return nil }
+    guard let status = deviceOpenStatus else { return nil }
+    return deviceOpenSerial.map(livePreviewLoadingMessage) ?? status
+  }
+
+  private func livePreviewLoadingMessage(for serial: String) -> String {
+    if let entry = deviceManager.entries.first(where: { $0.serial == serial }),
+       case .emulator(let device) = entry,
+       let status = deviceManager.startupStatus(for: device) {
+      return status
+    }
+    return "Connecting"
   }
 
   private var livePreviewSerial: String? {
@@ -546,9 +667,12 @@ struct CaptureWindow: View {
           controller: controller.snapshotController,
           fileStore: controller.fileStore,
           livePreviewHost: controller
-        )
+        ) { controller.selectMedia(id: $0) }
       } else if controller.isLivePreviewActive, controller.hasDevices {
-        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: "Connecting to device")
+        WaitingForDeviceView(
+          isDeviceListInitialized: true,
+          deviceMessage: controller.loadingPreviewDeviceID.map(livePreviewLoadingMessage) ?? "Connecting"
+        )
       } else if controller.isDeviceListInitialized {
         idleOverlay(controller: controller)
       } else {

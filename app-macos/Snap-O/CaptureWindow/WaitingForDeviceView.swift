@@ -1,8 +1,13 @@
 import SwiftUI
 
+extension EnvironmentValues {
+  @Entry var livePreviewLoadingMessage: @MainActor (String) -> String = { _ in "Connecting" }
+}
+
 struct WaitingForDeviceView: View {
   let isDeviceListInitialized: Bool
   var deviceMessage = "Waiting for device"
+  var cancel: (() -> Void)?
 
   var body: some View {
     VStack(spacing: 12) {
@@ -26,6 +31,11 @@ struct WaitingForDeviceView: View {
           .foregroundStyle(.gray)
           .transition(.opacity)
       }
+      if let cancel {
+        Button("Cancel", action: cancel)
+      }
     }
+    .multilineTextAlignment(.center)
+    .padding(24)
   }
 }

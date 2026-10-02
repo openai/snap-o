@@ -27,8 +27,10 @@ final class CaptureWindowController {
   private var recordingMode: RecordingMode?
   private(set) var isFinishingRecording = false
   private(set) var mode: CaptureWindowMode
+  var deviceOpenRequest: DeviceOpenRequest?
 
   private var knownDevices: [Device] = []
+  @ObservationIgnored private var usesPreviewDeviceStream = false
   @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
   @ObservationIgnored private var hasStartedInitialCapture = false
@@ -59,14 +61,17 @@ final class CaptureWindowController {
     Perf.startupEvent("window controller start")
     #endif
     isTornDown = false
+    usesPreviewDeviceStream = usesPreviewDeviceStream || AppSettings.shared.startupCaptureMode == .livePreview
+    isDeviceListInitialized = !deviceManager.latestDevices.isEmpty
+    observeDevices()
+  }
+
+  private func observeDevices() {
     deviceStreamTask?.cancel()
     let manager = deviceManager
-    let latestDevices = manager.latestDevices
-    isDeviceListInitialized = !latestDevices.isEmpty
-
     deviceStreamTask = Task { [weak self] in
       guard let self else { return }
-      let stream = if AppSettings.shared.startupCaptureMode == .livePreview {
+      let stream = if usesPreviewDeviceStream {
         manager.previewDeviceStream()
       } else {
         manager.deviceStream()
@@ -79,29 +84,40 @@ final class CaptureWindowController {
   }
 
   func selectMedia(id: CaptureMedia.ID) {
-    snapshotController.selectMedia(id: id)
+    selectMedia(id: Optional(id))
   }
 
   func selectMedia(id: CaptureMedia.ID?) {
+    deviceOpenRequest = nil
+    pendingPreferredDeviceID = nil
     snapshotController.selectMedia(id: id)
   }
 
   func selectNextMedia() {
+    deviceOpenRequest = nil
+    pendingPreferredDeviceID = nil
     snapshotController.selectNextMedia()
   }
 
   func selectPreviousMedia() {
+    deviceOpenRequest = nil
+    pendingPreferredDeviceID = nil
     snapshotController.selectPreviousMedia()
   }
 
   func selectDevice(id: String) {
-    guard selectedDeviceID != id else { return }
+    guard pendingPreferredDeviceID != id else { return }
+    if currentCapture?.device.id == id {
+      pendingPreferredDeviceID = nil
+      return
+    }
     mediaDisplayMode.updateLastViewedDeviceID(id)
     if let media = mediaList.first(where: { $0.device.id == id }) {
       pendingPreferredDeviceID = nil
       mediaDisplayMode.selectMedia(id: media.id)
     } else {
       pendingPreferredDeviceID = id
+      mediaDisplayMode.clearSelection()
     }
   }
 
@@ -376,22 +392,36 @@ final class CaptureWindowController {
     await recordingMode.finish()
   }
 
+  var loadingPreviewDeviceID: String? {
+    pendingPreferredDeviceID ?? selectedDeviceID ?? knownDevices.first?.id
+  }
+
   func showLivePreview(deviceID: String) async {
+    guard !isTornDown, !Task.isCancelled else { return }
+    let request = deviceOpenRequest
+    if !usesPreviewDeviceStream {
+      hasStartedInitialCapture = true
+      usesPreviewDeviceStream = true
+      observeDevices()
+    }
     let deadline = Date().addingTimeInterval(20)
-    while !isTornDown, !Task.isCancelled, Date() < deadline {
-      if isRecording, isLivePreviewActive, knownDevices.contains(where: { $0.id == deviceID }) {
+    while !isTornDown, !Task.isCancelled, deviceOpenRequest == request, Date() < deadline {
+      if isLivePreviewActive, !isStoppingLivePreview, !isFinishingRecording,
+         knownDevices.contains(where: { $0.id == deviceID }) {
         selectDevice(id: deviceID)
         return
       }
       if !isProcessing, knownDevices.contains(where: { $0.id == deviceID }) {
         await startLivePreview(preferredDeviceID: deviceID)
-        guard isLivePreviewActive else { return }
+        guard isLivePreviewActive, !Task.isCancelled, deviceOpenRequest == request else { return }
         selectDevice(id: deviceID)
         return
       }
       do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
     }
-    if !isTornDown { lastError = "The emulator is not available for Live Preview yet. Try again shortly." }
+    if !isTornDown, !Task.isCancelled, deviceOpenRequest == request {
+      lastError = "The emulator is not available for Live Preview yet. Try again shortly."
+    }
   }
 
   private var restoredDeviceID: String? {
@@ -433,14 +463,7 @@ final class CaptureWindowController {
       mediaDisplayMode: mediaDisplayMode,
       preferredDeviceIDProvider: { [weak self] in
         guard let self else { return nil }
-        if let pending = pendingPreferredDeviceID {
-          return pending
-        }
-        if let currentID = selectedMediaID,
-           let current = mediaList.first(where: { $0.id == currentID }) {
-          return current.device.id
-        }
-        return nil
+        return pendingPreferredDeviceID ?? selectedDeviceID
       },
       onMediaApplied: { [weak self] in
         guard let self, !isTornDown, !isStoppingLivePreview else { return }

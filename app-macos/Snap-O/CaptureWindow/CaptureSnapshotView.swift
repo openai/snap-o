@@ -5,6 +5,7 @@ struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
   @Bindable var controller: CaptureSnapshotController
   let fileStore: FileStore
   let livePreviewHost: Host
+  let selectMedia: (CaptureMedia.ID) -> Void
 
   var body: some View {
     ZStack {
@@ -23,7 +24,7 @@ struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
         CapturePreviewStrip(
           captures: captures,
           selectedID: controller.selectedMediaID,
-          onSelect: { controller.selectMedia(id: $0) },
+          onSelect: selectMedia,
           fileStore: fileStore,
           livePreviewHost: livePreviewHost
         )

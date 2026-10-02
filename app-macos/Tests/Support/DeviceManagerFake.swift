@@ -3,20 +3,26 @@ import Foundation
 @MainActor
 final class DeviceManager {
   private(set) var latestDevices: [Device]
+  private var previewDevices: [Device]
   private let source: (@Sendable () async -> AsyncStream<[Device]>)?
-  private var observers: [UUID: AsyncStream<[Device]>.Continuation] = [:]
+  private var observers: [UUID: (preview: Bool, continuation: AsyncStream<[Device]>.Continuation)] = [:]
 
   init(devices: [Device] = [], deviceStream: (@Sendable () async -> AsyncStream<[Device]>)? = nil) {
     latestDevices = devices
+    previewDevices = devices
     source = deviceStream
   }
 
   func previewDeviceStream() -> AsyncStream<[Device]> {
-    deviceStream()
+    stream(preview: true)
   }
 
   func deviceStream() -> AsyncStream<[Device]> {
-    guard let source else { return localStream() }
+    stream(preview: false)
+  }
+
+  private func stream(preview: Bool) -> AsyncStream<[Device]> {
+    guard let source else { return localStream(preview: preview) }
     return AsyncStream { continuation in
       let task = Task {
         for await devices in await source() {
@@ -29,11 +35,11 @@ final class DeviceManager {
     }
   }
 
-  private func localStream() -> AsyncStream<[Device]> {
+  private func localStream(preview: Bool) -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
-      observers[id] = continuation
-      continuation.yield(latestDevices)
+      observers[id] = (preview, continuation)
+      continuation.yield(preview ? previewDevices : latestDevices)
       continuation.onTermination = { [weak self] _ in
         Task { @MainActor in self?.observers.removeValue(forKey: id) }
       }
@@ -42,8 +48,16 @@ final class DeviceManager {
 
   func updateDevices(_ devices: [Device]) {
     latestDevices = devices
+    previewDevices = devices
     for observer in observers.values {
-      observer.yield(devices)
+      observer.continuation.yield(devices)
+    }
+  }
+
+  func updatePreviewDevices(_ devices: [Device]) {
+    previewDevices = devices
+    for observer in observers.values where observer.preview {
+      observer.continuation.yield(devices)
     }
   }
 }
