@@ -1,0 +1,7 @@
+(version 1)
+(allow default)
+(deny file-write* (subpath (param "EXPORT_DIRECTORY")))
+(allow file-write*
+  (literal (string-append (param "EXPORT_DIRECTORY") "/uncropped.png"))
+  (literal (string-append (param "EXPORT_DIRECTORY") "/cropped.png"))
+  (literal (string-append (param "EXPORT_DIRECTORY") "/image.png")))
