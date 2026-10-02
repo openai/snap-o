@@ -114,6 +114,8 @@ struct CaptureWindow: View {
           // Hiding the pane is a layout change, not a session boundary. Preserve its streams and history until the window closes.
           return
         }
+        await teardownTask?.value
+        guard !Task.isCancelled else { return }
         toolSession.startIfNeeded()
       }
       .onDisappear {
