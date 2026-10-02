@@ -1,5 +1,4 @@
 import Foundation
-@testable import Snap_O
 import Testing
 
 @Suite("Workspace layout persistence")

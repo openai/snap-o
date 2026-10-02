@@ -4,7 +4,7 @@
 BUILD_DIR=${SNAPO_DERIVED_DATA:-"$APP_DIR/.build/tests"}
 CONFIGURATION=${SNAPO_TEST_CONFIGURATION:-Local}
 if [ -z "${SNAPO_DERIVED_DATA:-}" ]; then
-  xcodebuild -quiet -project "$APP_DIR/Snap-O.xcodeproj" -scheme Snap-O \
+  xcodebuild -quiet -project "$APP_DIR/Snap-O.xcodeproj" -scheme Snap-OIntegrationTests \
     -configuration "$CONFIGURATION" -derivedDataPath "$BUILD_DIR" \
     -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing

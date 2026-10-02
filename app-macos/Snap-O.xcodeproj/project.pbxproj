@@ -19,6 +19,20 @@
 		B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = B70300022F70000100C0FFEE /* SwiftProtobuf */; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
 		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
+		AFD368F1469D647D6FB1B5B9 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA8405D91B58F4CAF42432F /* AppSettings.swift */; };
+		9E2FC83DAF580BD9E54B2030 /* DeviceOpenRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9496FE967C0DC106E9F5209 /* DeviceOpenRequest.swift */; };
+		F00C303D8CF56FE34616A7B1 /* AndroidHostServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF47D30E8DBEDD7C7B9766E /* AndroidHostServiceProtocol.swift */; };
+		BA43CBDE1E4E88B87238B019 /* DeviceOpenResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD60BCCFA7D038A1456589A /* DeviceOpenResolver.swift */; };
+		BA47B3BFA6D38EE2C20A4E7C /* ClipboardSyncState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D78EC480BA9B4293863E16DB /* ClipboardSyncState.swift */; };
+		956EB3AC3F8FE66C2E1283CA /* CaptureHistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE35FD1900558E4CEE5037C /* CaptureHistoryEntry.swift */; };
+		3ED86BE7D02579639837AA7C /* CaptureHistoryGridSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 006BBE20874F0E47B3195714 /* CaptureHistoryGridSelection.swift */; };
+		43B973498581E042518D5316 /* CaptureCropGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64DC1C35A1FE46F2FE3156DB /* CaptureCropGeometry.swift */; };
+		81F50208F1A6976F485A62AD /* CaptureTrimRange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 527618F1D015DF5E8C623892 /* CaptureTrimRange.swift */; };
+		8DB745E39518033F5B7248DE /* CaptureTrimSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC4AA34FEC10AFD17BD8CB8 /* CaptureTrimSession.swift */; };
+		84AD1DF9792B6F7A800B0011 /* CaptureReviewLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F04456AA0EC8093764210E3 /* CaptureReviewLayout.swift */; };
+		02288FF1C74A76762433FA67 /* PlaybackVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9790185B1E1B29271ACBC6C /* PlaybackVisibility.swift */; };
+		598CC459B716F4A3BE0F9142 /* WorkspaceLayoutController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03507255994DAC409A14B8C0 /* WorkspaceLayoutController.swift */; };
+		554E6726FC6571D816DD3236 /* AsyncTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CA15A95C91F51C1D92668B /* AsyncTestSupport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,7 +73,22 @@
 		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		A60000022F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/AndroidHostServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
 		A60000042F70000100C0FFEE /* AndroidHostService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = AndroidHostService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
-		E30000012F70000100C0FFEE /* Snap-OTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E30000012F70000100C0FFEE /* Snap-OIntegrationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OIntegrationTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		3CA8405D91B58F4CAF42432F /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/App/AppSettings.swift"; sourceTree = SOURCE_ROOT; };
+		C9496FE967C0DC106E9F5209 /* DeviceOpenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Models/DeviceOpenRequest.swift"; sourceTree = SOURCE_ROOT; };
+		FEF47D30E8DBEDD7C7B9766E /* AndroidHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/AndroidHostServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
+		5DD60BCCFA7D038A1456589A /* DeviceOpenResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/DeviceManager/DeviceOpenResolver.swift"; sourceTree = SOURCE_ROOT; };
+		D78EC480BA9B4293863E16DB /* ClipboardSyncState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Clipboard/ClipboardSyncState.swift"; sourceTree = SOURCE_ROOT; };
+		DCE35FD1900558E4CEE5037C /* CaptureHistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/History/CaptureHistoryEntry.swift"; sourceTree = SOURCE_ROOT; };
+		006BBE20874F0E47B3195714 /* CaptureHistoryGridSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/History/CaptureHistoryGridSelection.swift"; sourceTree = SOURCE_ROOT; };
+		64DC1C35A1FE46F2FE3156DB /* CaptureCropGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/CaptureCropGeometry.swift"; sourceTree = SOURCE_ROOT; };
+		527618F1D015DF5E8C623892 /* CaptureTrimRange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/CaptureTrimRange.swift"; sourceTree = SOURCE_ROOT; };
+		DFC4AA34FEC10AFD17BD8CB8 /* CaptureTrimSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/CaptureTrimSession.swift"; sourceTree = SOURCE_ROOT; };
+		2F04456AA0EC8093764210E3 /* CaptureReviewLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/CaptureReviewLayout.swift"; sourceTree = SOURCE_ROOT; };
+		A9790185B1E1B29271ACBC6C /* PlaybackVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/PlaybackVisibility.swift"; sourceTree = SOURCE_ROOT; };
+		03507255994DAC409A14B8C0 /* WorkspaceLayoutController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/CaptureWindow/WorkspaceLayoutController.swift"; sourceTree = SOURCE_ROOT; };
+		C2CA15A95C91F51C1D92668B /* AsyncTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-OTests/AsyncTestSupport.swift"; sourceTree = SOURCE_ROOT; };
+		E41000012F70000100C0FFEE /* Snap-OUnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OUnitTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -91,6 +120,11 @@
 			path = "Snap-OTests";
 			sourceTree = "<group>";
 		};
+		E41000022F70000100C0FFEE /* Snap-OUnitTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Snap-OUnitTests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,6 +152,12 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E41000062F70000100C0FFEE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -127,6 +167,8 @@
 				A60000052F70000100C0FFEE /* AndroidHostService */,
 				A60000022F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift */,
 				E30000022F70000100C0FFEE /* Snap-OTests */,
+				E41000022F70000100C0FFEE /* Snap-OUnitTests */,
+				E41000102F70000100C0FFEE /* Unit test sources */,
 				3234F4532E2EC5030057AE77 /* Snap-O */,
 				32D6DEB02E395E0A001A7DEE /* Frameworks */,
 				3234F4522E2EC5030057AE77 /* Products */,
@@ -137,7 +179,8 @@
 			isa = PBXGroup;
 			children = (
 				A60000042F70000100C0FFEE /* AndroidHostService.xpc */,
-				E30000012F70000100C0FFEE /* Snap-OTests.xctest */,
+				E30000012F70000100C0FFEE /* Snap-OIntegrationTests.xctest */,
+				E41000012F70000100C0FFEE /* Snap-OUnitTests.xctest */,
 				3234F4512E2EC5030057AE77 /* Snap-O.app */,
 			);
 			name = Products;
@@ -159,6 +202,27 @@
 				32D6DEB12E395E0B001A7DEE /* AVKit.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E41000102F70000100C0FFEE /* Unit test sources */ = {
+			isa = PBXGroup;
+			children = (
+				3CA8405D91B58F4CAF42432F /* AppSettings.swift */,
+				C9496FE967C0DC106E9F5209 /* DeviceOpenRequest.swift */,
+				FEF47D30E8DBEDD7C7B9766E /* AndroidHostServiceProtocol.swift */,
+				5DD60BCCFA7D038A1456589A /* DeviceOpenResolver.swift */,
+				D78EC480BA9B4293863E16DB /* ClipboardSyncState.swift */,
+				DCE35FD1900558E4CEE5037C /* CaptureHistoryEntry.swift */,
+				006BBE20874F0E47B3195714 /* CaptureHistoryGridSelection.swift */,
+				64DC1C35A1FE46F2FE3156DB /* CaptureCropGeometry.swift */,
+				527618F1D015DF5E8C623892 /* CaptureTrimRange.swift */,
+				DFC4AA34FEC10AFD17BD8CB8 /* CaptureTrimSession.swift */,
+				2F04456AA0EC8093764210E3 /* CaptureReviewLayout.swift */,
+				A9790185B1E1B29271ACBC6C /* PlaybackVisibility.swift */,
+				03507255994DAC409A14B8C0 /* WorkspaceLayoutController.swift */,
+				C2CA15A95C91F51C1D92668B /* AsyncTestSupport.swift */,
+			);
+			name = "Unit test sources";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -215,9 +279,9 @@
 			productReference = A60000042F70000100C0FFEE /* AndroidHostService.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
-		E30000082F70000100C0FFEE /* Snap-OTests */ = {
+		E30000082F70000100C0FFEE /* Snap-OIntegrationTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OTests" */;
+			buildConfigurationList = E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OIntegrationTests" */;
 			buildPhases = (
 				E30000052F70000100C0FFEE /* Sources */,
 				E30000062F70000100C0FFEE /* Frameworks */,
@@ -231,13 +295,30 @@
 			fileSystemSynchronizedGroups = (
 				E30000022F70000100C0FFEE /* Snap-OTests */,
 			);
-			name = "Snap-OTests";
+			name = "Snap-OIntegrationTests";
 			packageProductDependencies = (
 				C10C00022F70000100C0FFEE /* Clocks */,
 				D10C00042F70000100C0FFEE /* DependenciesTestSupport */,
 			);
-			productName = "Snap-OTests";
-			productReference = E30000012F70000100C0FFEE /* Snap-OTests.xctest */;
+			productName = "Snap-OIntegrationTests";
+			productReference = E30000012F70000100C0FFEE /* Snap-OIntegrationTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E41000082F70000100C0FFEE /* Snap-OUnitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E41000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OUnitTests" */;
+			buildPhases = (
+				E41000052F70000100C0FFEE /* Sources */,
+				E41000062F70000100C0FFEE /* Frameworks */,
+			);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (
+				E41000022F70000100C0FFEE /* Snap-OUnitTests */,
+			);
+			name = "Snap-OUnitTests";
+			productName = "Snap-OUnitTests";
+			productReference = E41000012F70000100C0FFEE /* Snap-OUnitTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -280,7 +361,8 @@
 			projectRoot = "";
 			targets = (
 				A60000072F70000100C0FFEE /* AndroidHostService */,
-				E30000082F70000100C0FFEE /* Snap-OTests */,
+				E30000082F70000100C0FFEE /* Snap-OIntegrationTests */,
+				E41000082F70000100C0FFEE /* Snap-OUnitTests */,
 				3234F4502E2EC5030057AE77 /* Snap-O */,
 			);
 		};
@@ -370,6 +452,27 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E41000052F70000100C0FFEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AFD368F1469D647D6FB1B5B9 /* AppSettings.swift in Sources */,
+				9E2FC83DAF580BD9E54B2030 /* DeviceOpenRequest.swift in Sources */,
+				F00C303D8CF56FE34616A7B1 /* AndroidHostServiceProtocol.swift in Sources */,
+				BA43CBDE1E4E88B87238B019 /* DeviceOpenResolver.swift in Sources */,
+				BA47B3BFA6D38EE2C20A4E7C /* ClipboardSyncState.swift in Sources */,
+				956EB3AC3F8FE66C2E1283CA /* CaptureHistoryEntry.swift in Sources */,
+				3ED86BE7D02579639837AA7C /* CaptureHistoryGridSelection.swift in Sources */,
+				43B973498581E042518D5316 /* CaptureCropGeometry.swift in Sources */,
+				81F50208F1A6976F485A62AD /* CaptureTrimRange.swift in Sources */,
+				8DB745E39518033F5B7248DE /* CaptureTrimSession.swift in Sources */,
+				84AD1DF9792B6F7A800B0011 /* CaptureReviewLayout.swift in Sources */,
+				02288FF1C74A76762433FA67 /* PlaybackVisibility.swift in Sources */,
+				598CC459B716F4A3BE0F9142 /* WorkspaceLayoutController.swift in Sources */,
+				554E6726FC6571D816DD3236 /* AsyncTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -823,6 +926,48 @@
 			};
 			name = Release;
 		};
+		E410000A2F70000100C0FFEE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.unit-tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		E410000B2F70000100C0FFEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.unit-tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
+		E410000C2F70000100C0FFEE /* Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.unit-tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Local;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -856,7 +1001,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OTests" */ = {
+		E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OIntegrationTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E300000A2F70000100C0FFEE /* Debug */,
@@ -865,6 +1010,16 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
+		};
+		E41000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OUnitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E410000A2F70000100C0FFEE /* Debug */,
+				E410000C2F70000100C0FFEE /* Local */,
+				E410000B2F70000100C0FFEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 

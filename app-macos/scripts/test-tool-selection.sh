@@ -4,12 +4,11 @@ set -eu
 APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$APP_DIR"
 
-# CI runs these with the full native suite; this is the focused local entry point.
-xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-O \
+# This opt-in integration check launches Snap-O. Workspace layout is covered by the headless target.
+xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-OIntegrationTests \
   -destination 'platform=macOS' \
   -derivedDataPath "${SNAPO_DERIVED_DATA:-$APP_DIR/.build/tests}" \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-  -only-testing:Snap-OTests/ToolSelectionTests \
-  -only-testing:Snap-OTests/WorkspaceLayoutTests \
-  -only-testing:Snap-OTests/ToolWebPolicyTests \
-  -only-testing:Snap-OTests/ToolWebContainerTests test
+  -only-testing:Snap-OIntegrationTests/ToolSelectionTests \
+  -only-testing:Snap-OIntegrationTests/ToolWebPolicyTests \
+  -only-testing:Snap-OIntegrationTests/ToolWebContainerTests test

@@ -87,25 +87,37 @@ jobs:
         id: build-tests
         timeout-minutes: 8
         run: |
-          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration "$SNAPO_TEST_CONFIGURATION" \
-            -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
-            -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            COMPILATION_CACHE_ENABLE_CACHING=YES build-for-testing
-      - name: Run macOS tests
+          for scheme in Snap-OUnitTests Snap-OIntegrationTests; do
+            xcodebuild -project Snap-O.xcodeproj -scheme "$scheme" -configuration "$SNAPO_TEST_CONFIGURATION" \
+              -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
+              -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+              COMPILATION_CACHE_ENABLE_CACHING=YES build-for-testing
+          done
+      - name: Run headless unit tests
         timeout-minutes: 2
         run: |
           xcodebuild test-without-building \
-            -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"*.xctestrun \
+            -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"Snap-OUnitTests_*.xctestrun \
             -destination "platform=macOS" \
-            -resultBundlePath "$RUNNER_TEMP/snap-o-tests.xcresult" \
+            -resultBundlePath "$RUNNER_TEMP/snap-o-unit-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+      - name: Run app integration tests
+        timeout-minutes: 2
+        run: |
+          xcodebuild test-without-building \
+            -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"Snap-OIntegrationTests_*.xctestrun \
+            -destination "platform=macOS" \
+            -resultBundlePath "$RUNNER_TEMP/snap-o-integration-tests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
       - name: Upload failed test results
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mac-test-results
-          path: ${{ runner.temp }}/snap-o-tests.xcresult
+          path: |
+            ${{ runner.temp }}/snap-o-unit-tests.xcresult
+            ${{ runner.temp }}/snap-o-integration-tests.xcresult
           if-no-files-found: ignore
       - name: Test capture export permissions
         env:
