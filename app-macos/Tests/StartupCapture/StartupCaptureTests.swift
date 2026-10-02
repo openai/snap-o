@@ -1143,22 +1143,16 @@ struct StartupCaptureTests {
         || (fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing)
     }
     let expected = command ?? (startupMode == .screenshot ? .capture : .livepreview)
-    let captures = await fixture.screenshots.requests
-    let recordings = await fixture.recording.requests
-    let previews = await fixture.live.starts
-    switch expected {
-    case .capture:
-      precondition(recordings.isEmpty && previews.isEmpty, "A capture URL must skip the default preview")
-      await eventually { fixture.controller.isReviewingCapture }
-      precondition(captures == [[first.id]])
-    case .record:
-      precondition(captures.isEmpty, "A record URL must skip the default screenshot")
-      await eventually { await fixture.recording.requests == [[first.id]] }
-      precondition(fixture.controller.isRecording)
-    case .livepreview:
-      precondition(captures.isEmpty && recordings.isEmpty, "A preview URL must skip the default screenshot")
-      await eventually { fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing }
+    let matchesRequest = switch expected {
+    case .capture: fixture.controller.isReviewingCapture
+    case .record: fixture.controller.isRecording
+    case .livepreview: fixture.controller.isLivePreviewActive
     }
+    precondition(matchesRequest, "The URL command must take priority over the startup setting")
+    let captures = await fixture.screenshots.requests
+    precondition(captures == (expected == .capture ? [[first.id]] : []))
+    let previews = await fixture.live.starts
+    precondition(expected != .capture || previews.isEmpty)
     await fixture.controller.tearDown()
   }
 

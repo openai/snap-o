@@ -617,7 +617,7 @@ final class CaptureWindowController {
       mediaDisplayMode.clearSelection()
     }
     if !devices.isEmpty {
-      startPendingOrInitialCapture()
+      startCaptureIfNeeded()
     }
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -630,13 +630,13 @@ final class CaptureWindowController {
     }
   }
 
-  private func startPendingOrInitialCapture() {
+  private func startCaptureIfNeeded() {
     if !pendingCommands.isEmpty {
       let commands = pendingCommands
       pendingCommands.removeAll()
       // Reserve startup before yielding so later device updates cannot start the default.
       hasStartedInitialCapture = true
-      Task { @MainActor [weak self] in
+      Task { [weak self] in
         for command in commands {
           await self?.perform(command)
         }
@@ -644,9 +644,7 @@ final class CaptureWindowController {
       return
     }
 
-    guard !hasStartedInitialCapture else { return }
-    guard mediaList.isEmpty else { return }
-    guard case .idle = mode else { return }
+    guard !hasStartedInitialCapture, mediaList.isEmpty, case .idle = mode else { return }
     hasStartedInitialCapture = true
     initialCaptureTask = Task { [weak self] in
       guard let self else { return }
