@@ -54,17 +54,36 @@ for cli in snapo snapo-network snapo-tweaks; do
 done
 SERVICE="$APP/Contents/XPCServices/AndroidHostService.xpc"
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$SERVICE"
+if [ "$CONFIGURATION" = Release ]; then
+  SIGNING_TEAM=$(codesign -d -v "$SERVICE" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+  sh "$APP_ROOT/scripts/write-host-constraint.sh" "$OUTPUT/host.coderequirement" "$BUNDLE_ID" "$SIGNING_TEAM"
+  codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
+    --enforce-constraint-validity --launch-constraint-responsible "$OUTPUT/host.coderequirement" "$SERVICE"
+fi
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
   --entitlements "$OUTPUT/app.entitlements" "$APP"
 codesign --verify --deep --strict "$APP"
 
-python3 - "$APP" "$SERVICE" "$BUNDLE_ID" <<'PY'
+python3 - "$APP" "$SERVICE" "$BUNDLE_ID" "$CONFIGURATION" <<'PY'
 import pathlib
 import plistlib
 import subprocess
 import sys
 app, service = map(pathlib.Path, sys.argv[1:3])
 bundle_id = sys.argv[3]
+details = subprocess.run(
+    ['codesign', '-d', '--verbose=6', str(service)], check=True, capture_output=True, text=True,
+)
+signature = details.stdout + details.stderr
+if sys.argv[4] == 'Release':
+    assert 'Has Responsible Launch Constraints' in signature
+    team = next(line.split('=', 1)[1] for line in signature.splitlines() if line.startswith('TeamIdentifier='))
+    assert team and team != 'not set'
+    assert '[Key] signing-identifier' in signature and '[String] ' + bundle_id in signature
+    assert '[Key] team-identifier' in signature and '[String] ' + team in signature
+    assert '$(' not in signature, 'Launch constraints must contain resolved signing values'
+else:
+    assert 'Has Responsible Launch Constraints' not in signature
 for bundle, sandboxed in [(app, True), (service, False)]:
     result = subprocess.run(
         ['codesign', '-d', '--entitlements', ':-', str(bundle)],

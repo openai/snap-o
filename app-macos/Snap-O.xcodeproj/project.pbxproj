@@ -200,6 +200,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "AndroidHostService" */;
 			buildPhases = (
+				A600000F2F70000100C0FFEE /* Prepare host launch constraint */,
 				A60000092F70000100C0FFEE /* Sources */,
 			);
 			buildRules = (
@@ -327,6 +328,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nCLI_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nRESOURCE_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/bin/mkdir -p \"${CLI_DIR}\" \"${RESOURCE_DIR}\"\nfor CLI_NAME in snapo snapo-network snapo-tweaks; do\n  case \"${CLI_NAME}\" in\n    snapo) CLI_SOURCE=\"${PROJECT_DIR}/cli/snapo\" ;;\n    snapo-network) CLI_SOURCE=\"${PROJECT_DIR}/../skills/snap-o-network-inspector/scripts/snapo-network\" ;;\n    snapo-tweaks) CLI_SOURCE=\"${PROJECT_DIR}/../skills/snap-o-tweaks/scripts/snapo-tweaks\" ;;\n  esac\n  CLI_DEST=\"${CLI_DIR}/${CLI_NAME}\"\n  /usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n  /bin/chmod 755 \"${CLI_DEST}\"\n  if [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\n  fi\ndone\n/usr/bin/ditto \"${PROJECT_DIR}/../tool-reader/snapo-tool-reader.jar\" \"${RESOURCE_DIR}/snapo-tool-reader.jar\"\n/usr/bin/ditto \"${PROJECT_DIR}/../device-helper/snapo-device-helper.jar\" \"${RESOURCE_DIR}/snapo-device-helper.jar\"\n# Remove old reader copies from incremental builds.\n/bin/rm -f \"${CLI_DIR}/snapo-discovery.jar\" \"${RESOURCE_DIR}/snapo-discovery.jar\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A600000F2F70000100C0FFEE /* Prepare host launch constraint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/write-host-constraint.sh",
+			);
+			name = "Prepare host launch constraint";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/AndroidHostService.coderequirement",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n[ -n \"${LAUNCH_CONSTRAINT_RESPONSIBLE:-}\" ] || exit 0\n/bin/sh \"$SCRIPT_INPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_0\" \"$SNAPO_APP_BUNDLE_IDENTIFIER\" \"${DEVELOPMENT_TEAM:-}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -612,6 +631,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AndroidHostService/Info.plist;
+				LAUNCH_CONSTRAINT_RESPONSIBLE = "$(DERIVED_FILE_DIR)/AndroidHostService.coderequirement";
 				MARKETING_VERSION = "$(VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).AndroidHostService";
 				PRODUCT_NAME = "$(TARGET_NAME)";

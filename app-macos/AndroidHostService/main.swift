@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Emulator state stays on its worker queue; ADB startup has a separate serial queue.
 final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
@@ -7,28 +6,16 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
   private let adbWorker = DispatchQueue(label: "com.openai.snapo.adb")
   private let host = EmulatorHost()
   private let discovery = EmulatorGRPCDiscovery()
-  private let clientRequirement: String?
-
-  override init() {
-    let appURL = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    var code: SecStaticCode?
-    var requirement: SecRequirement?
-    var text: CFString?
-    if SecStaticCodeCreateWithPath(appURL as CFURL, [], &code) == errSecSuccess,
-       let code,
-       SecCodeCopyDesignatedRequirement(code, [], &requirement) == errSecSuccess,
-       let requirement,
-       SecRequirementCopyString(requirement, [], &text) == errSecSuccess {
-      clientRequirement = text as String?
-    } else {
-      clientRequirement = nil
-    }
-    super.init()
-  }
+  #if !DEBUG
+  private let clientRequirement = AndroidHostAuthentication.clientRequirement()
+  #endif
 
   func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-    guard connection.effectiveUserIdentifier == getuid(), let clientRequirement else { return false }
+    guard connection.effectiveUserIdentifier == getuid() else { return false }
+    #if !DEBUG
+    guard let clientRequirement else { return false }
     connection.setCodeSigningRequirement(clientRequirement)
+    #endif
     connection.exportedInterface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
     connection.exportedObject = self
     connection.resume()

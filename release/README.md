@@ -56,6 +56,12 @@ The Android release workflow requires successful Android CI on the exact source 
 
 Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and frontend build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
 
+For AndroidHostService signing changes, also run the [signed XPC security checks](../app-macos/Tests/DeviceManager/README.md#xpc-security-checks) against a Release build.
+Inspect the final exported helper with `codesign --display --verbose=6 <path-to-AndroidHostService.xpc>`.
+Its responsible-process constraint must contain the app's signing identifier and developer team.
+Unexpanded build variables, an empty team, or a missing constraint fail this check.
+Re-signing must preserve or regenerate the constraint for the final signing identity.
+
 For a macOS test run, verify the signed and notarized app, then open a temporary copy and confirm it works. Keep the installed prior release for the Sparkle update test. Android test runs must validate files without publishing them. Fix failures and repeat affected checks after changes.
 
 To test the release scripts:

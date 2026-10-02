@@ -44,6 +44,14 @@ Keep the app's Debug settings when editing this configuration. Use `Debug` inste
 when debugging dependency internals. Profile and Archive still use `Release`.
 Code coverage is off by default; enable it in the scheme when collecting coverage.
 
+Debug and Local builds support ADB startup and emulator operations without an
+Apple signing certificate. These builds skip the helper's signing checks and
+launch constraints, while keeping its same-user check.
+
+Release builds require the app and helper to be signed by the same Apple developer
+team. Copy `app-macos/Config/Signing.xcconfig.sample` to `Signing.xcconfig` in the
+same folder and set your team and signing identity. The file is ignored by Git.
+
 The macOS app owns its device code under `Snap-O/Device/`. Run its unit tests with:
 
 ```sh
