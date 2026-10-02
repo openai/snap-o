@@ -44,6 +44,59 @@ Do not add sleep-based watchdogs; bound failures with test or CI time limits.
 Do not send probe gestures or trigger repeated discovery to detect readiness.
 Do not mock the model whose behavior the test is checking.
 
+## Local test selection
+
+Choose tests for the changed behavior and its callers, not just the changed filename.
+Shared lifecycle or transport changes need broader coverage than a toolbar layout change.
+Use the smallest set that covers the affected behavior. Do not rerun successful checks
+without a relevant source, dependency, build-input change, or unresolved failure.
+An unchanged patch with recorded validation does not need another full local run.
+
+For Swift code changes, build the app and lint the changed files. A `build` or
+`build-for-testing` action compiles code without running the test app.
+Documentation-only changes need a content and link review, not an app build.
+
+Use these existing console-only suites when their coverage matches the change.
+Paths are relative to `app-macos/`:
+
+| Changed behavior | Local check |
+| --- | --- |
+| Recording service failures, deadlines, and cleanup | `scripts/test-recording.sh` |
+| Emulator frame conversion, launch arguments, and discovery parsing | `scripts/test-emulator-preview.sh` |
+| Device discovery and tool reconnection | `scripts/test-tool-recovery.sh` |
+| Capture export file permissions | `scripts/test-capture-export.sh` |
+| Device inventory, emulator commands, and authentication policy | `Tests/DeviceManager/test.sh`, with `SNAPO_DERIVED_DATA` and `SNAPO_TEST_ADB` unset |
+
+The Device Manager command above skips signed XPC integration and real ADB startup.
+Keep those omissions explicit; a console-only pass does not cover them.
+For recording and recovery, reuse a matching `build-for-testing` output through
+`SNAPO_DERIVED_DATA` and set `SNAPO_TEST_CONFIGURATION` to that build's configuration.
+
+### Checks that affect the desktop
+
+Run these locally only when the user explicitly requests or approves them.
+Otherwise, use applicable console-only checks and leave the remaining coverage to CI.
+
+- `Snap-OTests` has Snap-O as its `TEST_HOST`. Both `test` and
+  `test-without-building` launch the app, even with `-only-testing`.
+  `scripts/test-tool-selection.sh` uses this target too.
+- `scripts/test-startup-capture.sh` includes session tests that open AppKit windows.
+- `scripts/test-live-preview-frame-export.sh` creates test windows and sends events.
+- `Tests/DeviceManager/test.sh` also launches signed test apps when
+  `SNAPO_DERIVED_DATA` is set. `Tests/AndroidHostSecurity/test.sh` does the same when
+  given a built helper or `SNAPO_DERIVED_DATA`.
+
+A standalone executable is not necessarily a console-only test. Inspect its setup
+before selecting an unlisted suite. When a local app-hosted run is approved, filter
+it to the relevant suites or test methods instead of running the whole target.
+
+For toolbar layout or view wiring, a build and changed-file lint are the default
+local checks. They do not verify interaction behavior; report that coverage as
+pending unless an approved UI check or the relevant CI tests cover it.
+
+The full native CI run remains the submission check. Report which local checks ran,
+which coverage was deferred, and the actual CI result when available.
+
 ## Focused tests
 
 | Behavior | Controlled dependency |
@@ -110,9 +163,10 @@ writer's async receiver rather than polling readiness.
 The physical-device preview/recording smoke test remains opt-in through
 `SNAPO_VIDEO_DEVICE_ID`. It is separate from deterministic state coverage.
 
-Run both the Xcode test target and the standalone scripts in
+CI runs both the Xcode test target and the standalone scripts in
 `.github/workflows/mac.yml`. The Xcode target does not include the standalone
-suites. `scripts/test-capture-history.sh` covers the additional history tests.
+suites. Use the local selection guidance above instead of repeating all CI checks.
+`scripts/test-capture-history.sh` covers the additional history tests.
 
 ### File-transfer unit and integration tests
 
