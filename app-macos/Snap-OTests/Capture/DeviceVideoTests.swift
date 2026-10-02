@@ -62,7 +62,7 @@ struct DeviceVideoTests {
         let independent = try await coordinator.acquire(deviceIDs: ["other"], for: requested)
         await coordinator.release(independent)
         switch (existing, requested) {
-        case (.livePreview, .recording), (.recording, .livePreview):
+        case (.livePreview, .livePreview), (.livePreview, .recording), (.recording, .livePreview):
           let second = try await coordinator.acquire(deviceIDs: ["shared"], for: requested)
           await coordinator.release(second)
         default:
