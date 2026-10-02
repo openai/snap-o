@@ -179,7 +179,10 @@ struct CaptureWindow: View {
       .background(
         WindowCommandRegistration { command in
           workspace.revealCapture()
-          Task { await controller.perform(command) }
+          Task {
+            await teardownTask?.value
+            await controller.perform(command)
+          }
         } openDevice: { request in
           workspace.revealCapture()
           controller.deviceOpenRequest = request

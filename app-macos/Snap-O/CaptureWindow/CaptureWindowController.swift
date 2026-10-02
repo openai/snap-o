@@ -62,22 +62,26 @@ final class CaptureWindowController {
     Perf.startupEvent("window controller start")
     #endif
     isTornDown = false
-    usesPreviewDeviceStream = usesPreviewDeviceStream || AppSettings.shared.startupCaptureMode == .livePreview
+    let usePreview = pendingCommands.first.map { $0 == .livepreview }
+      ?? (usesPreviewDeviceStream || AppSettings.shared.startupCaptureMode == .livePreview)
     isDeviceListInitialized = !deviceManager.latestDevices.isEmpty
-    observeDevices()
+    observeDevices(usePreview: usePreview)
   }
 
-  private func observeDevices() {
+  private func observeDevices(usePreview: Bool) {
+    if usesPreviewDeviceStream != usePreview { knownDevices = [] }
+    usesPreviewDeviceStream = usePreview
     deviceStreamTask?.cancel()
     let manager = deviceManager
     deviceStreamTask = Task { [weak self] in
       guard let self else { return }
-      let stream = if usesPreviewDeviceStream {
+      let stream = if usePreview {
         manager.previewDeviceStream()
       } else {
         manager.deviceStream()
       }
       for await devices in stream {
+        guard !Task.isCancelled else { return }
         handleDeviceUpdate(devices)
         if !isDeviceListInitialized { isDeviceListInitialized = true }
       }
@@ -93,8 +97,13 @@ final class CaptureWindowController {
   }
 
   func perform(_ command: SnapOCommand) async {
-    guard !isTornDown, hasDevices else {
+    // Preview devices may still be booting and cannot capture yet.
+    guard !isTornDown, hasDevices, command == .livepreview || !usesPreviewDeviceStream else {
       pendingCommands.append(command)
+      let usePreview = pendingCommands.first == .livepreview
+      if !isTornDown, deviceStreamTask != nil, usePreview != usesPreviewDeviceStream {
+        observeDevices(usePreview: usePreview)
+      }
       return
     }
     switch command {
@@ -426,8 +435,7 @@ final class CaptureWindowController {
     let request = deviceOpenRequest
     if !usesPreviewDeviceStream {
       hasStartedInitialCapture = true
-      usesPreviewDeviceStream = true
-      observeDevices()
+      observeDevices(usePreview: true)
     }
     let deadline = Date().addingTimeInterval(20)
     while !isTornDown, !Task.isCancelled, deviceOpenRequest == request, Date() < deadline {
