@@ -19,12 +19,12 @@ final class EmulatorClipboardAuthentication {
       let renewed = try await refresh()
       // A restarted emulator needs a new transport, not credentials sent to the old port.
       guard renewed.port == endpoint.port else {
-        throw EmulatorClientError(message: "The emulator's clipboard endpoint changed. Reconnecting.")
+        throw AndroidHostClientError(message: "The emulator's clipboard endpoint changed. Reconnecting.")
       }
       endpoint = renewed
     }
     guard let token = endpoint.token, !token.isEmpty else {
-      throw EmulatorClientError(message: "Clipboard sync requires an authenticated emulator.")
+      throw AndroidHostClientError(message: "Clipboard sync requires an authenticated emulator.")
     }
     return token
   }

@@ -9,7 +9,7 @@ cd "$APP_DIR"
 
 # Compile the production startup code against deterministic device-service doubles.
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Device/Device.swift Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
+  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift \
   Snap-O/Models/Media.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/DeviceOpenRequest.swift \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Utilities/Perf.swift \
   Snap-O/Capture/PreparedLivePreview.swift Snap-O/Capture/StartupCapturePreparation.swift \
@@ -27,9 +27,9 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   -o "$TEST_DIR/startup-tests"
 run_test "$TEST_DIR/startup-tests"
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Device/Device.swift Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
+  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
   Snap-O/LivePreview/LivePreviewFrameSource.swift \
-  Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
+  Snap-O/Device/AndroidHostServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/Capture/ShowTouchesOverride.swift Snap-O/Capture/LivePreviewService.swift \
   Snap-O/Capture/CaptureCoordinator.swift \

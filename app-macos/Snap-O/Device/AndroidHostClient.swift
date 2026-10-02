@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class EmulatorClient {
+final class AndroidHostClient {
   private var connection: NSXPCConnection?
   private var generation = UUID()
   private var pending: [UUID: CheckedContinuation<Data, Error>] = [:]
@@ -13,8 +13,10 @@ final class EmulatorClient {
     })
   }
 
-  func startADBServer() async throws {
-    _ = try await request { proxy, reply in proxy.startADBServer(reply: reply) }
+  func ensureADBServerRunning() async throws {
+    let keys: Set = ["SNAPO_ADB", "ANDROID_HOME", "ANDROID_SDK_ROOT", "PATH"]
+    let environment = ProcessInfo.processInfo.environment.filter { keys.contains($0.key) }
+    _ = try await request { proxy, reply in proxy.ensureADBServerRunning(environment, reply: reply) }
   }
 
   func controls(serial: String) async throws -> EmulatorControls {
@@ -58,7 +60,7 @@ final class EmulatorClient {
   }
 
   private func inventory(
-    _ send: (any EmulatorServiceProtocol, @escaping @Sendable (Data?, String?) -> Void) -> Void
+    _ send: (any AndroidHostServiceProtocol, @escaping @Sendable (Data?, String?) -> Void) -> Void
   ) async throws -> EmulatorInventory {
     try await JSONDecoder().decode(EmulatorInventory.self, from: request(send))
   }
@@ -74,15 +76,15 @@ final class EmulatorClient {
 
   private func connect() -> NSXPCConnection {
     if let connection { return connection }
-    let name = (Bundle.main.bundleIdentifier ?? "com.openai.snapo") + ".EmulatorService"
+    let name = (Bundle.main.bundleIdentifier ?? "com.openai.snapo") + ".AndroidHostService"
     let connection = NSXPCConnection(serviceName: name)
     let generation = UUID()
     self.generation = generation
-    connection.remoteObjectInterface = NSXPCInterface(with: EmulatorServiceProtocol.self)
+    connection.remoteObjectInterface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
     let disconnected: @Sendable () -> Void = { [weak self] in
       Task { @MainActor in
         guard let self, self.generation == generation else { return }
-        self.close(error: EmulatorClientError(message: "The emulator service disconnected. Try refreshing."))
+        self.close(error: AndroidHostClientError(message: "The Android host service disconnected. Try refreshing."))
       }
     }
     connection.invalidationHandler = disconnected
@@ -93,7 +95,7 @@ final class EmulatorClient {
   }
 
   private func request(
-    _ send: (any EmulatorServiceProtocol, @escaping @Sendable (Data?, String?) -> Void) -> Void
+    _ send: (any AndroidHostServiceProtocol, @escaping @Sendable (Data?, String?) -> Void) -> Void
   ) async throws -> Data {
     let id = UUID()
     let connection = connect()
@@ -103,22 +105,22 @@ final class EmulatorClient {
         pending[id] = continuation
         timeouts[id] = Task { [weak self] in
           do { try await Task.sleep(for: .seconds(45)) } catch { return }
-          self?.complete(id, with: .failure(EmulatorClientError(message: "The emulator service did not respond. Try refreshing.")))
+          self?.complete(id, with: .failure(AndroidHostClientError(message: "The Android host service did not respond. Try refreshing.")))
         }
         guard let proxy = connection.remoteObjectProxyWithErrorHandler(Self.proxyErrorHandler { [weak self] message in
-          self?.complete(id, with: .failure(EmulatorClientError(message: message)))
-        }) as? EmulatorServiceProtocol else {
-          complete(id, with: .failure(EmulatorClientError(message: "Could not connect to the emulator service.")))
+          self?.complete(id, with: .failure(AndroidHostClientError(message: message)))
+        }) as? AndroidHostServiceProtocol else {
+          complete(id, with: .failure(AndroidHostClientError(message: "Could not connect to the Android host service.")))
           return
         }
         send(proxy) { [weak self] data, message in
           Task { @MainActor in
             let result: Result<Data, Error> = if let message {
-              .failure(EmulatorClientError(message: message))
+              .failure(AndroidHostClientError(message: message))
             } else if let data {
               .success(data)
             } else {
-              .failure(EmulatorClientError(message: "The emulator service returned no devices."))
+              .failure(AndroidHostClientError(message: "The Android host service returned no devices."))
             }
             self?.complete(id, with: result)
           }
@@ -145,7 +147,7 @@ final class EmulatorClient {
   }
 }
 
-struct EmulatorClientError: LocalizedError {
+struct AndroidHostClientError: LocalizedError {
   let message: String
   var errorDescription: String? {
     message

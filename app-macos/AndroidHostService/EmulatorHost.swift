@@ -1,6 +1,6 @@
 import Foundation
 
-/// Accessed only on EmulatorService's serial worker queue.
+/// Accessed only on AndroidHostService's serial worker queue.
 final class EmulatorHost {
   private struct Launch {
     let process: Process
@@ -54,12 +54,7 @@ final class EmulatorHost {
     let message = executable == "platform-tools/adb"
       ? "Install Android SDK Platform Tools to start the ADB server."
       : "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk."
-    throw EmulatorServiceError(message: message)
-  }
-
-  func startADBServer() throws {
-    let adb = try sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
-    _ = try EmulatorCommand(executable: adb, arguments: ["start-server"]).run()
+    throw AndroidHostServiceError(message: message)
   }
 
   func controls(serial: String) throws -> EmulatorControls {
@@ -77,7 +72,7 @@ final class EmulatorHost {
 
   func control(serial: String, avdPath: String, action: String) throws {
     guard let action = EmulatorControlAction(rawValue: action) else {
-      throw EmulatorServiceError(message: "Unknown emulator control.")
+      throw AndroidHostServiceError(message: "Unknown emulator control.")
     }
     try EmulatorConsole(home: home).control(
       serial: serial, expectedPath: avdPath, action: action,
@@ -132,10 +127,10 @@ final class EmulatorHost {
   func start(_ id: String, coldBoot: Bool, serials: [String]) throws -> EmulatorInventory {
     var inventory = try snapshot(serials: serials)
     guard let device = inventory.devices.first(where: { $0.id == id }) else {
-      throw EmulatorServiceError(message: "This emulator no longer exists. Refresh the list.")
+      throw AndroidHostServiceError(message: "This emulator no longer exists. Refresh the list.")
     }
     if device.serial != nil {
-      guard coldBoot else { throw EmulatorServiceError(message: "This emulator is already running.") }
+      guard coldBoot else { throw AndroidHostServiceError(message: "This emulator is already running.") }
       _ = try stop(id, serial: device.serial ?? "")
       let deadline = Date().addingTimeInterval(20)
       repeat {
@@ -145,7 +140,7 @@ final class EmulatorHost {
       } while Date() < deadline
     }
     guard inventory.devices.first(where: { $0.id == id })?.canStart == true else {
-      throw EmulatorServiceError(message: "This AVD is still in use. Wait for it to stop before starting it.")
+      throw AndroidHostServiceError(message: "This AVD is still in use. Wait for it to stop before starting it.")
     }
     failures.removeValue(forKey: id)
     let sdk = try sdk()
@@ -177,7 +172,7 @@ final class EmulatorHost {
   func stop(_ id: String, serial: String) throws -> EmulatorInventory {
     let inventory = try snapshot(serials: [serial])
     guard let device = inventory.devices.first(where: { $0.id == id }), device.serial == serial else {
-      throw EmulatorServiceError(message: "The emulator is not connected yet. Wait for startup, then try again.")
+      throw AndroidHostServiceError(message: "The emulator is not connected yet. Wait for startup, then try again.")
     }
     try stopConsole(serial, id)
     failures.removeValue(forKey: id)
@@ -190,16 +185,16 @@ final class EmulatorHost {
   func delete(_ id: String, serials: [String]) throws -> EmulatorInventory {
     let inventory = try snapshot(serials: serials)
     guard let device = inventory.devices.first(where: { $0.id == id }) else {
-      throw EmulatorServiceError(message: "This emulator no longer exists. Refresh the list.")
+      throw AndroidHostServiceError(message: "This emulator no longer exists. Refresh the list.")
     }
     guard device.canDelete, !hasLock(device), launches[id]?.process.isRunning != true else {
-      throw EmulatorServiceError(message: "Stop the emulator before deleting it.")
+      throw AndroidHostServiceError(message: "Stop the emulator before deleting it.")
     }
     let directory = URL(fileURLWithPath: device.id)
     guard directory.pathExtension == "avd",
           directory != avdHome.standardizedFileURL.resolvingSymlinksInPath(),
           FileManager.default.fileExists(atPath: directory.appendingPathComponent("config.ini").path) else {
-      throw EmulatorServiceError(message: "The AVD folder could not be verified. Reveal it in Finder to inspect it.")
+      throw AndroidHostServiceError(message: "The AVD folder could not be verified. Reveal it in Finder to inspect it.")
     }
     let configuration = avdHome.appendingPathComponent(device.avdName + ".ini")
     let trashedDirectory = try moveToTrash(directory)
@@ -209,7 +204,7 @@ final class EmulatorHost {
       do {
         try FileManager.default.moveItem(at: trashedDirectory, to: directory)
       } catch {
-        throw EmulatorServiceError(message: "The AVD folder is in Trash, but its configuration could not be removed.")
+        throw AndroidHostServiceError(message: "The AVD folder is in Trash, but its configuration could not be removed.")
       }
       throw error
     }
@@ -222,7 +217,7 @@ final class EmulatorHost {
   static func trash(_ url: URL) throws -> URL {
     var destination: NSURL?
     try FileManager.default.trashItem(at: url, resultingItemURL: &destination)
-    guard let destination else { throw EmulatorServiceError(message: "Could not locate the AVD in Trash.") }
+    guard let destination else { throw AndroidHostServiceError(message: "Could not locate the AVD in Trash.") }
     return destination as URL
   }
 

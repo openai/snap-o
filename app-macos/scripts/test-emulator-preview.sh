@@ -8,8 +8,8 @@ cd "$APP_DIR"
 . "$APP_DIR/scripts/test-swift.sh"
 
 swiftc_for_tests -swift-version 6 -parse-as-library \
-  Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
+  Snap-O/Device/AndroidHostServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
-  EmulatorService/EmulatorCommand.swift EmulatorService/EmulatorGRPCDiscovery.swift \
+  AndroidHostService/EmulatorCommand.swift AndroidHostService/EmulatorGRPCDiscovery.swift \
   Tests/EmulatorPreview/EmulatorPreviewTests.swift -o "$TEST_DIR/tests"
 run_test "$TEST_DIR/tests"

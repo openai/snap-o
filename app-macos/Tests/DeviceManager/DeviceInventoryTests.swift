@@ -146,7 +146,7 @@ struct DeviceInventoryTests {
   final class Fixture {
     let adb = ADBService()
     let tracker = DeviceTracker()
-    let client = EmulatorClient()
+    let client = AndroidHostClient()
     let manager: DeviceManager
     var updates: [[Device]] = []
     private var observer: Task<Void, Never>?

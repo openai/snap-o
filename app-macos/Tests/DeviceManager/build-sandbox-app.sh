@@ -52,7 +52,7 @@ done
 for cli in snapo snapo-network snapo-tweaks; do
   codesign --force --sign "$IDENTITY" --timestamp=none "$APP/Contents/MacOS/$cli"
 done
-SERVICE="$APP/Contents/XPCServices/EmulatorService.xpc"
+SERVICE="$APP/Contents/XPCServices/AndroidHostService.xpc"
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$SERVICE"
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
   --entitlements "$OUTPUT/app.entitlements" "$APP"
@@ -74,8 +74,8 @@ for bundle, sandboxed in [(app, True), (service, False)]:
     assert bool(entitlements.get('com.apple.security.app-sandbox')) == sandboxed, bundle
 with (service / 'Contents/Info.plist').open('rb') as file:
     info = plistlib.load(file)
-assert info['CFBundleIdentifier'] == bundle_id + '.EmulatorService'
+assert info['CFBundleIdentifier'] == bundle_id + '.AndroidHostService'
 assert info['XPCService']['ServiceType'] == 'Application'
-assert sorted(path.name for path in (app / 'Contents/XPCServices').iterdir()) == ['EmulatorService.xpc']
+assert sorted(path.name for path in (app / 'Contents/XPCServices').iterdir()) == ['AndroidHostService.xpc']
 PY
 printf '%s\n' "$APP"

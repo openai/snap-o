@@ -10,6 +10,12 @@ final class DeviceTracker {
   private var currentReady: [Device]?
 
   func startTracking() async {}
+  func retryADBServer() async {}
+  func serverStateStream() async -> AsyncStream<ADBServerState> {
+    AsyncStream { $0.yield(.online)
+      $0.finish()
+    }
+  }
 
   func previewDeviceStream() async -> AsyncStream<[Device]> {
     AsyncStream {
@@ -69,7 +75,7 @@ final class ADBClient {
 
 @MainActor
 @Observable
-final class EmulatorClient {
+final class AndroidHostClient {
   var title = "Test Tablet"
   var resolvesSerial = true
   var identityGate = TestGate()
@@ -87,7 +93,6 @@ final class EmulatorClient {
     )])
   }
 
-  func startADBServer() async throws {}
   func close() {}
   func delete(_: String, serials: [String]) async throws -> EmulatorInventory {
     try await snapshot(serials: serials)

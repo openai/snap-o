@@ -26,7 +26,7 @@ struct EmulatorRotationClient {
         if model == target { return }
         try await Task.sleep(for: .milliseconds(100))
       }
-      throw EmulatorClientError(message: "The emulator did not apply the requested rotation.")
+      throw AndroidHostClientError(message: "The emulator did not apply the requested rotation.")
     }
   }
 
@@ -55,7 +55,7 @@ struct EmulatorRotationClient {
     ) { response in
       let value = try response.message.format.rotation.rotation.rawValue
       guard (0 ... 3).contains(value) else {
-        throw EmulatorClientError(message: "The emulator returned an invalid display orientation.")
+        throw AndroidHostClientError(message: "The emulator returned an invalid display orientation.")
       }
       return value
     }
@@ -65,7 +65,7 @@ struct EmulatorRotationClient {
     deviceID: String,
     body: (GRPCClient<HTTP2ClientTransport.TransportServices>, Metadata) async throws -> Result
   ) async throws -> Result {
-    let discovery = EmulatorClient()
+    let discovery = AndroidHostClient()
     defer { discovery.close() }
     let endpoint = try await discovery.rotationEndpoint(serial: deviceID)
     let transport = try HTTP2ClientTransport.TransportServices(

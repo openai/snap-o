@@ -43,21 +43,66 @@ The following checks exercise the production service through the normal UI:
 7. Connect a physical device. Confirm it appears above offline emulators, Open
    selects it in Live Preview, and unplugging it removes its row. Physical devices
    must have no emulator lifecycle controls.
-8. Quit Snap-O. Confirm its EmulatorService process exits. Running emulators
+8. Quit Snap-O. Confirm its AndroidHostService process exits. Running emulators
    should remain available to other tools.
 
 The service accepts only the containing app's designated signing requirement
-and the same user. Its XPC methods accept known AVD identifiers, not executable
-paths or command lines. It has no login item, daemon, or public listening port.
+and the same user. Emulator operations accept known AVD identifiers. ADB startup
+accepts only settings for finding adb and uses fixed command arguments.
+It has no login item, daemon, or public listening port.
 The app uses its native ADB client for device discovery, boot checks, and Live Preview.
 The helper talks directly to emulator consoles for AVD identity and shutdown. It reads
 `~/.emulator_console_auth_token` and verifies the AVD path on the same connection
 before sending `kill`. It does not expose the token to the app.
-The SDK's adb executable is used only for `start-server`, when the native client
-cannot reach the server. A working server does not require the SDK adb executable.
+Device tracking requests ADB startup once per outage. The helper starts ADB only
+when connecting to `127.0.0.1:5037` is refused. A listening endpoint, including a
+tunnel, is left alone. Timeouts and other probe errors do not trigger startup.
+The helper checks again before launching, uses a five-second command timeout,
+and verifies that a listener appeared. It never sends `kill-server`.
+A successful device list, including an empty list, rearms recovery for the next
+outage. If startup fails, the capture window shows the error and a **Start ADB server**
+button. The button uses the same guarded startup policy. Starting ADB in Terminal
+also lets Snap-O reconnect automatically.
+ADB startup is independent of the Emulator package and AVD inventory.
+The helper also uses SDK adb commands to read emulator display configuration.
 
-SDK discovery checks ANDROID_HOME, ANDROID_SDK_ROOT, and ~/Library/Android/sdk.
-Finder-launched apps do not inherit variables from shell startup files.
+### ADB executable discovery
+
+The Mac app checks these locations in order:
+
+1. `SNAPO_ADB`, if set. A full path, `~/` path, or command name from `PATH` is
+   accepted. An invalid override reports an error without falling back.
+2. `ANDROID_HOME/platform-tools/adb`.
+3. `ANDROID_SDK_ROOT/platform-tools/adb`.
+4. `~/Library/Android/sdk/platform-tools/adb`.
+5. `adb` in the inherited `PATH`.
+6. `/opt/homebrew/bin/adb` and `/usr/local/bin/adb`.
+
+No shell is launched and no shell startup files are read. Paths containing spaces
+are passed directly to the process API. The app forwards only these four discovery
+variables to the helper. Startup always targets the app's local endpoint, even if
+inherited ADB server variables point elsewhere. A custom wrapper must honor that
+endpoint. The command uses `adb -L tcp:5037 start-server`; ADB treats the numeric
+host form `tcp:127.0.0.1:5037` as remote and refuses to start it.
+`SNAPO_ADB` never forces startup when a listener already exists.
+
+Finder launches do not inherit variables set only in `.zshrc` or `.zprofile`.
+To use a custom location, quit Snap-O and launch its executable from Terminal:
+
+```sh
+SNAPO_ADB="/custom/platform-tools/adb" /Applications/Snap-O.app/Contents/MacOS/Snap-O
+```
+
+For Finder launches in the current login session, set the launch environment before
+reopening the app:
+
+```sh
+launchctl setenv SNAPO_ADB "/custom/platform-tools/adb"
+```
+
+Remove that override with `launchctl unsetenv SNAPO_ADB`.
+Emulator SDK discovery still checks `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and
+`~/Library/Android/sdk`.
 AVDs use the SDK's standard discovery paths. This version does not install SDK
 packages or create or edit AVDs. Delete moves stopped AVDs and their configuration
 to Trash. Emulator logs are written to `~/Library/Logs/Snap-O/Emulators`.
@@ -65,3 +110,10 @@ to Trash. Emulator logs are written to `~/Library/Logs/Snap-O/Emulators`.
 Before a release, also run the signing and notarization checks in
 [release/README.md](../../../release/README.md). A development-signed smoke test
 does not verify notarization or distribution policy.
+
+### Real ADB startup check
+
+Set `SNAPO_TEST_ADB` to a recent SDK `adb` executable when running `test.sh`.
+This optional check starts, stops, and restarts ADB on an ephemeral port. It restricts
+USB discovery to a nonexistent test device and disables automatic emulator and mDNS
+connections. The normal server on port 5037 is left alone.

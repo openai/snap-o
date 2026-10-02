@@ -1,6 +1,6 @@
 import Foundation
 
-struct EmulatorServiceError: LocalizedError {
+struct AndroidHostServiceError: LocalizedError {
   let message: String
   var errorDescription: String? {
     message
@@ -11,6 +11,7 @@ struct EmulatorServiceError: LocalizedError {
 struct EmulatorCommand {
   let executable: URL
   let arguments: [String]
+  var environment: [String: String]?
 
   func run(timeout: TimeInterval = 5, timeoutMessage: String = "The Android SDK command timed out. Try again.") throws -> String {
     let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -21,6 +22,7 @@ struct EmulatorCommand {
     let process = Process()
     process.executableURL = executable
     process.arguments = arguments
+    process.environment = environment
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = output
     process.standardError = output
@@ -34,18 +36,18 @@ struct EmulatorCommand {
       Thread.sleep(forTimeInterval: 0.1)
       if process.isRunning { kill(process.processIdentifier, SIGKILL) }
       process.waitUntilExit()
-      throw EmulatorServiceError(message: timeoutMessage)
+      throw AndroidHostServiceError(message: timeoutMessage)
     }
     process.waitUntilExit()
     let input = try FileHandle(forReadingFrom: outputURL)
     defer { try? input.close() }
     let data = try input.read(upToCount: 64 * 1024) ?? Data()
     guard let output = String(data: data, encoding: .utf8) else {
-      throw EmulatorServiceError(message: "The Android SDK command returned invalid text.")
+      throw AndroidHostServiceError(message: "The Android SDK command returned invalid text.")
     }
     let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard process.terminationStatus == 0 else {
-      throw EmulatorServiceError(message: text.isEmpty ? "The Android SDK command failed." : String(text.suffix(1500)))
+      throw AndroidHostServiceError(message: text.isEmpty ? "The Android SDK command failed." : String(text.suffix(1500)))
     }
     return text
   }

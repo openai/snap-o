@@ -5,12 +5,16 @@ private let log = SnapOLog.tracker
 
 actor DeviceTracker {
   private let adbService: ADBService
+  private let recoverADBServer: @Sendable () async throws -> Void
   @Dependency(\.continuousClock)
   private var clock
   private let infoCache = DeviceInfoCache()
 
+  private(set) var serverState: ADBServerState = .connecting
+  private var serverStateContinuations: [UUID: AsyncStream<ADBServerState>.Continuation] = [:]
   private var trackTask: Task<Void, Never>?
   private var propertyTask: Task<Void, Never>?
+  private var isRecovering = false
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private(set) var latestDevices: [Device] = []
 
@@ -44,8 +48,9 @@ actor DeviceTracker {
 
   private var hasSeenFirstMessage: Bool = false
 
-  init(adbService: ADBService) {
+  init(adbService: ADBService, recoverADBServer: @escaping @Sendable () async throws -> Void = {}) {
     self.adbService = adbService
+    self.recoverADBServer = recoverADBServer
   }
 
   // MARK: - Public API
@@ -61,6 +66,49 @@ actor DeviceTracker {
       continuation.onTermination = { [weak self] _ in
         Task { await self?.removeContinuation(id) }
       }
+    }
+  }
+
+  func serverStateStream() -> AsyncStream<ADBServerState> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      serverStateContinuations[id] = continuation
+      continuation.yield(serverState)
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeServerStateContinuation(id) }
+      }
+    }
+  }
+
+  private func removeServerStateContinuation(_ id: UUID) {
+    serverStateContinuations.removeValue(forKey: id)
+  }
+
+  private func updateServerState(_ state: ADBServerState) {
+    guard serverState != state else { return }
+    serverState = state
+    for continuation in serverStateContinuations.values {
+      continuation.yield(state)
+    }
+  }
+
+  func retryADBServer() async {
+    guard trackTask != nil, !Task.isCancelled, case .unavailable = serverState else { return }
+    await attemptRecovery()
+  }
+
+  private func attemptRecovery() async {
+    guard !isRecovering else { return }
+    isRecovering = true
+    defer { isRecovering = false }
+    updateServerState(.starting)
+    do {
+      try await recoverADBServer()
+      guard !Task.isCancelled, serverState == .starting else { return }
+      updateServerState(.connecting)
+    } catch {
+      guard !Task.isCancelled, serverState == .starting else { return }
+      updateServerState(.unavailable(error.localizedDescription))
     }
   }
 
@@ -91,6 +139,10 @@ actor DeviceTracker {
       continuation.finish()
     }
     previewContinuations.removeAll()
+    for continuation in serverStateContinuations.values {
+      continuation.finish()
+    }
+    serverStateContinuations.removeAll()
     await task?.value
   }
 
@@ -121,11 +173,19 @@ actor DeviceTracker {
       try? await clock.sleep(for: .milliseconds(300))
     }
 
+    var attemptedRecovery = false
     while !Task.isCancelled {
       let exec = await adbService.exec()
       guard let (handle, stream) = try? await exec.trackDevices() else {
         if Task.isCancelled { break }
         await handleTrackingInterruption()
+        if Task.isCancelled { break }
+        if !attemptedRecovery {
+          attemptedRecovery = true
+          await attemptRecovery()
+        } else if serverState == .connecting {
+          updateServerState(.unavailable("Could not connect to the local ADB server."))
+        }
         await pause()
         continue
       }
@@ -135,6 +195,8 @@ actor DeviceTracker {
       do {
         for try await payload in stream {
           if Task.isCancelled { break }
+          attemptedRecovery = false
+          updateServerState(.online)
           let devices = payload.split(separator: "\n").compactMap(parseDeviceRow).map { row in
             Device(
               id: row.id,
@@ -151,18 +213,18 @@ actor DeviceTracker {
           propertyTask = Task { await self.refreshProperties(from: payload, exec: exec) }
         }
         if Task.isCancelled { break }
-        await handleTrackingInterruption()
-        await pause()
       } catch is CancellationError {
         break
       } catch {
-        await handleTrackingInterruption()
-        await pause()
+        // Failed reads reconnect through the same path as a closed stream.
       }
+      await handleTrackingInterruption()
+      await pause()
     }
   }
 
   private func handleTrackingInterruption() async {
+    if serverState == .online { updateServerState(.connecting) }
     propertyTask?.cancel()
     propertyTask = nil
     await infoCache.removeAll()

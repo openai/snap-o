@@ -21,7 +21,7 @@ final class ClipboardSync {
   }
 
   func run(serial: String) async {
-    let emulator = EmulatorClient()
+    let emulator = AndroidHostClient()
     defer { emulator.close() }
     while isActive {
       do {

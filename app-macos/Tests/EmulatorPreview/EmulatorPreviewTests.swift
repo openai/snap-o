@@ -157,7 +157,7 @@ struct EmulatorPreviewTests {
     do {
       _ = try discovery.endpoint(for: serial, access: access)
       fatalError("Unavailable endpoint accepted")
-    } catch is EmulatorServiceError {}
+    } catch is AndroidHostServiceError {}
   }
 
   private static func withRegistration(

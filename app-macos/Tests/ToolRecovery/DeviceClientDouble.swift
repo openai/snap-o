@@ -86,7 +86,9 @@ public final class ADBClient: @unchecked Sendable {
   private var socketDevices: [String] = []
   private var socketsByDevice: [String: [String]] = [:]
   private var socketGeneration = 0
-  private let trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
+  private var trackingFailure: ADBError?
+  private var trackingAttempts = 0
+  private var trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
   public func connectionAttempts(to deviceID: String) -> Int {
     lock.withLock { connectionAttemptsByDevice[deviceID, default: 0] }
@@ -215,11 +217,32 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func emitDevices(_ payload: String) {
-    trackedDevices.continuation.yield(payload)
+    lock.withLock { trackedDevices.continuation }.yield(payload)
   }
 
   public func trackDevices() async throws -> (handle: TrackDevicesHandle, stream: AsyncThrowingStream<String, Error>) {
-    (TrackDevicesHandle { self.trackedDevices.continuation.finish() }, trackedDevices.stream)
+    let (failure, devices) = lock.withLock {
+      trackingAttempts += 1
+      return (trackingFailure, trackedDevices)
+    }
+    testChanges.signal()
+    if let failure { throw failure }
+    return (TrackDevicesHandle { devices.continuation.finish() }, devices.stream)
+  }
+
+  public var trackingAttemptCount: Int {
+    lock.withLock { trackingAttempts }
+  }
+
+  public func setTrackingFailure(_ failure: ADBError?) {
+    let previous = lock.withLock {
+      trackingFailure = failure
+      let previous = trackedDevices
+      trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
+      return previous
+    }
+    previous.continuation.finish()
+    testChanges.signal()
   }
 
   public func getProperties(deviceID: String, prefix: String?) async throws -> [String: String] {

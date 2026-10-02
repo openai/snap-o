@@ -12,8 +12,8 @@
 		C10C00032F70000100C0FFEE /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = C10C00022F70000100C0FFEE /* Clocks */; };
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
-		A60000012F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */; };
-		A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A60000042F70000100C0FFEE /* EmulatorService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A60000012F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60000022F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift */; };
+		A60000032F70000100C0FFEE /* AndroidHostService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A60000042F70000100C0FFEE /* AndroidHostService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B70100032F70000100C0FFEE /* GRPCCore in Frameworks */ = {isa = PBXBuildFile; productRef = B70100022F70000100C0FFEE /* GRPCCore */; };
 		B70200032F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices in Frameworks */ = {isa = PBXBuildFile; productRef = B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */; };
 		B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = B70300022F70000100C0FFEE /* SwiftProtobuf */; };
@@ -27,7 +27,7 @@
 			containerPortal = 3234F4492E2EC5030057AE77 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A60000072F70000100C0FFEE;
-			remoteInfo = EmulatorService;
+			remoteInfo = AndroidHostService;
 		};
 		E30000032F70000100C0FFEE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -45,7 +45,7 @@
 			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
 			dstSubfolderSpec = 16;
 			files = (
-				A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */,
+				A60000032F70000100C0FFEE /* AndroidHostService.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -57,8 +57,8 @@
 		32AECEFA2E56725E00AA18F0 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.xcconfig.sample; sourceTree = "<group>"; };
 		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
-		A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Emulators/EmulatorServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
-		A60000042F70000100C0FFEE /* EmulatorService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = EmulatorService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		A60000022F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/AndroidHostServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
+		A60000042F70000100C0FFEE /* AndroidHostService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = AndroidHostService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		E30000012F70000100C0FFEE /* Snap-OTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -81,9 +81,9 @@
 			path = "Snap-O";
 			sourceTree = "<group>";
 		};
-		A60000052F70000100C0FFEE /* EmulatorService */ = {
+		A60000052F70000100C0FFEE /* AndroidHostService */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = EmulatorService;
+			path = AndroidHostService;
 			sourceTree = "<group>";
 		};
 		E30000022F70000100C0FFEE /* Snap-OTests */ = {
@@ -124,8 +124,8 @@
 		3234F4482E2EC5030057AE77 = {
 			isa = PBXGroup;
 			children = (
-				A60000052F70000100C0FFEE /* EmulatorService */,
-				A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */,
+				A60000052F70000100C0FFEE /* AndroidHostService */,
+				A60000022F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift */,
 				E30000022F70000100C0FFEE /* Snap-OTests */,
 				3234F4532E2EC5030057AE77 /* Snap-O */,
 				32D6DEB02E395E0A001A7DEE /* Frameworks */,
@@ -136,7 +136,7 @@
 		3234F4522E2EC5030057AE77 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A60000042F70000100C0FFEE /* EmulatorService.xpc */,
+				A60000042F70000100C0FFEE /* AndroidHostService.xpc */,
 				E30000012F70000100C0FFEE /* Snap-OTests.xctest */,
 				3234F4512E2EC5030057AE77 /* Snap-O.app */,
 			);
@@ -196,9 +196,9 @@
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A60000072F70000100C0FFEE /* EmulatorService */ = {
+		A60000072F70000100C0FFEE /* AndroidHostService */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "EmulatorService" */;
+			buildConfigurationList = A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "AndroidHostService" */;
 			buildPhases = (
 				A60000092F70000100C0FFEE /* Sources */,
 			);
@@ -207,11 +207,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A60000052F70000100C0FFEE /* EmulatorService */,
+				A60000052F70000100C0FFEE /* AndroidHostService */,
 			);
-			name = EmulatorService;
-			productName = EmulatorService;
-			productReference = A60000042F70000100C0FFEE /* EmulatorService.xpc */;
+			name = AndroidHostService;
+			productName = AndroidHostService;
+			productReference = A60000042F70000100C0FFEE /* AndroidHostService.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
 		E30000082F70000100C0FFEE /* Snap-OTests */ = {
@@ -278,7 +278,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A60000072F70000100C0FFEE /* EmulatorService */,
+				A60000072F70000100C0FFEE /* AndroidHostService */,
 				E30000082F70000100C0FFEE /* Snap-OTests */,
 				3234F4502E2EC5030057AE77 /* Snap-O */,
 			);
@@ -343,7 +343,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A60000012F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift in Sources */,
+				A60000012F70000100C0FFEE /* Snap-O/Device/AndroidHostServiceProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -359,7 +359,7 @@
 /* Begin PBXTargetDependency section */
 		A600000B2F70000100C0FFEE /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A60000072F70000100C0FFEE /* EmulatorService */;
+			target = A60000072F70000100C0FFEE /* AndroidHostService */;
 			targetProxy = A600000A2F70000100C0FFEE /* PBXContainerItemProxy */;
 		};
 		E30000042F70000100C0FFEE /* PBXTargetDependency */ = {
@@ -593,9 +593,9 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = EmulatorService/Info.plist;
+				INFOPLIST_FILE = AndroidHostService/Info.plist;
 				MARKETING_VERSION = "$(VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).AndroidHostService";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -611,9 +611,9 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = EmulatorService/Info.plist;
+				INFOPLIST_FILE = AndroidHostService/Info.plist;
 				MARKETING_VERSION = "$(VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).AndroidHostService";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -740,9 +740,9 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = EmulatorService/Info.plist;
+				INFOPLIST_FILE = AndroidHostService/Info.plist;
 				MARKETING_VERSION = "$(VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).AndroidHostService";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
@@ -826,7 +826,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "EmulatorService" */ = {
+		A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "AndroidHostService" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A600000D2F70000100C0FFEE /* Debug */,
