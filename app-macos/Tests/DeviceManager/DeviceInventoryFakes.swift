@@ -69,7 +69,7 @@ final class ADBClient {
 
 @MainActor
 @Observable
-final class EmulatorClient {
+final class AndroidHostClient {
   var title = "Test Tablet"
   var resolvesSerial = true
   var identityGate = TestGate()

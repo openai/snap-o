@@ -43,7 +43,7 @@ The following checks exercise the production service through the normal UI:
 7. Connect a physical device. Confirm it appears above offline emulators, Open
    selects it in Live Preview, and unplugging it removes its row. Physical devices
    must have no emulator lifecycle controls.
-8. Quit Snap-O. Confirm its EmulatorService process exits. Running emulators
+8. Quit Snap-O. Confirm its AndroidHostService process exits. Running emulators
    should remain available to other tools.
 
 The service accepts only the containing app's designated signing requirement

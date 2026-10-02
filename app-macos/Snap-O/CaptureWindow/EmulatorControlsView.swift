@@ -4,7 +4,7 @@ struct EmulatorControlsView: View {
   let serial: String
   var isVertical = false
   let didChangeDisplay: () -> Void
-  @State private var client = EmulatorClient()
+  @State private var client = AndroidHostClient()
   @State private var controls: EmulatorControls?
   @State private var pendingAction: EmulatorControlAction?
   @State private var failure: (action: EmulatorControlAction, message: String)?

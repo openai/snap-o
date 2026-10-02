@@ -39,13 +39,13 @@ final class DeviceManager {
 
   @ObservationIgnored private let deviceTracker: DeviceTracker
   @ObservationIgnored private let adb: ADBService
-  @ObservationIgnored private let client: EmulatorClient
+  @ObservationIgnored private let client: AndroidHostClient
   @ObservationIgnored private var actionTasks: [String: Task<Void, Never>] = [:]
   private var inventoryGeneration = 0
   private var bootConnections: [EmulatorConnection] = []
   private var inventoryConnections: [EmulatorConnection] = []
 
-  init(adb: ADBService, deviceTracker: DeviceTracker, client: EmulatorClient = EmulatorClient()) {
+  init(adb: ADBService, deviceTracker: DeviceTracker, client: AndroidHostClient = AndroidHostClient()) {
     self.adb = adb
     self.deviceTracker = deviceTracker
     self.client = client

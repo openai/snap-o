@@ -1,7 +1,7 @@
 import Foundation
 
-@objc(EmulatorServiceProtocol)
-protocol EmulatorServiceProtocol {
+@objc(AndroidHostServiceProtocol)
+protocol AndroidHostServiceProtocol {
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)

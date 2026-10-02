@@ -1,6 +1,6 @@
 import Foundation
 
-struct EmulatorServiceError: LocalizedError {
+struct AndroidHostServiceError: LocalizedError {
   let message: String
   var errorDescription: String? {
     message
@@ -34,18 +34,18 @@ struct EmulatorCommand {
       Thread.sleep(forTimeInterval: 0.1)
       if process.isRunning { kill(process.processIdentifier, SIGKILL) }
       process.waitUntilExit()
-      throw EmulatorServiceError(message: timeoutMessage)
+      throw AndroidHostServiceError(message: timeoutMessage)
     }
     process.waitUntilExit()
     let input = try FileHandle(forReadingFrom: outputURL)
     defer { try? input.close() }
     let data = try input.read(upToCount: 64 * 1024) ?? Data()
     guard let output = String(data: data, encoding: .utf8) else {
-      throw EmulatorServiceError(message: "The Android SDK command returned invalid text.")
+      throw AndroidHostServiceError(message: "The Android SDK command returned invalid text.")
     }
     let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard process.terminationStatus == 0 else {
-      throw EmulatorServiceError(message: text.isEmpty ? "The Android SDK command failed." : String(text.suffix(1500)))
+      throw AndroidHostServiceError(message: text.isEmpty ? "The Android SDK command failed." : String(text.suffix(1500)))
     }
     return text
   }

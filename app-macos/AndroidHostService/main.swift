@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// All host state and SDK commands are confined to the worker queue.
-final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
+final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
   private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
   private let host = EmulatorHost()
   private let discovery = EmulatorGRPCDiscovery()
@@ -28,7 +28,7 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
   func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
     guard connection.effectiveUserIdentifier == getuid(), let clientRequirement else { return false }
     connection.setCodeSigningRequirement(clientRequirement)
-    connection.exportedInterface = NSXPCInterface(with: EmulatorServiceProtocol.self)
+    connection.exportedInterface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
     connection.exportedObject = self
     connection.resume()
     return true
@@ -115,7 +115,7 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
   }
 }
 
-let service = EmulatorService()
+let service = AndroidHostService()
 let listener = NSXPCListener.service()
 listener.delegate = service
 listener.resume()

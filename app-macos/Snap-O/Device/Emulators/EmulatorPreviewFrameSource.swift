@@ -16,7 +16,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   }
 
   private static func endpoint(for deviceID: String) async throws -> EmulatorGRPCEndpoint {
-    let client = EmulatorClient()
+    let client = AndroidHostClient()
     defer { client.close() }
     while true {
       try Task.checkCancellation()

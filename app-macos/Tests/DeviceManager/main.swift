@@ -1,7 +1,7 @@
 import Foundation
 
 func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
-  guard try condition() else { throw EmulatorServiceError(message: message) }
+  guard try condition() else { throw AndroidHostServiceError(message: message) }
 }
 
 func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
@@ -11,7 +11,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
     try expect(error.localizedDescription.contains(message), "Unexpected error: \(error)")
     return
   }
-  throw EmulatorServiceError(message: "Expected failure: \(message)")
+  throw AndroidHostServiceError(message: "Expected failure: \(message)")
 }
 
 func startsADBWithoutEmulatorPackage(_ fixture: HostFixture) throws {
@@ -100,7 +100,7 @@ struct HostFixture {
       "ANDROID_AVD_HOME": root.appendingPathComponent("avds").path
     ], moveToTrash: { url in
       if failConfigurationTrash, url.pathExtension == "ini" {
-        throw EmulatorServiceError(message: "Trash unavailable")
+        throw AndroidHostServiceError(message: "Trash unavailable")
       }
       let trash = root.appendingPathComponent("trash")
       try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)

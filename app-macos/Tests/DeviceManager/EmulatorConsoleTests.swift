@@ -11,7 +11,7 @@ private final class ConsoleFixture: @unchecked Sendable {
   init(greeting: String, byteDelay: TimeInterval = 0, respond: @escaping @Sendable (String) -> String) throws {
     var sockets: [Int32] = [0, 0]
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else {
-      throw EmulatorServiceError(message: "socketpair failed")
+      throw AndroidHostServiceError(message: "socketpair failed")
     }
     self.byteDelay = byteDelay
     client = sockets[0]

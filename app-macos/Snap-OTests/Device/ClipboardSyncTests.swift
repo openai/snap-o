@@ -136,10 +136,10 @@ struct ClipboardSyncTests {
     let authentication = EmulatorClipboardAuthentication(
       endpoint: EmulatorGRPCEndpoint(port: 8554, token: "initial", expiresAt: .distantPast)
     ) { EmulatorGRPCEndpoint(port: 8555, token: "other-emulator") }
-    await #expect(throws: EmulatorClientError.self) { try await authentication.token() }
+    await #expect(throws: AndroidHostClientError.self) { try await authentication.token() }
     let unauthenticated = EmulatorClipboardAuthentication(endpoint: EmulatorGRPCEndpoint(port: 8554, token: nil)) {
       throw CancellationError()
     }
-    await #expect(throws: EmulatorClientError.self) { try await unauthenticated.token() }
+    await #expect(throws: AndroidHostClientError.self) { try await unauthenticated.token() }
   }
 }

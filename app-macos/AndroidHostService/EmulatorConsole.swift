@@ -30,11 +30,11 @@ struct EmulatorConsole {
     try withSession(serial: serial) { session in
       let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
       guard URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path == expectedPath else {
-        throw EmulatorServiceError(message: "The emulator connection changed. Reopen Live Preview and try again.")
+        throw AndroidHostServiceError(message: "The emulator connection changed. Reopen Live Preview and try again.")
       }
       let controls = try controls(path: path, session: session, displaySize: displaySize)
       guard controls.actions.contains(action) else {
-        throw EmulatorServiceError(message: "This emulator does not support that control.")
+        throw AndroidHostServiceError(message: "This emulator does not support that control.")
       }
       if let mode = controls.displayModes.first(where: { $0.action == action }) {
         if try changeDisplayMode(mode, session: session, displaySize: displaySize, deadline: deadline) { return }
@@ -42,7 +42,7 @@ struct EmulatorConsole {
         if let previous = controls.displayModes.first(where: { $0.action == controls.currentDisplayMode && $0.action != action }),
            try changeDisplayMode(previous, session: session, displaySize: displaySize, deadline: deadline),
            try changeDisplayMode(mode, session: session, displaySize: displaySize, deadline: deadline) { return }
-        throw EmulatorServiceError(
+        throw AndroidHostServiceError(
           message: "Android did not apply the requested display mode. Try another display mode or restart the emulator."
         )
       } else {
@@ -102,7 +102,7 @@ struct EmulatorConsole {
     try withSession(serial: serial) { session in
       let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
       guard URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path == expectedPath else {
-        throw EmulatorServiceError(message: "The emulator connection changed. Refresh and try again.")
+        throw AndroidHostServiceError(message: "The emulator connection changed. Refresh and try again.")
       }
       // Keep identity verification and shutdown on the same connection; serials can be reused.
       _ = try session.command("kill")
@@ -111,7 +111,7 @@ struct EmulatorConsole {
 
   private func withSession<T>(serial: String, _ body: (Session) throws -> T) throws -> T {
     guard serial.hasPrefix("emulator-"), let port = UInt16(serial.dropFirst(9)), port >= 1024 else {
-      throw EmulatorServiceError(message: "Invalid emulator console port.")
+      throw AndroidHostServiceError(message: "Invalid emulator console port.")
     }
     let socket = try connect(port)
     defer { Darwin.close(socket) }
@@ -126,7 +126,7 @@ struct EmulatorConsole {
       let token = try String(contentsOf: home.appendingPathComponent(".emulator_console_auth_token"), encoding: .utf8)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       guard !token.isEmpty, token.count <= 4096, !token.contains(where: \.isNewline) else {
-        throw EmulatorServiceError(message: "The emulator console authentication token is invalid.")
+        throw AndroidHostServiceError(message: "The emulator console authentication token is invalid.")
       }
       _ = try session.command("auth " + token)
     }
@@ -169,11 +169,11 @@ struct EmulatorConsole {
     return socket
   }
 
-  private static func failure() -> EmulatorServiceError {
-    EmulatorServiceError(message: "Could not communicate with the emulator console.")
+  private static func failure() -> AndroidHostServiceError {
+    AndroidHostServiceError(message: "Could not communicate with the emulator console.")
   }
 
-  private func failure() -> EmulatorServiceError {
+  private func failure() -> AndroidHostServiceError {
     Self.failure()
   }
 
@@ -238,7 +238,7 @@ struct EmulatorConsole {
     func wait(_ events: Int16) throws {
       while true {
         let remaining = ContinuousClock.now.duration(to: deadline)
-        guard remaining > .zero else { throw EmulatorServiceError(message: "The emulator console timed out.") }
+        guard remaining > .zero else { throw AndroidHostServiceError(message: "The emulator console timed out.") }
         let parts = remaining.components
         let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1
         var descriptor = pollfd(fd: socket, events: events, revents: 0)
