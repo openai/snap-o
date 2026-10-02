@@ -70,6 +70,15 @@ struct StartupCaptureTests {
         await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
         await captureHistoryDeletion(deletesCurrent: true, managed: false)
         await deviceManagerOpenPreservesLaterSelection()
+        await opensBootingEmulatorWithScreenshotStartup()
+        await switchBetweenBootingAndReadyDevices()
+        await rapidSelectionKeepsLatestDevice()
+        await manualSelectionReplacesPendingOpen { $0.selectMedia(id: $0.mediaList.first!.id) }
+        await manualSelectionReplacesPendingOpen { $0.selectNextMedia() }
+        await manualSelectionReplacesPendingOpen { $0.selectPreviousMedia() }
+        await selectedDeviceSurvivesDisconnect()
+        await cancelledOpenDoesNotRestoreItsSelection(cancelTask: true)
+        await cancelledOpenDoesNotRestoreItsSelection(cancelTask: false)
         await restoresPreferredDevice()
         await waitsForPreferredDeviceMedia()
         await stopReleasesWindowLevel()
@@ -853,8 +862,15 @@ struct StartupCaptureTests {
     let firstMediaID = controller.mediaList.first { $0.device.id == first.id }?.id
     controller.selectMedia(id: firstMediaID)
     await eventually { controller.selectedDeviceID == first.id }
+    let startsBeforeOpen = await fixture.live.starts
+    let stopsBeforeOpen = await fixture.live.stops
+    await controller.showLivePreview(deviceID: second.id)
     await controller.showLivePreview(deviceID: second.id)
     await eventually { controller.selectedDeviceID == second.id }
+    let startsAfterOpen = await fixture.live.starts
+    let stopsAfterOpen = await fixture.live.stops
+    precondition(startsAfterOpen == startsBeforeOpen, "Opening a device must reuse its active preview")
+    precondition(stopsAfterOpen == stopsBeforeOpen, "Repeated opens must not stop active previews")
     controller.selectMedia(id: firstMediaID)
     await eventually { controller.selectedDeviceID == first.id }
 
@@ -862,6 +878,143 @@ struct StartupCaptureTests {
     fixture.tracker.updateDevices([first, second, third])
     await eventually { controller.mediaList.count == 3 }
     precondition(controller.selectedDeviceID == first.id, "Device Manager must not override a later selection")
+    await controller.tearDown()
+  }
+
+  static func opensBootingEmulatorWithScreenshotStartup() async {
+    let emulator = testDevice("emulator-5554")
+    let fixture = ControllerFixture(devices: [])
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    await fixture.controller.start()
+    await eventually { fixture.controller.isDeviceListInitialized }
+    fixture.tracker.updatePreviewDevices([emulator])
+
+    await fixture.controller.showLivePreview(deviceID: emulator.id)
+    await eventually { fixture.controller.currentCapture?.device.id == emulator.id }
+    precondition(fixture.controller.isLivePreviewActive)
+    precondition(fixture.tracker.latestDevices.isEmpty, "Preview must open before Android reports boot completion")
+    await fixture.assertNoCaptureRequests()
+    await fixture.controller.tearDown()
+  }
+
+  static func switchBetweenBootingAndReadyDevices() async {
+    let booting = testDevice("emulator-5554")
+    let fixture = ControllerFixture(devices: [booting, second], blockedDisplayDevice: booting)
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.map(\.device.id) == [second.id] }
+    precondition(controller.currentCapture == nil, "The booting device is selected before its first frame")
+
+    await controller.showLivePreview(deviceID: second.id)
+    await eventually { controller.currentCapture?.device.id == second.id }
+    await controller.showLivePreview(deviceID: booting.id)
+    precondition(controller.currentCapture == nil, "Selecting a booting device must show its loading view")
+    precondition(controller.loadingPreviewDeviceID == booting.id)
+    await controller.showLivePreview(deviceID: second.id)
+    await eventually { controller.currentCapture?.device.id == second.id }
+
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await eventually { controller.mediaList.count == 2 }
+    precondition(controller.currentCapture?.device.id == second.id, "A late preview must not replace the chosen device")
+    await controller.showLivePreview(deviceID: booting.id)
+    await eventually { controller.currentCapture?.device.id == booting.id }
+    await controller.tearDown()
+  }
+
+  static func rapidSelectionKeepsLatestDevice() async {
+    let booting = testDevice("emulator-5554")
+    let fixture = ControllerFixture(devices: [booting, second], blockedDisplayDevice: booting)
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.map(\.device.id) == [second.id] }
+
+    controller.selectDevice(id: second.id)
+    precondition(controller.currentCapture?.device.id == second.id, "A device choice must take effect immediately")
+    controller.selectDevice(id: booting.id)
+    precondition(controller.currentCapture == nil, "The newer choice must wait for its own preview")
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await eventually { controller.mediaList.count == 2 }
+    precondition(controller.currentCapture?.device.id == booting.id, "An older choice must not replace the latest device")
+    await controller.tearDown()
+  }
+
+  static func manualSelectionReplacesPendingOpen(_ select: (CaptureWindowController) -> Void) async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    let booting = testDevice("emulator-5554")
+    controller.deviceOpenRequest = .serial(booting.id)
+    controller.selectDevice(id: booting.id)
+    precondition(controller.currentCapture == nil)
+
+    select(controller)
+    let selectedID = controller.currentCapture?.device.id
+    precondition(selectedID == first.id)
+    precondition(controller.deviceOpenRequest == nil, "Manual selection must cancel the older request")
+    precondition(controller.loadingPreviewDeviceID == selectedID)
+    fixture.tracker.updateDevices([first, second, booting])
+    await eventually { controller.mediaList.count == 3 }
+    precondition(controller.currentCapture?.device.id == selectedID, "Late readiness must not undo manual selection")
+    await controller.tearDown()
+  }
+
+  static func selectedDeviceSurvivesDisconnect() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    await controller.showLivePreview(deviceID: second.id)
+    await eventually { controller.currentCapture?.device.id == second.id }
+
+    fixture.tracker.updateDevices([first])
+    await eventually { controller.mediaList.map(\.device.id) == [first.id] }
+    precondition(controller.currentCapture == nil, "A disconnect must not select another available device")
+    precondition(controller.loadingPreviewDeviceID == second.id)
+    let third = testDevice("third")
+    fixture.tracker.updateDevices([first, third])
+    await eventually { controller.mediaList.count == 2 }
+    precondition(controller.currentCapture == nil, "A newly connected device must not replace the user's choice")
+    precondition(controller.loadingPreviewDeviceID == second.id)
+    fixture.tracker.updateDevices([first, third, second])
+    await eventually { controller.currentCapture?.device.id == second.id }
+    await controller.tearDown()
+  }
+
+  static func cancelledOpenDoesNotRestoreItsSelection(cancelTask: Bool) async {
+    let readyEmulator = testDevice("emulator-5556")
+    let fixture = ControllerFixture(devices: [])
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.stopGate.open()
+    await fixture.readyGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.isDeviceListInitialized }
+    fixture.tracker.updatePreviewDevices([first, readyEmulator])
+    controller.deviceOpenRequest = .serial(first.id)
+    let opening = Task { await controller.showLivePreview(deviceID: first.id) }
+    await eventually { controller.isLivePreviewActive }
+    await eventually { controller.mediaList.contains { $0.device.id == readyEmulator.id } }
+    if cancelTask { opening.cancel() }
+    controller.deviceOpenRequest = .serial(readyEmulator.id)
+    await controller.showLivePreview(deviceID: readyEmulator.id)
+    await eventually { controller.currentCapture?.device.id == readyEmulator.id }
+    await fixture.displayGate.open()
+    await opening.value
+    precondition(controller.loadingPreviewDeviceID == readyEmulator.id, "A cancelled open must not select its original target")
     await controller.tearDown()
   }
 
@@ -895,7 +1048,9 @@ struct StartupCaptureTests {
     await gate.open()
     await eventually { snapshots.currentCapture?.device.id == first.id }
     await mode.updateDevices([second])
-    precondition(snapshots.currentCapture?.device.id == second.id, "Disconnecting the preferred device must allow fallback")
+    precondition(snapshots.currentCapture == nil, "Keep waiting for the selected device after a disconnect")
+    await mode.updateDevices([first, second])
+    await eventually { snapshots.currentCapture?.device.id == first.id }
     await mode.stop()
   }
 

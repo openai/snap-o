@@ -31,8 +31,9 @@ struct SnapOApp: App {
           adbService: runtime.adbService,
           initialWorkspace: configuration.wrappedValue.workspace
         )
+        .modifier(WorkspaceWindowLauncher())
         .handlesExternalEvents(
-          preferring: Set(["record", "capture", "livepreview", "check-updates", "check-for-updates"]),
+          preferring: Set(["open", "record", "capture", "livepreview", "check-updates", "check-for-updates"]),
           allowing: Set(["*"])
         )
       },
@@ -44,7 +45,7 @@ struct SnapOApp: App {
     .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 480, height: 480)
-    .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
+    .handlesExternalEvents(matching: Set(["open", "record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
         history: runtime.captureHistory,
@@ -55,6 +56,7 @@ struct SnapOApp: App {
 
     Window("Device Manager", id: "device-manager") {
       DeviceManagerWindow(manager: runtime.deviceManager)
+        .modifier(WorkspaceWindowLauncher())
     }
     .defaultSize(width: 680, height: 420)
     .windowResizability(.contentMinSize)
@@ -62,6 +64,7 @@ struct SnapOApp: App {
 
     Window("Capture History", id: "capture-history") {
       CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
+        .modifier(WorkspaceWindowLauncher())
     }
     .defaultSize(width: 800, height: 650)
     .windowResizability(.contentMinSize)

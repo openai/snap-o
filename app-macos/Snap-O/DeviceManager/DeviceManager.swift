@@ -20,6 +20,7 @@ final class DeviceManager {
   private(set) var loadError: String?
   private(set) var actions: [String: String] = [:]
   var actionError: String?
+  private(set) var launchErrors: [String: String] = [:]
 
   var entries: [DeviceManagerEntry] {
     let visibleEmulators = emulators.map { device in
@@ -283,6 +284,7 @@ final class DeviceManager {
     inventoryGeneration += 1
     matchingTask?.cancel()
     trackedConnections = []
+    launchErrors.removeValue(forKey: device.id)
     actions[device.id] = "Starting"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
@@ -299,6 +301,7 @@ final class DeviceManager {
       } catch is CancellationError {
         return
       } catch {
+        launchErrors[device.id] = error.localizedDescription
         actionError = error.localizedDescription
       }
     }

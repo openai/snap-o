@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct DeviceManagerWindow: View {
-  @Environment(\.openWindow)
-  private var openWindow
   @State private var deviceToDelete: ManagedEmulator?
   @Bindable var manager: DeviceManager
 
@@ -123,6 +121,8 @@ struct DeviceManagerWindow: View {
     .contextMenu {
       if let device = emulator {
         actions(for: device).disabled(action != nil || manager.loadError != nil)
+      } else if let serial = entry.serial {
+        Button("Copy Open Link", systemImage: "link") { copyLink(.serial(serial)) }
       }
     }
   }
@@ -165,6 +165,8 @@ struct DeviceManagerWindow: View {
 
   @ViewBuilder
   private func actions(for device: ManagedEmulator) -> some View {
+    Button("Copy Open Link", systemImage: "link") { copyLink(.avd(device.avdName, start: true)) }
+    Divider()
     Button("Cold Boot", systemImage: "arrow.counterclockwise") { manager.start(device, coldBoot: true) }
       .disabled(!device.canColdBoot)
     Button("Reveal in Finder", systemImage: "folder") {
@@ -183,9 +185,13 @@ struct DeviceManagerWindow: View {
       .contentShape(Rectangle())
   }
 
+  private func copyLink(_ request: DeviceOpenRequest) {
+    guard let url = request.url else { return }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+  }
+
   private func showPreview(_ serial: String) {
-    if !SnapOCommandCoordinator.shared.showLivePreview(deviceID: serial) {
-      openWindow(id: WorkspaceWindowID.main, value: WorkspaceWindowConfiguration(workspace: .persisted()))
-    }
+    SnapOCommandCoordinator.shared.openDevice(.serial(serial))
   }
 }

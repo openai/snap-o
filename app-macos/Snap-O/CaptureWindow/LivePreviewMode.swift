@@ -12,7 +12,6 @@ final class LivePreviewMode {
   private let onMediaApplied: @MainActor () -> Void
   private var preparedLivePreview: PreparedLivePreview?
   private var manager: LivePreviewManager?
-  private var connectedDeviceIDs: Set<String> = []
   @ObservationIgnored private var connections: [String: LivePreviewConnection] = [:]
   @ObservationIgnored private var stopTask: Task<Void, Never>?
   private(set) var isStopping: Bool = false
@@ -37,7 +36,6 @@ final class LivePreviewMode {
 
   func start(with devices: [Device]) async {
     guard !isStopping else { return }
-    connectedDeviceIDs = Set(devices.map(\.id))
     let manager = LivePreviewManager(
       livePreviewService: livePreviewService,
       adbService: adbService,
@@ -50,7 +48,7 @@ final class LivePreviewMode {
         media,
         preserveDeviceID: preferredDeviceID,
         shouldSort: false,
-        waitForPreferredDevice: preferredDeviceID.map { connectedDeviceIDs.contains($0) } ?? false
+        waitForPreferredDevice: preferredDeviceID != nil
       )
       onMediaApplied()
     }
@@ -61,7 +59,6 @@ final class LivePreviewMode {
 
   func updateDevices(_ devices: [Device]) async {
     let connectedIDs = Set(devices.map(\.id))
-    connectedDeviceIDs = connectedIDs
     let removed = connections.filter { !connectedIDs.contains($0.key) }.map(\.value)
     connections = connections.filter { connectedIDs.contains($0.key) }
     let cleanup = Task {
