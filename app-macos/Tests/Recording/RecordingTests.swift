@@ -92,12 +92,16 @@ struct RecordingTests {
 
   static func failedDeviceLeavesHealthyRecordingActive(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let handle = try await fixture.service.start(for: devices, options: options)
+    var activeDevices: Set<String> = []
+    let handle = try await fixture.service.start(for: devices, options: options) { activeDevices = $0 }
+    precondition(activeDevices == Set(devices.map(\.id)))
     await fixture.adb.endUnexpectedly(devices[0].id)
     await fixture.waitForFailure()
     let stops = await fixture.adb.stops
     precondition(stops.isEmpty, "A device failure must not stop healthy recordings")
+    precondition(activeDevices == [devices[1].id], "Only healthy recordings remain selectable")
     await fixture.service.cancel(handle)
+    precondition(activeDevices.isEmpty)
   }
 
   static func collectionFailurePreservesHealthyRecording(root: URL, video: URL) async throws {
@@ -117,8 +121,12 @@ struct RecordingTests {
 
   static func disconnectedDeviceLeavesHealthyRecordingActive(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let handle = try await fixture.service.start(for: devices, options: options)
+    var activeDevices: Set<String> = []
+    let handle = try await fixture.service.start(for: devices, options: options) { activeDevices = $0 }
     await fixture.service.updateConnectedDeviceIDs([devices[1].id], for: handle)
+    precondition(activeDevices == [devices[1].id])
+    await fixture.service.updateConnectedDeviceIDs(Set(devices.map(\.id)), for: handle)
+    precondition(activeDevices == [devices[1].id], "Reconnecting a device must not imply a new recording")
     let stops = await fixture.adb.stops
     precondition(stops.isEmpty, "Disconnect must leave the other recording active")
     await fixture.service.cancel(handle)
@@ -171,8 +179,10 @@ struct RecordingTests {
 
   static func confirmedRecordingRemovesRemoteCopy(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let handle = try await fixture.service.start(for: [devices[0]], options: options)
+    var activeDevices: Set<String> = []
+    let handle = try await fixture.service.start(for: [devices[0]], options: options) { activeDevices = $0 }
     await fixture.service.finish(handle)
+    precondition(activeDevices.isEmpty, "Finishing the group must clear selectable recordings")
 
     let removed = await fixture.adb.removedRecordings
     precondition(removed == [devices[0].id], "A confirmed stop and usable local copy allow remote cleanup")

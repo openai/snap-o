@@ -606,11 +606,7 @@ struct CaptureWindow: View {
       if controller.isFinishingRecording {
         idleOverlay(controller: controller)
       } else if controller.currentCapture != nil {
-        CaptureSnapshotView(
-          controller: controller.snapshotController,
-          fileStore: controller.fileStore,
-          livePreviewHost: controller
-        ) { controller.selectMedia(id: $0) }
+        captureSnapshot(controller: controller)
       } else if controller.adbServerState != .online {
         WaitingForDeviceView(
           serverState: controller.adbServerState,
@@ -620,6 +616,9 @@ struct CaptureWindow: View {
         WaitingForDeviceView(
           deviceMessage: controller.loadingPreviewDeviceID.map(livePreviewLoadingMessage) ?? "Connecting"
         )
+        .overlay {
+          captureSnapshot(controller: controller)
+        }
       } else if controller.isDeviceListInitialized {
         idleOverlay(controller: controller)
       } else {
@@ -644,6 +643,15 @@ struct CaptureWindow: View {
       }
     }
     .clipped()
+  }
+
+  private func captureSnapshot(controller: CaptureWindowController) -> some View {
+    CaptureSnapshotView(
+      controller: controller.snapshotController,
+      fileStore: controller.fileStore,
+      livePreviewHost: controller,
+      previewCaptures: controller.previewPickerMedia
+    ) { controller.selectMedia(id: $0) }
   }
 
   private func workspaceSplitter(

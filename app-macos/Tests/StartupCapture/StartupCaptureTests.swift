@@ -95,6 +95,10 @@ struct StartupCaptureTests {
         await waitsForPreferredDeviceMedia()
         await stopReleasesWindowLevel()
         await stopShowsRecordings()
+        await switchActiveRecordingDevice()
+        await hoverPickerSupportsLivePreview()
+        await previewPickerCountDuringStartup()
+        await previewPickerHidesForSingleDevice()
         print("Startup capture tests passed")
       }
     }
@@ -1389,6 +1393,131 @@ struct StartupCaptureTests {
     precondition(fixture.controller.currentCapture?.media.isVideo == true)
     precondition(fixture.controller.selectedDeviceID == second.id)
     await fixture.controller.tearDown()
+  }
+
+  static func switchActiveRecordingDevice() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    await controller.startRecording()
+    await eventually { controller.recordingDevices.count == 2 }
+    precondition(controller.captureProgressText == "1/2")
+    controller.snapshotController.clearSelection()
+    precondition(controller.captureProgressText == "1/2", "Default to the first position without a selection")
+    controller.selectMedia(id: controller.previewPickerMedia[0].id)
+    controller.setProgressHovering(true)
+    await eventually { controller.shouldShowPreviewHint }
+    precondition(controller.previewPickerMedia.map(\.device.id) == [first.id, second.id])
+    controller.deviceOpenRequest = .serial(first.id)
+    controller.selectMedia(id: controller.previewPickerMedia[1].id)
+    precondition(controller.selectedDeviceID == second.id && controller.deviceOpenRequest == nil)
+    precondition(controller.captureProgressText == "2/2")
+    controller.selectMedia(id: controller.previewPickerMedia[0].id)
+    precondition(controller.selectedDeviceID == first.id)
+
+    let newcomer = testDevice("newcomer")
+    fixture.tracker.updateDevices([first, second, newcomer])
+    await eventually { controller.mediaList.count == 3 }
+    precondition(controller.recordingDevices.map(\.id) == [first.id, second.id])
+    precondition(controller.previewPickerMedia.map(\.device.id) == [first.id, second.id])
+    precondition(controller.captureProgressText == "1/2")
+    guard let newcomerCapture = controller.mediaList.first(where: { $0.device.id == newcomer.id }) else {
+      preconditionFailure("Expected the new device's live preview")
+    }
+    controller.selectMedia(id: newcomerCapture.id)
+    precondition(controller.selectedDeviceID == first.id, "Devices arriving after Start are not recording")
+
+    controller.selectMedia(id: controller.previewPickerMedia[1].id)
+    fixture.tracker.updateDevices([first, newcomer])
+    await eventually { controller.recordingDevices.map(\.id) == [first.id] && controller.currentCapture == nil }
+    precondition(controller.captureProgressText == nil, "One recording must not show a picker")
+    precondition(!controller.hasAlternativeMedia())
+    precondition(controller.previewPickerMedia.map(\.device.id) == [first.id])
+    controller.selectMedia(id: controller.previewPickerMedia[0].id)
+    controller.selectRecordingDevice(id: second.id)
+    precondition(controller.selectedDeviceID == first.id)
+    precondition(controller.captureProgressText == nil, "Hide the count when only the selected recording remains")
+    precondition(controller.isRecording && controller.isLivePreviewActive)
+    let requests = await fixture.recording.requests
+    precondition(requests == [[first.id, second.id]], "Switching previews must not restart recordings")
+    await controller.stopRecording()
+    precondition(controller.recordingDevices.isEmpty)
+    await controller.tearDown()
+  }
+
+  static func hoverPickerSupportsLivePreview() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    precondition(controller.captureProgressText == "1/2")
+    controller.setProgressHovering(true)
+    await eventually { controller.shouldShowPreviewHint }
+    precondition(controller.previewPickerMedia.map(\.device.id) == [first.id, second.id])
+    controller.selectMedia(id: controller.previewPickerMedia[1].id)
+    precondition(controller.selectedDeviceID == second.id && controller.captureProgressText == "2/2")
+
+    let newcomer = testDevice("newcomer")
+    fixture.tracker.updateDevices([first, second, newcomer])
+    await eventually { controller.mediaList.count == 3 }
+    controller.setProgressHovering(true)
+    await eventually { controller.shouldShowPreviewHint }
+    precondition(controller.previewPickerMedia.map(\.device.id) == [first.id, second.id, newcomer.id])
+    precondition(controller.captureProgressText == "2/3", "Live Preview includes newly connected devices")
+
+    fixture.tracker.updateDevices([first])
+    await eventually { controller.mediaList.count == 1 && controller.currentCapture == nil }
+    precondition(controller.captureProgressText == nil, "One device must not show a picker")
+    precondition(!controller.hasAlternativeMedia())
+    controller.selectMedia(id: controller.previewPickerMedia[0].id)
+    precondition(controller.selectedDeviceID == first.id && controller.captureProgressText == nil)
+    await fixture.assertNoCaptureRequests()
+    await controller.tearDown()
+  }
+
+  static func previewPickerCountDuringStartup() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    let controller = fixture.controller
+    precondition(controller.captureProgressText == nil)
+    await fixture.stopGate.open()
+    await controller.start()
+    await eventually { controller.mediaList.map(\.device.id) == [second.id] }
+    precondition(controller.currentCapture == nil)
+    precondition(controller.captureProgressText == nil, "Another device becoming ready must not show a startup label")
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await eventually { controller.currentCapture?.device.id == first.id && controller.mediaList.count == 2 }
+    precondition(controller.captureProgressText == "1/2")
+    controller.snapshotController.clearSelection()
+    precondition(controller.captureProgressText == "1/2", "Default to the first position without a selection")
+    controller.setProgressHovering(true)
+    await eventually { controller.shouldShowPreviewHint }
+    controller.selectMedia(id: controller.previewPickerMedia[1].id)
+    precondition(controller.captureProgressText == "2/2")
+    await controller.tearDown()
+  }
+
+  static func previewPickerHidesForSingleDevice() async {
+    let fixture = ControllerFixture()
+    let controller = fixture.controller
+    await fixture.stopGate.open()
+    await fixture.start()
+    precondition(controller.captureProgressText == nil)
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await eventually { controller.currentCapture != nil && !controller.isProcessing }
+    precondition(controller.captureProgressText == nil)
+    await controller.startRecording()
+    await eventually { controller.recordingDevices.count == 1 }
+    precondition(controller.captureProgressText == nil, "A single recording must not show a device count")
+    await controller.tearDown()
   }
 
   static func cancelledQueuedCommand() async {

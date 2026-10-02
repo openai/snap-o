@@ -157,13 +157,6 @@ struct CaptureReviewView: View {
         Spacer(minLength: 0)
       }
 
-      if dragExport.isPreparing {
-        ProgressView()
-          .controlSize(.small)
-          .help("Preparing recording for dragging")
-          .accessibilityLabel("Preparing recording for dragging")
-      }
-
       if controller.currentCapture?.media.isVideo == true {
         Button {
           trimFieldsValid = true

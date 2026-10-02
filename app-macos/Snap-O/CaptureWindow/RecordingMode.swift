@@ -18,6 +18,11 @@ final class RecordingMode {
   private var operation: RecordingOperationHandle?
   private var connectedDeviceIDs: Set<String>
   private var hasCompleted = false
+  private var activeDeviceIDs: Set<String> = []
+
+  var devices: [Device] {
+    initialDevices.filter { activeDeviceIDs.contains($0.id) }
+  }
 
   init(
     recordingService: RecordingService,
@@ -40,7 +45,10 @@ final class RecordingMode {
         let operation = try await recordingService.start(
           for: initialDevices,
           options: options
-        )
+        ) { [weak self] deviceIDs in
+          guard let self, !hasCompleted else { return }
+          activeDeviceIDs = deviceIDs
+        }
         if hasCompleted {
           await recordingService.cancel(operation)
         } else {

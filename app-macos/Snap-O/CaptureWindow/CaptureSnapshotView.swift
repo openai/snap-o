@@ -5,6 +5,7 @@ struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
   @Bindable var controller: CaptureSnapshotController
   let fileStore: FileStore
   let livePreviewHost: Host
+  let previewCaptures: [CaptureMedia]
   let selectMedia: (CaptureMedia.ID) -> Void
 
   var body: some View {
@@ -18,11 +19,11 @@ struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
         .id(controller.currentCaptureViewID)
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay(alignment: .top) {
-      if controller.mediaList.count > 1, controller.shouldShowPreviewHint {
-        let captures = controller.overlayMediaList.isEmpty ? controller.mediaList : controller.overlayMediaList
+      if controller.shouldShowPreviewHint, previewCaptures.count > 1 {
         CapturePreviewStrip(
-          captures: captures,
+          captures: previewCaptures,
           selectedID: controller.selectedMediaID,
           onSelect: selectMedia,
           fileStore: fileStore,
