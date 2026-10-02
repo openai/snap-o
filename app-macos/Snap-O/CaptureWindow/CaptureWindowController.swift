@@ -153,15 +153,19 @@ final class CaptureWindowController {
   }
 
   func selectNextMedia() {
-    deviceOpenRequest = nil
-    pendingPreferredDeviceID = nil
-    snapshotController.selectNextMedia()
+    selectAdjacentMedia(offset: 1)
   }
 
   func selectPreviousMedia() {
-    deviceOpenRequest = nil
-    pendingPreferredDeviceID = nil
-    snapshotController.selectPreviousMedia()
+    selectAdjacentMedia(offset: -1)
+  }
+
+  private func selectAdjacentMedia(offset: Int) {
+    let captures = isRecording ? previewPickerMedia : mediaList
+    guard !captures.isEmpty else { return }
+    let index = captures.firstIndex { $0.id == selectedMediaID }
+      .map { ($0 + offset + captures.count) % captures.count } ?? 0
+    selectMedia(id: captures[index].id)
   }
 
   func selectDevice(id: String) {
@@ -239,6 +243,14 @@ final class CaptureWindowController {
           recordingDevices.contains(where: { $0.id == id }) else { return }
     deviceOpenRequest = nil
     selectDevice(id: id)
+  }
+
+  private func reconcileRecordingSelection() {
+    guard !isTornDown, isRecording, isLivePreviewActive, !isProcessing, !isFinishingRecording else { return }
+    let preferredID = pendingPreferredDeviceID ?? currentCapture?.device.id
+    guard !recordingDevices.contains(where: { $0.id == preferredID }),
+          let capture = previewPickerMedia.first else { return }
+    selectRecordingDevice(id: capture.device.id)
   }
 
   var shouldFloatRecordingWindow: Bool {
@@ -449,10 +461,14 @@ final class CaptureWindowController {
       options: RecordingOptions(
         recordsBugReport: recordsBugReport,
         showsTouches: AppSettings.shared.showTouchesDuringCapture
-      )
-    ) { [weak self] result in
-      await self?.completeRecording(result)
-    }
+      ),
+      onDevicesChanged: { [weak self] in
+        self?.reconcileRecordingSelection()
+      },
+      onResult: { [weak self] result in
+        await self?.completeRecording(result)
+      }
+    )
     self.recordingMode = recordingMode
     recordingMode.start()
     isProcessing = false
@@ -576,6 +592,7 @@ final class CaptureWindowController {
         if let pending = pendingPreferredDeviceID, mediaList.contains(where: { $0.device.id == pending }) {
           pendingPreferredDeviceID = nil
         }
+        reconcileRecordingSelection()
         resumeInitialCaptureWaiters()
       }
     )

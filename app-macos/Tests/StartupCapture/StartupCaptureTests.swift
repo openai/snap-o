@@ -96,6 +96,8 @@ struct StartupCaptureTests {
         await stopReleasesWindowLevel()
         await stopShowsRecordings()
         await switchActiveRecordingDevice()
+        await recordingEndsWhilePreviewRemains(selectedRecordingEnds: true)
+        await recordingEndsWhilePreviewRemains(selectedRecordingEnds: false)
         await hoverPickerSupportsLivePreview()
         await previewPickerCountDuringStartup()
         await previewPickerHidesForSingleDevice()
@@ -1431,9 +1433,27 @@ struct StartupCaptureTests {
     controller.selectMedia(id: newcomerCapture.id)
     precondition(controller.selectedDeviceID == first.id, "Devices arriving after Start are not recording")
 
+    controller.selectNextMedia()
+    precondition(controller.selectedDeviceID == second.id)
+    controller.selectNextMedia()
+    precondition(controller.selectedDeviceID == first.id, "Next must wrap within active recordings")
+    controller.selectPreviousMedia()
+    precondition(controller.selectedDeviceID == second.id, "Previous must wrap within active recordings")
+    controller.selectPreviousMedia()
+    precondition(controller.selectedDeviceID == first.id)
+    controller.snapshotController.clearSelection()
+    controller.selectPreviousMedia()
+    precondition(controller.selectedDeviceID == first.id, "Navigation without a selection starts at the first recording")
+    controller.snapshotController.selectMedia(id: newcomerCapture.id)
+    controller.selectNextMedia()
+    precondition(controller.selectedDeviceID == first.id, "Navigation must recover from an inactive selection")
+
     controller.selectMedia(id: controller.previewPickerMedia[1].id)
     fixture.tracker.updateDevices([first, newcomer])
-    await eventually { controller.recordingDevices.map(\.id) == [first.id] && controller.currentCapture == nil }
+    await eventually {
+      controller.recordingDevices.map(\.id) == [first.id] && controller.mediaList.count == 2
+        && controller.selectedDeviceID == first.id
+    }
     precondition(controller.captureProgressText == nil, "One recording must not show a picker")
     precondition(!controller.hasAlternativeMedia())
     precondition(controller.previewPickerMedia.map(\.device.id) == [first.id])
@@ -1446,6 +1466,33 @@ struct StartupCaptureTests {
     precondition(requests == [[first.id, second.id]], "Switching previews must not restart recordings")
     await controller.stopRecording()
     precondition(controller.recordingDevices.isEmpty)
+    await controller.tearDown()
+  }
+
+  static func recordingEndsWhilePreviewRemains(selectedRecordingEnds: Bool) async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    await controller.startRecording()
+    await eventually { controller.recordingDevices.count == 2 }
+    controller.selectRecordingDevice(id: selectedRecordingEnds ? first.id : second.id)
+
+    await fixture.recording.endRecording(for: first.id)
+    precondition(controller.mediaList.count == 2, "Ending a recording must not disconnect its live preview")
+    precondition(controller.recordingDevices.map(\.id) == [second.id])
+    precondition(controller.selectedDeviceID == second.id, "Keep the selection on a surviving recording")
+    precondition(controller.captureProgressText == nil && !controller.hasAlternativeMedia())
+
+    await fixture.recording.endRecording(for: second.id)
+    precondition(controller.selectedDeviceID == second.id, "Keep the final selection until recording completion")
+    controller.selectNextMedia()
+    controller.selectPreviousMedia()
+    precondition(controller.selectedDeviceID == second.id, "Navigation without active recordings is a no-op")
+    await controller.stopRecording()
     await controller.tearDown()
   }
 

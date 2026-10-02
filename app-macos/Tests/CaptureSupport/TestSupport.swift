@@ -398,6 +398,11 @@ actor RecordingService {
     await activeDevicesChanged(activeDeviceIDs)
   }
 
+  func endRecording(for deviceID: String) async {
+    activeDeviceIDs.remove(deviceID)
+    await activeDevicesChanged(activeDeviceIDs)
+  }
+
   func finish(_ handle: RecordingOperationHandle) async {
     activeDeviceIDs = []
     await activeDevicesChanged([])
