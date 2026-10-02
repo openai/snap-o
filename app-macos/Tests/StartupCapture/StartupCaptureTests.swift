@@ -52,8 +52,12 @@ struct StartupCaptureTests {
         await stopDuringRendererClaim()
         await disconnectWaitsForCleanup()
         await reconnectDuringPreparedReadiness()
-        await commandBeforeDeviceDiscovery(remounts: false)
-        await commandBeforeDeviceDiscovery(remounts: true)
+        for startupMode in [StartupCaptureMode.screenshot, .livePreview] {
+          for command in [SnapOCommand.record, .capture, .livepreview, nil] {
+            await startupUsesRequestedMode(command, startupMode: startupMode, remounts: false)
+            await startupUsesRequestedMode(command, startupMode: startupMode, remounts: true)
+          }
+        }
         await commandDuringAutomaticPreview(recordsVideo: true)
         await commandDuringAutomaticPreview(recordsVideo: false)
         await tearDownDuringQueuedCommand(recordsVideo: true)
@@ -1114,9 +1118,13 @@ struct StartupCaptureTests {
     await fixture.controller.tearDown()
   }
 
-  static func commandBeforeDeviceDiscovery(remounts: Bool) async {
+  static func startupUsesRequestedMode(
+    _ command: SnapOCommand?, startupMode: StartupCaptureMode, remounts: Bool
+  ) async {
     let fixture = ControllerFixture(devices: [])
-    await fixture.controller.perform(.capture)
+    AppSettings.shared.startupCaptureMode = startupMode
+    AppSettings.shared.recordAsBugReport = false
+    if let command { await fixture.controller.perform(command) }
     await fixture.controller.start()
     if remounts {
       await fixture.controller.tearDown()
@@ -1126,11 +1134,31 @@ struct StartupCaptureTests {
     await fixture.readyGate.open()
     await fixture.displayGate.open()
     await fixture.stopGate.open()
+    // Repeated discovery must not start the default alongside a queued command.
     fixture.tracker.updateDevices([first])
-    await eventually("A startup URL command must run when discovery finishes") {
-      await fixture.screenshots.requests == [[first.id]]
+    fixture.tracker.updateDevices([first])
+
+    await eventually {
+      fixture.controller.isReviewingCapture || fixture.controller.isRecording
+        || (fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing)
     }
-    await eventually { fixture.controller.isReviewingCapture }
+    let expected = command ?? (startupMode == .screenshot ? .capture : .livepreview)
+    let captures = await fixture.screenshots.requests
+    let recordings = await fixture.recording.requests
+    let previews = await fixture.live.starts
+    switch expected {
+    case .capture:
+      precondition(recordings.isEmpty && previews.isEmpty, "A capture URL must skip the default preview")
+      await eventually { fixture.controller.isReviewingCapture }
+      precondition(captures == [[first.id]])
+    case .record:
+      precondition(captures.isEmpty, "A record URL must skip the default screenshot")
+      await eventually { await fixture.recording.requests == [[first.id]] }
+      precondition(fixture.controller.isRecording)
+    case .livepreview:
+      precondition(captures.isEmpty && recordings.isEmpty, "A preview URL must skip the default screenshot")
+      await eventually { fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing }
+    }
     await fixture.controller.tearDown()
   }
 
