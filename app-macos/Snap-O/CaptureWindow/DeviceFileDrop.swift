@@ -109,7 +109,7 @@ final class DeviceFileDrop {
         }
         let size = Int64(values.fileSize ?? 0)
         let isAPK = install && url.pathExtension.lowercased() == "apk"
-        status = "\(isAPK ? "Installing" : "Copying") \(url.lastPathComponent)…"
+        status = "\(isAPK ? "Installing" : "Copying") \(url.lastPathComponent)"
         progress = 0
         let update: @Sendable (Int64) -> Void = { [weak self] sent in
           Task { @MainActor in

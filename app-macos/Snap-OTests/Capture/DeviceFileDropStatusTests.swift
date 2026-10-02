@@ -13,7 +13,7 @@ struct DeviceFileDropStatusTests {
     for state in ["progress", "error", "success"] {
       model.isBusy = state == "progress"
       model.progress = model.isBusy ? 0.4 : nil
-      model.status = state == "progress" ? "Copying sample.png…" : "1 copied to Downloads"
+      model.status = state == "progress" ? "Copying sample.png" : "1 copied to Downloads"
       model.failures = state == "error" ? [DeviceFileDrop.Failure(
         message: "File transfers blocked by device policy", details: nil
       )] : []
