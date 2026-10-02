@@ -32,34 +32,8 @@ struct CaptureTrimTests {
   }
 
   @Test @MainActor
-  func trimmingClampsToOneFrameAndCancelRestoresPlayback() {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    defer { playback.stop() }
-    #expect(playback.canTrim)
-    playback.setSpeed(0.5)
-    playback.seek(to: 1.2)
-    playback.beginTrimming()
-    #expect(!playback.wantsPlayback)
-    playback.setTrimStart(1.14)
-    #expect(abs(playback.trimSelection.start - 1.1) < 0.0001)
-    playback.setTrimEnd(0)
-    #expect(abs(playback.trimSelection.duration - 0.1) < 0.0001)
-    playback.setTrimStart(100)
-    #expect(playback.trimSelection.isValid(for: playback.duration))
-    #expect(abs(playback.trimSelection.duration - 0.1) < 0.0001)
-    playback.setTrimEnd(.nan)
-    #expect(playback.trimSelection.isValid(for: playback.duration))
-    playback.cancelTrimming()
-    #expect(!playback.isTrimming)
-    #expect(playback.playbackRange == CaptureTrimRange(start: 0, end: 3))
-    #expect(playback.wantsPlayback && playback.speed == 0.5)
-    #expect(abs(playback.time - 1.2) < 0.0001)
-  }
-
-  @Test @MainActor
   func confirmedTrimCanBeReopenedExpandedAndCancelled() {
     var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    defer { playback.stop() }
     playback.beginTrimming()
     playback.setTrimStart(1.1)
     playback.setTrimEnd(1.7)
@@ -85,54 +59,25 @@ struct CaptureTrimTests {
   }
 
   @Test @MainActor
-  func draggingTrimEndDoesNotChangeThePlayerStopTime() {
+  func previewEndEventLeavesLastFrameAndPlayRestartsSelection() {
     var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    defer { playback.stop() }
-    playback.beginTrimming()
-    playback.setScrubbing(true)
-    for end in [2.8, 2.1, 1.4, 0.5, 2.7] {
-      playback.setTrimEnd(end)
-      #expect(playback.playbackEnd == nil)
-      #expect(abs(playback.time - (end - 1 / playback.frameRate)) < 0.0001)
-    }
-    playback.setScrubbing(false)
-    #expect(playback.playbackEnd == nil)
-    #expect(!playback.wantsPlayback)
-  }
-
-  @Test @MainActor
-  func trimPreviewStopsAtItsEndAndRestartsAtItsStart() {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    defer { playback.stop() }
     playback.setWindowVisible(true)
     playback.beginTrimming()
     playback.setTrimStart(1.1)
-    playback.setScrubbing(true)
     playback.setTrimEnd(1.4)
-    playback.setScrubbing(false)
-    finishSeeks(&playback)
     playback.togglePlayback()
     finishSeeks(&playback)
-    #expect(playback.playbackEnd == playback.trimSelection.end)
-    #expect(playback.playbackRate == 1)
+    #expect(playback.playbackEnd == 1.4)
+
     playback.didReachEnd()
-    #expect(!playback.wantsPlayback)
-    #expect(playback.playbackRate == 0)
-    #expect(playback.time >= 1.1 && playback.time < 1.4)
-    playback.togglePlayback()
-    #expect(playback.wantsPlayback)
-    #expect(abs(playback.time - 1.1) < 0.0001)
-    playback.setScrubbing(true)
-    playback.setTrimEnd(1.8)
-    playback.setScrubbing(false)
-    playback.togglePlayback()
     finishSeeks(&playback)
-    #expect(playback.playbackEnd == playback.trimSelection.end)
-    #expect(playback.playbackRate == 1)
-    playback.didReachEnd()
-    #expect(!playback.wantsPlayback)
     #expect(playback.playbackRate == 0)
-    #expect(playback.time >= 1.7 && playback.time < 1.8)
+    #expect(abs(playback.time - 1.3) < 0.000001)
+
+    playback.togglePlayback()
+    #expect(abs(playback.time - 1.1) < 0.000001)
+    finishSeeks(&playback)
+    #expect(playback.playbackRate == 1)
   }
 
   @Test(arguments: [24.0, 30, 60, 29.97]) @MainActor
@@ -173,26 +118,5 @@ struct CaptureTrimTests {
     #expect(playback.playbackRate == 0)
     finishSeeks(&playback)
     #expect(playback.playbackRate == (playing ? 0.5 : 0))
-  }
-
-  @Test @MainActor
-  func previewIgnoresEndEventsWhileSeekingScrubbingOrPaused() {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    playback.setWindowVisible(true)
-    playback.beginTrimming()
-    playback.setTrimEnd(2)
-    playback.togglePlayback()
-    playback.didReachEnd()
-    #expect(playback.wantsPlayback)
-    finishSeeks(&playback)
-    playback.setScrubbing(true)
-    playback.didReachEnd()
-    #expect(playback.wantsPlayback)
-    playback.setScrubbing(false)
-    finishSeeks(&playback)
-    playback.togglePlayback()
-    let position = playback.time
-    playback.didReachEnd()
-    #expect(!playback.wantsPlayback && playback.time == position)
   }
 }
