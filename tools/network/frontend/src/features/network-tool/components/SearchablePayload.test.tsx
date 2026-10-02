@@ -4,6 +4,8 @@ import { useRef } from "preact/hooks";
 import { useSearchHighlights } from "../hooks/useSearchHighlights";
 import { act } from "preact/test-utils";
 import { afterEach, expect, it, vi } from "vitest";
+import { findPayloadMatches, payloadView } from "../../../network/payload-search";
+import { parseKeywordSearchQuery } from "../../../network/keyword-search";
 import { SearchablePayload } from "./SearchablePayload";
 
 const container = document.createElement("div");
@@ -13,7 +15,7 @@ afterEach(() => {
 });
 
 it("highlights metadata and the matching body section without highlighting the full payload", async () => {
-  const text = "x".repeat(20_000) + "tbo" + "x".repeat(300_000);
+  const text = "x".repeat(20_479) + "tbo" + "x".repeat(4093) + "tbo" + "x".repeat(300_000);
   const highlights = new Map<string, Range[]>();
   vi.stubGlobal("CSS", { highlights });
   vi.stubGlobal("Highlight", function (...ranges: Range[]) {
@@ -40,16 +42,31 @@ it("highlights metadata and the matching body section without highlighting the f
   expect(container.querySelectorAll(".payload-text-block").length).toBeLessThanOrEqual(26);
   expect(highlights.get("network-search-match")!.map((range) => range.toString())).toEqual(["tbo"]);
   expect(highlights.get("network-search-match")![0].startContainer.parentElement?.className).toBe("record-row");
+  const click = (label: string) =>
+    act(() => [...container.querySelectorAll("button")].find((b) => b.textContent === label)!.click());
+  click("Next match");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("2 of 2 matches");
+  expect(container.querySelector("mark")?.textContent).toBe("tbo");
+  click("Next section");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("2 matches");
+  click("Previous match");
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("2 of 2 matches");
+  expect(container.querySelector("mark")?.textContent).toBe("tbo");
 });
 
-it("keeps the selected match highlighted within the render limit", async () => {
-  const text = "hit ".repeat(100) + "hit-selected " + "hit ".repeat(150_000);
-  act(() => render(<SearchablePayload text={text} queryText="hit" controls={null} />, container));
-  await vi.waitFor(() => expect(container.textContent).toContain("1000+ matches"));
-  const next = [...container.querySelectorAll("button")].find((button) => button.textContent === "Next match")!;
-  for (let i = 0; i < 100; i++) await act(() => next.click());
-  expect(container.textContent).toContain("101 of 1000+ matches");
-  const highlights = [...container.querySelectorAll("mark")];
-  expect(highlights.length).toBeLessThanOrEqual(100);
-  expect(highlights.some((mark) => mark.nextSibling?.textContent?.startsWith("-selected"))).toBe(true);
+it.each([4095, 4096, 8191])("shows the whole selected match at %i within display limits", async (start) => {
+  const text = "x".repeat(start - 700) + "needle ".repeat(1001);
+  const { ranges, limited } = await findPayloadMatches(
+    text,
+    parseKeywordSearchQuery("needle"),
+    new AbortController().signal
+  );
+  expect(ranges).toHaveLength(1000);
+  expect(limited).toBe(true);
+  const view = payloadView(text.length, ranges, { match: 100 });
+  expect(view.highlights[0]).toEqual(ranges[100]);
+  expect(view.start).toBeLessThanOrEqual(ranges[100].start);
+  expect(view.end).toBeGreaterThanOrEqual(ranges[100].end);
+  expect(view.highlights.length).toBeLessThanOrEqual(100);
+  expect(view.end - view.start).toBeLessThanOrEqual(4096);
 });

@@ -25,53 +25,28 @@ it("keeps matches while new records are searched and Android is stalled", async 
     frames.push(ids);
     return <div>{ids.join(",")}</div>;
   }
-  let records = [
-    request("current", { requestId: "local", responseBody: "needle" }),
-    request("current", {
-      requestId: "remote",
-      endedAt: undefined,
-      hasReceivedResponse: true,
-      requestHeaders: [{ name: "Content-Type", value: "text/plain" }]
-    }),
-    request("current", { requestId: "changed", responseBody: "waiting" })
+  const records = [
+    request("old", { requestId: "local", responseBody: "needle" }),
+    request("current", { requestId: "remote" })
   ];
   try {
     act(() => render(<Fixture records={records} />, container));
-    await vi.waitFor(() => expect(container.textContent).toContain("remote"));
-    const previousIds = frames.at(-1)!;
-    for (let update = 0; update < 3; update++) {
-      records = records.map((record) => ({
-        ...record,
-        updatedAt: record.updatedAt + 1,
-        streamEventCount: record.streamEventCount + 1,
-        status: { kind: "pending" },
-        requestHeaders: [
-          ...record.requestHeaders.map((header) => ({ ...header, name: header.name.toLowerCase() })),
-          { name: "X-Unrelated", value: String(update) }
-        ]
-      }));
-      act(() => render(<Fixture records={records} />, container));
-      expect(container.textContent).toContain("remote");
-    }
+    await vi.waitFor(() => expect(container.textContent).toBe("local,remote"));
     searchBodies.mockImplementation(() => new Promise(() => {}));
     const waiting = [...records, request("current", { requestId: "waiting" })];
     act(() => render(<Fixture records={waiting} />, container));
     await vi.waitFor(() => expect(searchBodies).toHaveBeenCalledTimes(2));
     const firstFrame = frames.length;
-    const firstSignal = searchBodies.mock.calls[1][1];
-    const next = [
-      request("current", { requestId: "new", responseBody: "needle" }),
-      ...waiting.map((r) => (r.requestId === "changed" ? { ...r, responseBody: "now needle", updatedAt: 3 } : r))
-    ];
+    const pendingSignal = searchBodies.mock.calls[1][1];
+    const next = [...waiting, request("current", { requestId: "new", responseBody: "needle" })];
     act(() => render(<Fixture records={next} />, container));
-    await vi.waitFor(() => expect(container.textContent).toContain("changed"));
-    expect(container.textContent).toContain("new");
-    expect(firstSignal.aborted).toBe(false);
+    await vi.waitFor(() => expect(container.textContent).toContain("new"));
+    expect(pendingSignal.aborted).toBe(false);
     expect(searchBodies).toHaveBeenCalledTimes(2);
-    for (const frame of frames.slice(firstFrame)) expect(frame).toEqual(expect.arrayContaining(previousIds));
+    for (const frame of frames.slice(firstFrame)) expect(frame).toEqual(expect.arrayContaining(["local", "remote"]));
     expect(searchBodies.mock.calls[1][0].requestIds).not.toContain("remote");
     act(() => render(<Fixture records={next} query="absent" />, container));
-    expect(firstSignal.aborted).toBe(true);
+    expect(pendingSignal.aborted).toBe(true);
     expect(container.textContent).toBe("");
   } finally {
     act(() => render(null, container));

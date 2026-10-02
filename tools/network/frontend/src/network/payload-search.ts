@@ -28,3 +28,22 @@ export async function findPayloadMatches(
   }
   return { ranges, limited: false };
 }
+
+export type PayloadNavigation = { match: number } | { offset: number };
+export const payloadPageSize = 4096;
+
+export function payloadView(length: number, ranges: SearchHighlightRange[], navigation: PayloadNavigation) {
+  const selected = "match" in navigation && ranges[navigation.match] ? navigation.match : -1;
+  const offset = "offset" in navigation ? navigation.offset : (ranges[selected]?.start ?? 0);
+  const start = Math.max(0, Math.min(offset, length));
+  const end = Math.min(length, start + payloadPageSize);
+  const after = ranges.findIndex((range) => range.start >= start);
+  return {
+    start,
+    end,
+    selected,
+    previous: selected >= 0 ? selected - 1 : (after < 0 ? ranges.length : after) - 1,
+    next: selected >= 0 ? selected + 1 : after,
+    highlights: ranges.filter((range) => range.start < end && range.end > start).slice(0, 100)
+  };
+}

@@ -5,7 +5,7 @@ import { bodyMatch } from "./body-test-fixtures";
 import { host } from "@snap-o/tool-host";
 import { NetworkStreamController } from "./stream-controller";
 import { createEmptyToolState, reduceCdpMessage } from "./cdp";
-import { bodySearchMatches, searchAndroidCapture, searchLocalCapture, type BodySearchCache } from "./body-search";
+import { createBodySearch, type BodySearchMatches } from "./body-search";
 import { filterRecords } from "../features/network-tool/lib/records";
 
 describe("browser network client", () => {
@@ -86,13 +86,20 @@ describe("browser network client", () => {
   it.each(["retry", "cancel"])("handles %s while reconnecting a body search", async (action) => {
     vi.useFakeTimers();
     const input = { processIdentity: "current", signal: new AbortController().signal };
-    const abort = new AbortController();
-    const cache: BodySearchCache = new Map();
+    let matches: BodySearchMatches = new Map();
+    const search = createBodySearch({
+      terms: ["needle"],
+      client,
+      connection: input,
+      onResults: (value) => {
+        matches = value;
+      }
+    });
     let state = createEmptyToolState();
     const records = () => [...state.requests.values()];
     const unsubscribe = client.onEvent((event) => {
       state = reduceCdpMessage(state, event.processId, event.message);
-      void searchLocalCapture(records(), ["needle"], abort.signal, cache, () => {}).catch(() => {});
+      search.update(records());
     });
     const history =
       JSON.stringify({
@@ -118,30 +125,25 @@ describe("browser network client", () => {
     const controller = new NetworkStreamController(client, input, () => {}, { retryDelaysMs: [1200] });
     controller.start();
     await vi.advanceTimersByTimeAsync(0);
-    const work = searchAndroidCapture(["needle"], client, input, abort.signal, cache, () => {});
-    const stopped = expect(work).rejects.toMatchObject({ name: "AbortError" });
     try {
       expect(searches).toHaveLength(1);
       streams[0].dispatchEvent(new Event("error"));
       await vi.advanceTimersByTimeAsync(1000);
       expect(searches[0].aborted).toBe(true);
       expect(calls).toHaveBeenCalledTimes(3);
-      expect([...cache.values()][0].remote).toBeUndefined();
-      if (action === "cancel") abort.abort();
+      expect(filterRecords(records(), "needle", false, [], matches)).toHaveLength(0);
+      if (action === "cancel") search.dispose();
       ready = true;
       await vi.advanceTimersByTimeAsync(1000);
       expect(streams).toHaveLength(2);
       expect(searches).toHaveLength(action === "cancel" ? 1 : 2);
-      expect(filterRecords(records(), "needle", false, [], bodySearchMatches(cache))).toHaveLength(
-        action === "cancel" ? 0 : 1
-      );
+      expect(filterRecords(records(), "needle", false, [], matches)).toHaveLength(action === "cancel" ? 0 : 1);
       if (action === "cancel") expect(calls).toHaveBeenCalledTimes(3);
     } finally {
-      abort.abort();
+      search.dispose();
       controller.dispose();
       unsubscribe();
       await vi.advanceTimersByTimeAsync(500);
-      await stopped;
       vi.useRealTimers();
     }
   });

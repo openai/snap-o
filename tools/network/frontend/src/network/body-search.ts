@@ -109,9 +109,6 @@ interface CachedBodySearch {
   previous?: RequestBodySearchMatch;
 }
 
-// Reuse results for one query and connection. Remove entries when their records are removed.
-export type BodySearchCache = Map<string, CachedBodySearch>;
-
 function sameSearchSource(a: RequestRecord, b: RequestRecord): boolean {
   return (
     a.requestBody === b.requestBody &&
@@ -139,92 +136,128 @@ function entryMatch(entry: CachedBodySearch): RequestBodySearchMatch | undefined
     : (entry.local ?? entry.remote ?? entry.previous);
 }
 
-export function bodySearchMatches(cache: BodySearchCache): BodySearchMatches {
-  const matches = new Map<string, RequestBodySearchMatch>();
-  for (const [key, entry] of cache) {
-    const match = entryMatch(entry);
-    if (match) matches.set(key, match);
-  }
-  return matches;
-}
+export function createBodySearch({
+  terms,
+  client,
+  connection,
+  onResults
+}: {
+  terms: string[];
+  client: NetworkClient;
+  connection: ToolConnection | null;
+  onResults: (matches: BodySearchMatches) => void;
+}) {
+  // Jobs write to their own entries; replaced entries are never published.
+  const entries = new Map<string, CachedBodySearch>();
+  const abort = new AbortController();
+  const { signal } = abort;
+  let localRunning = false;
+  let remoteRunning = false;
+  let remoteSupported = true;
 
-export async function searchLocalCapture(
-  records: ToolRecord[],
-  terms: string[],
-  signal: AbortSignal,
-  cache: BodySearchCache,
-  publish: () => void
-): Promise<void> {
-  const keys = new Set<string>();
-  // Replace changed entries before awaiting, so old Android replies cannot update them.
-  for (const record of records) {
-    if (record.kind !== "request") continue;
-    const key = requestRecordKey(record.processId, record.requestId);
-    keys.add(key);
-    const previous = cache.get(key);
-    if (!previous || !sameSearchSource(previous.source, record)) {
-      cache.delete(key);
-      cache.set(key, { source: record, previous: previous && entryMatch(previous) });
+  function publish() {
+    if (signal.aborted) return;
+    const matches = new Map<string, RequestBodySearchMatch>();
+    for (const [key, entry] of entries) {
+      const match = entryMatch(entry);
+      if (match) matches.set(key, match);
     }
+    onResults(matches);
   }
-  for (const key of cache.keys()) if (!keys.has(key)) cache.delete(key);
-  let scanned = 0;
-  for (const entry of cache.values()) {
-    if (entry.local) continue;
-    const local = await searchLocalBodies(entry.source, terms, signal);
-    signal.throwIfAborted();
-    entry.local = local;
-    if (++scanned % 16 === 0) publish();
-  }
-  publish();
-}
 
-export async function searchAndroidCapture(
-  terms: string[],
-  client: NetworkClient,
-  connection: ToolConnection,
-  signal: AbortSignal,
-  cache: BodySearchCache,
-  publish: () => void
-): Promise<void> {
-  if (!client.searchBodies) return;
-  while (!signal.aborted) {
-    const batch = [...cache.entries()]
-      .filter(([, entry]) => entry.source.processId === connection.processIdentity && entry.remote === undefined)
-      .slice(0, bodySearchLimits.batchSize);
-    if (batch.length === 0) {
-      await yieldSearch(signal, bodySearchLimits.retryDelayMs);
-      continue;
-    }
-    // Give other waiting requests a turn before retrying this batch.
-    for (const [key, entry] of batch) {
-      cache.delete(key);
-      cache.set(key, entry);
-    }
-    let results: RequestBodySearchMatch[] = [];
+  async function searchLocal() {
+    if (localRunning) return;
+    localRunning = true;
     try {
-      results = (
-        await client.searchBodies({ requestIds: batch.map(([, entry]) => entry.source.requestId), terms }, signal)
-      ).results;
-    } catch (error) {
-      signal.throwIfAborted();
-      if (error instanceof BodySearchHttpError && error.status === 404) return;
-      // A stream can reconnect while the query is still active.
-      if (
-        error instanceof TypeError ||
-        ((error instanceof Error || error instanceof DOMException) &&
-          ["AbortError", "TimeoutError"].includes(error.name)) ||
-        (error instanceof BodySearchHttpError && [408, 429].includes(error.status)) ||
-        (error instanceof BodySearchHttpError && error.status >= 500)
-      ) {
-        await yieldSearch(signal, bodySearchLimits.retryDelayMs);
-        continue;
+      let scanned = 0;
+      for (const entry of entries.values()) {
+        if (entry.local) continue;
+        entry.local = await searchLocalBodies(entry.source, terms, signal);
+        if (++scanned % 16 === 0) publish();
       }
+    } finally {
+      localRunning = false;
+      publish();
     }
-    signal.throwIfAborted();
-    for (const [key, entry] of batch) {
-      if (cache.get(key) === entry) entry.remote = results.find((r) => r.requestId === entry.source.requestId) ?? null;
-    }
-    publish();
   }
+
+  async function searchAndroid() {
+    if (remoteRunning || !client.searchBodies || !connection || !remoteSupported) return;
+    remoteRunning = true;
+    try {
+      while (!signal.aborted) {
+        const batch = [...entries.entries()]
+          .filter(([, entry]) => entry.source.processId === connection.processIdentity && entry.remote === undefined)
+          .slice(0, bodySearchLimits.batchSize);
+        if (batch.length === 0) return;
+        // Give other waiting requests a turn before retrying this batch.
+        for (const [key, entry] of batch) {
+          entries.delete(key);
+          entries.set(key, entry);
+        }
+        let results: RequestBodySearchMatch[] = [];
+        try {
+          results = (
+            await client.searchBodies({ requestIds: batch.map(([, entry]) => entry.source.requestId), terms }, signal)
+          ).results;
+        } catch (error) {
+          signal.throwIfAborted();
+          if (error instanceof BodySearchHttpError && error.status === 404) {
+            remoteSupported = false;
+            return;
+          }
+          // A stream can reconnect while the query is still active.
+          if (
+            error instanceof TypeError ||
+            ((error instanceof Error || error instanceof DOMException) &&
+              ["AbortError", "TimeoutError"].includes(error.name)) ||
+            (error instanceof BodySearchHttpError && [408, 429].includes(error.status)) ||
+            (error instanceof BodySearchHttpError && error.status >= 500)
+          ) {
+            await yieldSearch(signal, bodySearchLimits.retryDelayMs);
+            continue;
+          }
+        }
+        for (const [, entry] of batch) {
+          entry.remote = results.find((r) => r.requestId === entry.source.requestId) ?? null;
+        }
+        publish();
+      }
+    } finally {
+      remoteRunning = false;
+    }
+  }
+
+  return {
+    update(records: ToolRecord[]) {
+      if (signal.aborted) return;
+      const keys = new Set<string>();
+      let changed = false;
+      for (const record of records) {
+        if (record.kind !== "request") continue;
+        const key = requestRecordKey(record.processId, record.requestId);
+        keys.add(key);
+        const previous = entries.get(key);
+        if (!previous || !sameSearchSource(previous.source, record)) {
+          entries.delete(key);
+          entries.set(key, { source: record, previous: previous && entryMatch(previous) });
+          changed = true;
+        }
+      }
+      for (const key of entries.keys()) {
+        if (!keys.has(key)) {
+          entries.delete(key);
+          changed = true;
+        }
+      }
+      if (!changed) return;
+      publish();
+      void searchLocal().catch(() => {});
+      void searchAndroid().catch(() => {});
+    },
+    dispose() {
+      abort.abort();
+      entries.clear();
+    }
+  };
 }
