@@ -29,11 +29,10 @@ the previous request without stopping its emulator. If the selected device
 disconnects, Live Preview waits for it. Another device becoming ready does not
 change the selection.
 
-Use **Copy Open Link** in Device Manager's context menu. Emulator links use the
-AVD name and include `start=true`. Physical device links use the ADB serial.
+Use AVD names for emulator links and ADB serials for physical device links.
 AVD names remain useful across restarts; an `emulator-5554` serial can belong
 to a different AVD after restarting. Names and serials are case-sensitive.
-Percent-encode query values when constructing links yourself.
+Percent-encode query values when constructing links.
 
 These commands also work from a local agent or script on the Mac running
 Snap-O. The shell's `open` command submits the URL; its exit status does not
