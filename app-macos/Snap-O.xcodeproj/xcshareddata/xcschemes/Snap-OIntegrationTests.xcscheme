@@ -8,7 +8,7 @@
       buildArchitectures = "Automatic">
       <BuildActionEntries>
          <BuildActionEntry
-            buildForTesting = "NO"
+            buildForTesting = "YES"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -33,9 +33,9 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E41000082F70000100C0FFEE"
-               BuildableName = "Snap-OUnitTests.xctest"
-               BlueprintName = "Snap-OUnitTests"
+               BlueprintIdentifier = "E30000082F70000100C0FFEE"
+               BuildableName = "Snap-OIntegrationTests.xctest"
+               BlueprintName = "Snap-OIntegrationTests"
                ReferencedContainer = "container:Snap-O.xcodeproj">
             </BuildableReference>
          </TestableReference>

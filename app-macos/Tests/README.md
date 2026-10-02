@@ -3,7 +3,7 @@
 CI uses Xcode 26.4.1. Use the same version for local validation; Xcode 26.1.1
 fails to compile the locked dependency test support. The app still targets macOS 26+.
 
-CI builds the app and packages in Debug. The custom Local configuration makes
+CI builds the unit and integration schemes in Debug. The custom Local configuration makes
 Swift packages use release optimization, which slows fresh test builds.
 CI resolves locked packages during that build, then runs the generated `.xctestrun`
 file directly. The test step does not need to resolve packages again.
@@ -48,13 +48,55 @@ Do not mock the model whose behavior the test is checking.
 
 Choose tests for the changed behavior and its callers, not just the changed filename.
 Shared lifecycle or transport changes need broader coverage than a toolbar layout change.
-Use the smallest set that covers the affected behavior. Do not rerun successful checks
-without a relevant source, dependency, build-input change, or unresolved failure.
-An unchanged patch with recorded validation does not need another full local run.
+Do not repeat successful checks without relevant source or build changes, or an unresolved
+failure. Documentation-only changes need a content and link review, not an app build.
 
-For Swift code changes, build the app and lint the changed files. A `build` or
-`build-for-testing` action compiles code without running the test app.
-Documentation-only changes need a content and link review, not an app build.
+### Headless unit tests
+
+`Snap-OUnitTests` is the default local test scheme. It uses the command-line `xctest`
+runner with no application host or app target dependency. The normal `Snap-O` scheme's
+Test action selects these tests too; its Run and Archive actions still build the app.
+
+From `app-macos/`:
+
+```sh
+xcodebuild -project Snap-O.xcodeproj -scheme Snap-OUnitTests -configuration Debug \
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+```
+
+Use `-only-testing:Snap-OUnitTests/DeviceOpenResolverTests`, for example, to narrow a run.
+Build the app separately when production code changes; unit tests compile only their
+selected production sources.
+
+The headless target covers settings, device links and resolution, clipboard state,
+history selection, crop geometry, trim decisions, playback visibility, and workspace
+persistence. It compiles the same production files as the app, with explicit membership
+under **Unit test sources** in the Xcode project. No source copies or new libraries are
+needed. New independent tests belong in `Snap-OUnitTests/`; add any additional production
+files to that target's Sources phase. Keep app startup, window creation, and real
+transport operations out of this target. A regression test checks that the runner has
+no `NSApplication` instance and is not an application bundle.
+
+### App integration tests
+
+The `Snap-OIntegrationTests` scheme is opt-in locally. It builds the app and runs the
+remaining tests from `Snap-OTests/` inside Snap-O. Both `test` and `test-without-building`
+launch the app, even with `-only-testing`. Run it locally only when the user explicitly
+requests or approves it; otherwise leave this coverage to CI.
+
+```sh
+xcodebuild -project Snap-O.xcodeproj -scheme Snap-OIntegrationTests -configuration Debug \
+  -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+  -only-testing:Snap-OIntegrationTests/CaptureViewTests test
+```
+
+`build-for-testing` compiles either scheme without launching the tests. CI builds both
+schemes and runs their `.xctestrun` files in separate steps. Select the file by scheme
+name; a shared build directory can contain both files and stale files from older schemes.
+The full native CI run remains the submission check. Report actual results and deferred
+coverage; a unit pass does not verify app integration or visual behavior.
+
+### Standalone checks
 
 Use these existing console-only suites when their coverage matches the change.
 Paths are relative to `app-macos/`:
@@ -68,34 +110,24 @@ Paths are relative to `app-macos/`:
 | Device inventory, emulator commands, and authentication policy | `Tests/DeviceManager/test.sh`, with `SNAPO_DERIVED_DATA` and `SNAPO_TEST_ADB` unset |
 
 The Device Manager command above skips signed XPC integration and real ADB startup.
-Keep those omissions explicit; a console-only pass does not cover them.
-For recording and recovery, reuse a matching `build-for-testing` output through
-`SNAPO_DERIVED_DATA` and set `SNAPO_TEST_CONFIGURATION` to that build's configuration.
+Keep those omissions explicit. Recording and recovery reuse package products from a
+matching `Snap-OIntegrationTests` build through `SNAPO_DERIVED_DATA`; set
+`SNAPO_TEST_CONFIGURATION` to that build's configuration. A headless-only build does
+not produce those dependencies. Without `SNAPO_DERIVED_DATA`, the scripts build the
+integration scheme first, without running its tests.
 
-### Checks that affect the desktop
+These standalone entry points also require explicit approval for local execution:
 
-Run these locally only when the user explicitly requests or approves them.
-Otherwise, use applicable console-only checks and leave the remaining coverage to CI.
-
-- `Snap-OTests` has Snap-O as its `TEST_HOST`. Both `test` and
-  `test-without-building` launch the app, even with `-only-testing`.
-  `scripts/test-tool-selection.sh` uses this target too.
+- `scripts/test-tool-selection.sh` runs selected app-hosted integration tests.
 - `scripts/test-startup-capture.sh` includes session tests that open AppKit windows.
 - `scripts/test-live-preview-frame-export.sh` creates test windows and sends events.
-- `Tests/DeviceManager/test.sh` also launches signed test apps when
-  `SNAPO_DERIVED_DATA` is set. `Tests/AndroidHostSecurity/test.sh` does the same when
-  given a built helper or `SNAPO_DERIVED_DATA`.
+- `Tests/DeviceManager/test.sh` launches signed test apps with `SNAPO_DERIVED_DATA` set.
+  `Tests/AndroidHostSecurity/test.sh` does the same with a built helper or that variable.
 
 A standalone executable is not necessarily a console-only test. Inspect its setup
-before selecting an unlisted suite. When a local app-hosted run is approved, filter
-it to the relevant suites or test methods instead of running the whole target.
-
-For toolbar layout or view wiring, a build and changed-file lint are the default
-local checks. They do not verify interaction behavior; report that coverage as
-pending unless an approved UI check or the relevant CI tests cover it.
-
-The full native CI run remains the submission check. Report which local checks ran,
-which coverage was deferred, and the actual CI result when available.
+before selecting an unlisted suite. For toolbar layout or view wiring, a build and
+changed-file lint are the default local checks; report interaction coverage as pending
+unless an approved UI check or relevant CI tests cover it.
 
 ## Focused tests
 
@@ -114,10 +146,10 @@ which coverage was deferred, and the actual CI result when available.
 | Rename focus | A manually executed focus callback |
 | Emulator launch arguments and JWT claims | Configuration values, a fixed signing time, and a test key |
 
-The app uses `Dependencies`; the Xcode tests also use `DependenciesTestSupport`.
+The app uses `Dependencies`; the app-hosted tests also use `DependenciesTestSupport`.
 The startup/session, recording, and recovery scripts reuse compiled package
 products through `scripts/test-swift-packages.sh`.
-Set `SNAPO_DERIVED_DATA` to an existing `build-for-testing` output to avoid rebuilding;
+Set `SNAPO_DERIVED_DATA` to an existing integration `build-for-testing` output to avoid rebuilding;
 CI passes the output from its native test build. Set `SNAPO_TEST_CONFIGURATION`
 to match that build's configuration; CI uses Debug and local scripts default to Local.
 Without `SNAPO_DERIVED_DATA`, these scripts update the build in `app-macos/.build/tests` first.
@@ -177,9 +209,9 @@ check upload bytes, protocol framing, and device error responses. It is opt-in:
 
 ```sh
 TEST_RUNNER_SNAPO_FILE_TRANSFER_INTEGRATION=1 xcodebuild test-without-building \
-  -xctestrun "$SNAPO_DERIVED_DATA/Build/Products/"*.xctestrun \
+  -xctestrun "$SNAPO_DERIVED_DATA/Build/Products/"Snap-OIntegrationTests_*.xctestrun \
   -destination 'platform=macOS' \
-  -only-testing:Snap-OTests/ADBFileTransferIntegrationTests \
+  -only-testing:Snap-OIntegrationTests/ADBFileTransferIntegrationTests \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 ```
 

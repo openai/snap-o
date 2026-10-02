@@ -1,5 +1,4 @@
 import AppKit
-@testable import Snap_O
 import Testing
 
 struct CaptureHistoryGridSelectionTests {
