@@ -482,7 +482,7 @@ struct CaptureWindow: View {
                       VStack(spacing: 12) {
                         AppToolPlaceholder(presentation: toolModel.presentation, retry: toolModel.retryDiscovery)
                         if let launch = toolModel.appLaunch {
-                          Button(launch.pending ? "Opening…" : "Open App") { toolModel.openSelectedApp() }
+                          Button(launch.pending ? "Opening" : "Open App") { toolModel.openSelectedApp() }
                             .disabled(launch.pending)
                           if let error = launch.error { Text(error).foregroundStyle(.red) }
                         }
@@ -504,7 +504,7 @@ struct CaptureWindow: View {
                       let toolName = toolModel.selectedToolApp?.tools.first {
                         $0.kind == toolModel.selectedTool?.kind
                       }?.displayName ?? "tool"
-                      ProgressView("Loading \(toolName)…")
+                      ProgressView("Loading \(toolName)")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(nsColor: .textBackgroundColor))
                     }

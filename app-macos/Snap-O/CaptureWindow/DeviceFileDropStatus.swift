@@ -5,7 +5,7 @@ struct DeviceFileDropStatus: View {
   @State private var showsDetails = false
 
   private var message: String {
-    if model.isBusy { return model.status ?? "Preparing…" }
+    if model.isBusy { return model.status ?? "Preparing" }
     if let failure = model.failures.last { return failure.message }
     return model.status ?? ""
   }

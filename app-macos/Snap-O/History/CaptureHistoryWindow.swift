@@ -63,7 +63,7 @@ struct CaptureHistoryWindow: View {
         if let item, item.isAvailable {
           capturePreview(entry, item: item)
         } else if entry.completedAt == nil {
-          ProgressView("Capturing…")
+          ProgressView("Capturing")
         } else {
           ContentUnavailableView {
             Label("Capture unavailable", systemImage: "exclamationmark.triangle")

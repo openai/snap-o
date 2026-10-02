@@ -145,7 +145,7 @@ struct DeviceControlsView: View {
     }
     .toggleStyle(.button)
     .help(!settings.syncClipboard ? "Sync clipboard: Off" : connection?.clipboard?.isUnavailable == true
-      ? "Sync clipboard: Connection unavailable. Retrying…" : "Sync clipboard: On")
+      ? "Sync clipboard: Connection unavailable. Retrying" : "Sync clipboard: On")
     .accessibilityLabel("Sync clipboard")
     .accessibilityValue(settings.syncClipboard ? "On" : "Off")
   }

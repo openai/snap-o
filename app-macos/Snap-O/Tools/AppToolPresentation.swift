@@ -28,7 +28,7 @@ enum AppToolPresentation: Equatable {
 
   var message: String? {
     switch self {
-    case .findingApps: "Finding apps…"
+    case .findingApps: "Finding apps"
     case .discoveryFailed: "Couldn’t find apps"
     case .noApps: "No apps found"
     case .needsSelection: "Select an app to inspect"

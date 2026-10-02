@@ -3,6 +3,7 @@
 For automated contributors:
 
 - This app targets macOS 26+ ONLY.
+- Do not use ellipses in status messages shown in the capture pane.
 - Follow the existing style. Defer to the repo configs:
   - SwiftLint: `.swiftlint.yml`
   - SwiftFormat: `.swiftformat`

@@ -247,7 +247,7 @@ struct CaptureToolbar: View {
       HStack(spacing: 6) {
         ProgressView()
           .controlSize(.small)
-        Text("Stopping…")
+        Text("Stopping")
           .font(.body.weight(.semibold))
           .foregroundStyle(.secondary)
       }
