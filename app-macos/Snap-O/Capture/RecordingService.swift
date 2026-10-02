@@ -97,6 +97,7 @@ actor RecordingService {
     let completion: RecordingOperationCompletion
     var sessionMonitors: [SessionMonitor]
     let historyID: UUID?
+    let activeDevicesChanged: @MainActor @Sendable (Set<String>) -> Void
   }
 
   typealias StartRecording = @Sendable (String, Bool) async throws -> any ScreenRecording
@@ -136,7 +137,8 @@ actor RecordingService {
 
   func start(
     for devices: [Device],
-    options: RecordingOptions
+    options: RecordingOptions,
+    activeDevicesChanged: @escaping @MainActor @Sendable (Set<String>) -> Void = { _ in }
   ) async throws -> RecordingOperationHandle {
     guard !isShuttingDown else { throw CaptureCoordinationError.closed }
 
@@ -182,8 +184,10 @@ actor RecordingService {
       lease: lease,
       completion: completion,
       sessionMonitors: [],
-      historyID: historyID
+      historyID: historyID,
+      activeDevicesChanged: activeDevicesChanged
     )
+    await activeDevicesChanged(Set(entries.map(\.device.id)))
     operations[operationID]?.sessionMonitors = entries.map { entry in
       SessionMonitor(
         session: entry.session,
@@ -230,6 +234,7 @@ actor RecordingService {
     cleanupOperationIDs.insert(handle.id)
     defer { cleanupOperationIDs.remove(handle.id) }
 
+    await operation.activeDevicesChanged([])
     await discard(operation.entries)
     await history?.discardEmpty(operation.historyID)
     await coordinator.release(operation.lease)
@@ -353,6 +358,7 @@ actor RecordingService {
     operation.entries[index].stopStatus = stopStatus
     operation.entries[index].failure = message
     operations[operationID] = operation
+    await operation.activeDevicesChanged(Set(operation.entries.filter { $0.stopStatus == .recording }.map(\.device.id)))
     // Record an unconfirmed stop before closing the stream can wake its monitor.
     await entry.session.close()
     await restoration.value
@@ -378,6 +384,7 @@ actor RecordingService {
     cleanupOperationIDs.insert(operationID)
     defer { cleanupOperationIDs.remove(operationID) }
 
+    await operation.activeDevicesChanged([])
     let (media, captureError) = await collectMedia(
       from: operation.entries,
       historyID: operation.historyID
@@ -484,6 +491,7 @@ actor RecordingService {
     operations.removeAll()
 
     for operation in activeOperations.values {
+      await operation.activeDevicesChanged([])
       for monitor in operation.sessionMonitors {
         monitor.task.cancel()
       }

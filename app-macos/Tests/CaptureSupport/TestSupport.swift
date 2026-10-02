@@ -362,6 +362,8 @@ actor RecordingService {
 
   private var finishGate: TestGate?
   private var completedMedia: [CaptureMedia] = []
+  private var activeDeviceIDs: Set<String> = []
+  private var activeDevicesChanged: @MainActor @Sendable (Set<String>) -> Void = { _ in }
 
   func setCompletedMedia(_ media: [CaptureMedia]) {
     completedMedia = media
@@ -371,11 +373,18 @@ actor RecordingService {
     finishGate = gate
   }
 
-  func start(for devices: [Device], options: RecordingOptions) async throws -> RecordingOperationHandle {
+  func start(
+    for devices: [Device],
+    options: RecordingOptions,
+    activeDevicesChanged: @escaping @MainActor @Sendable (Set<String>) -> Void = { _ in }
+  ) async throws -> RecordingOperationHandle {
     let lease = try await coordinator.acquire(
       deviceIDs: devices.map(\.id), for: options.recordsBugReport ? .bugReportRecording : .recording
     )
     requests.append(devices.map(\.id))
+    self.activeDevicesChanged = activeDevicesChanged
+    activeDeviceIDs = Set(devices.map(\.id))
+    await activeDevicesChanged(activeDeviceIDs)
     return RecordingOperationHandle(lease: lease)
   }
 
@@ -384,15 +393,27 @@ actor RecordingService {
     return RecordingOperationResult(media: completedMedia, error: nil)
   }
 
-  func updateConnectedDeviceIDs(_: Set<String>, for _: RecordingOperationHandle) {}
+  func updateConnectedDeviceIDs(_ ids: Set<String>, for _: RecordingOperationHandle) async {
+    activeDeviceIDs.formIntersection(ids)
+    await activeDevicesChanged(activeDeviceIDs)
+  }
+
+  func endRecording(for deviceID: String) async {
+    activeDeviceIDs.remove(deviceID)
+    await activeDevicesChanged(activeDeviceIDs)
+  }
 
   func finish(_ handle: RecordingOperationHandle) async {
+    activeDeviceIDs = []
+    await activeDevicesChanged([])
     await finishGate?.wait()
     await coordinator.release(handle.lease)
     await handle.completion.open()
   }
 
   func cancel(_ handle: RecordingOperationHandle) async {
+    activeDeviceIDs = []
+    await activeDevicesChanged([])
     await finishGate?.wait()
     await coordinator.release(handle.lease)
     await handle.completion.open()

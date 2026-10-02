@@ -12,22 +12,30 @@ final class RecordingMode {
   private let recordingService: RecordingService
   private let initialDevices: [Device]
   private let options: RecordingOptions
+  private let onDevicesChanged: @MainActor () -> Void
   private let onResult: @MainActor (Result) async -> Void
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var completionTask: Task<Void, Never>?
   private var operation: RecordingOperationHandle?
   private var connectedDeviceIDs: Set<String>
   private var hasCompleted = false
+  private var activeDeviceIDs: Set<String> = []
+
+  var devices: [Device] {
+    initialDevices.filter { activeDeviceIDs.contains($0.id) }
+  }
 
   init(
     recordingService: RecordingService,
     devices: [Device],
     options: RecordingOptions,
+    onDevicesChanged: @escaping @MainActor () -> Void,
     onResult: @escaping @MainActor (Result) async -> Void
   ) {
     self.recordingService = recordingService
     initialDevices = devices
     self.options = options
+    self.onDevicesChanged = onDevicesChanged
     self.onResult = onResult
     connectedDeviceIDs = Set(devices.map(\.id))
   }
@@ -40,7 +48,11 @@ final class RecordingMode {
         let operation = try await recordingService.start(
           for: initialDevices,
           options: options
-        )
+        ) { [weak self] deviceIDs in
+          guard let self, !hasCompleted else { return }
+          activeDeviceIDs = deviceIDs
+          onDevicesChanged()
+        }
         if hasCompleted {
           await recordingService.cancel(operation)
         } else {

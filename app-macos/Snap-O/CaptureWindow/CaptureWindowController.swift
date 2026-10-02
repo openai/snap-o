@@ -142,21 +142,30 @@ final class CaptureWindowController {
   }
 
   func selectMedia(id: CaptureMedia.ID?) {
+    if isRecording {
+      guard let capture = previewPickerMedia.first(where: { $0.id == id }) else { return }
+      selectRecordingDevice(id: capture.device.id)
+      return
+    }
     deviceOpenRequest = nil
     pendingPreferredDeviceID = nil
     snapshotController.selectMedia(id: id)
   }
 
   func selectNextMedia() {
-    deviceOpenRequest = nil
-    pendingPreferredDeviceID = nil
-    snapshotController.selectNextMedia()
+    selectAdjacentMedia(offset: 1)
   }
 
   func selectPreviousMedia() {
-    deviceOpenRequest = nil
-    pendingPreferredDeviceID = nil
-    snapshotController.selectPreviousMedia()
+    selectAdjacentMedia(offset: -1)
+  }
+
+  private func selectAdjacentMedia(offset: Int) {
+    let captures = isRecording ? previewPickerMedia : mediaList
+    guard !captures.isEmpty else { return }
+    let index = captures.firstIndex { $0.id == selectedMediaID }
+      .map { ($0 + offset + captures.count) % captures.count } ?? 0
+    selectMedia(id: captures[index].id)
   }
 
   func selectDevice(id: String) {
@@ -176,7 +185,18 @@ final class CaptureWindowController {
   }
 
   func hasAlternativeMedia() -> Bool {
-    snapshotController.hasAlternativeMedia
+    if isRecording {
+      return previewPickerMedia.count > 1
+    }
+    return snapshotController.hasAlternativeMedia
+  }
+
+  var previewPickerMedia: [CaptureMedia] {
+    if isRecording {
+      let deviceIDs = Set(recordingDevices.map(\.id))
+      return mediaList.filter { deviceIDs.contains($0.device.id) }
+    }
+    return overlayMediaList.isEmpty ? mediaList : overlayMediaList
   }
 
   func synchronizeCaptureHistory(availableCaptureIDs: Set<UUID>, root: URL) {
@@ -212,6 +232,25 @@ final class CaptureWindowController {
 
   var isRecording: Bool {
     recordingMode != nil
+  }
+
+  var recordingDevices: [Device] {
+    recordingMode?.devices ?? []
+  }
+
+  func selectRecordingDevice(id: String) {
+    guard isLivePreviewActive, !isProcessing, !isFinishingRecording,
+          recordingDevices.contains(where: { $0.id == id }) else { return }
+    deviceOpenRequest = nil
+    selectDevice(id: id)
+  }
+
+  private func reconcileRecordingSelection() {
+    guard !isTornDown, isRecording, isLivePreviewActive, !isProcessing, !isFinishingRecording else { return }
+    let preferredID = pendingPreferredDeviceID ?? currentCapture?.device.id
+    guard !recordingDevices.contains(where: { $0.id == preferredID }),
+          let capture = previewPickerMedia.first else { return }
+    selectRecordingDevice(id: capture.device.id)
   }
 
   var shouldFloatRecordingWindow: Bool {
@@ -320,6 +359,13 @@ final class CaptureWindowController {
   }
 
   var captureProgressText: String? {
+    if isLivePreviewActive {
+      let captures = previewPickerMedia
+      guard captures.count > 1 else { return nil }
+      let index = captures.firstIndex { $0.id == selectedMediaID } ?? 0
+      return "\(index + 1)/\(captures.count)"
+    }
+    if isRecording { return nil }
     if let progress = mediaDisplayMode.captureProgressText {
       cachedCaptureProgressText = progress
       return progress
@@ -415,10 +461,14 @@ final class CaptureWindowController {
       options: RecordingOptions(
         recordsBugReport: recordsBugReport,
         showsTouches: AppSettings.shared.showTouchesDuringCapture
-      )
-    ) { [weak self] result in
-      await self?.completeRecording(result)
-    }
+      ),
+      onDevicesChanged: { [weak self] in
+        self?.reconcileRecordingSelection()
+      },
+      onResult: { [weak self] result in
+        await self?.completeRecording(result)
+      }
+    )
     self.recordingMode = recordingMode
     recordingMode.start()
     isProcessing = false
@@ -542,6 +592,7 @@ final class CaptureWindowController {
         if let pending = pendingPreferredDeviceID, mediaList.contains(where: { $0.device.id == pending }) {
           pendingPreferredDeviceID = nil
         }
+        reconcileRecordingSelection()
         resumeInitialCaptureWaiters()
       }
     )

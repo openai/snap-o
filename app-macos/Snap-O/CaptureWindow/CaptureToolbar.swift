@@ -90,7 +90,7 @@ struct CaptureToolbar: View {
     HStack(spacing: 15) {
       captureControls()
 
-      if !controller.isRecording, !controller.isReviewingCapture, let progress = controller.captureProgressText {
+      if !controller.isReviewingCapture, let progress = controller.captureProgressText {
         captureProgress(progress)
       }
     }
@@ -250,7 +250,7 @@ struct CaptureToolbar: View {
       Button {
         Task { await controller.stopRecording() }
       } label: {
-        Label("Stop Recording", systemImage: "stop.fill")
+        Label("Stop", systemImage: "stop.fill")
           .labelStyle(.titleAndIcon)
           .font(.body.weight(.semibold))
           .foregroundStyle(.white)
@@ -259,6 +259,7 @@ struct CaptureToolbar: View {
       .buttonBorderShape(.capsule)
       .tint(.red)
       .help("Stop Recording (⇧⌘V)")
+      .accessibilityLabel("Stop Recording")
       .keyboardShortcut("v", modifiers: [.command, .shift])
     }
   }
@@ -316,7 +317,7 @@ struct CaptureToolbar: View {
   }
 
   private func captureProgress(_ progress: String) -> some View {
-    let isCaptureInFlight = controller.isProcessing || controller.isRecording
+    let isCaptureInFlight = controller.isProcessing
     let canBrowseCaptures = !isCaptureInFlight && controller.hasAlternativeMedia()
 
     return CaptureSelectionPill(position: progress)
