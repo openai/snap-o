@@ -15,6 +15,9 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Utilities/Perf.swift \
   Snap-O/Capture/PreparedLivePreview.swift Snap-O/Capture/StartupCapturePreparation.swift \
   Snap-O/CaptureWindow/PreparingScreenshotMode.swift Snap-O/CaptureWindow/LivePreviewManager.swift \
+  Snap-O/Capture/CaptureCoordinator.swift \
+  Snap-O/CaptureWindow/CaptureWindowSession.swift Snap-O/Tools/ToolSession.swift \
+  Snap-O/App/SnapOCommandCoordinator.swift Snap-O/DeviceManager/DeviceOpenResolver.swift \
   Snap-O/Capture/CaptureServices.swift Snap-O/CaptureWindow/CaptureWindowController.swift \
   Snap-O/CaptureWindow/CaptureWindowMode.swift Snap-O/CaptureWindow/RecordingMode.swift \
   Snap-O/CaptureWindow/LivePreviewMode.swift Snap-O/CaptureWindow/MediaDisplayMode.swift \
@@ -23,7 +26,8 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/CaptureWindow/CaptureSnapshotController.swift \
   Snap-O/CaptureWindow/CaptureCropGeometry.swift \
   Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/Support/DeviceManagerFake.swift \
-  Tests/CaptureSupport/TestSupport.swift Tests/CaptureMode/CaptureModeTests.swift \
+  Tests/CaptureSupport/TestSupport.swift Tests/CaptureSupport/WindowSessionTestSupport.swift \
+  Tests/CaptureMode/CaptureModeTests.swift Tests/StartupCapture/WindowSessionTests.swift \
   Tests/StartupCapture/StartupCaptureTests.swift \
   -o "$TEST_DIR/startup-tests"
 run_test "$TEST_DIR/startup-tests"

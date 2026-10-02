@@ -30,8 +30,8 @@ final class SnapOCommandCoordinator {
       return true
     }
     guard let command = SnapOCommand.from(url: url) else { return false }
-    if let focusedTarget {
-      focusedTarget.perform(command)
+    if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
+      target.perform(command)
     } else {
       pendingCommands.append(command)
     }
@@ -65,10 +65,20 @@ final class SnapOCommandCoordinator {
     if lastTarget === target { lastTarget = nil }
   }
 
+  func register(_ target: any SnapOCommandTarget) {
+    targets.add(target)
+    if lastTarget == nil { lastTarget = target }
+    deliverPending(to: focusedTarget ?? lastTarget ?? target)
+  }
+
   func activate(_ target: any SnapOCommandTarget) {
     targets.add(target)
     focusedTarget = target
     lastTarget = target
+    deliverPending(to: target)
+  }
+
+  private func deliverPending(to target: any SnapOCommandTarget) {
     isOpeningWorkspace = false
     if let request = pendingDeviceRequest {
       pendingDeviceRequest = nil
@@ -99,15 +109,17 @@ extension SnapOCommand {
 struct WindowCommandRegistration: NSViewRepresentable {
   let perform: @MainActor (SnapOCommand) -> Void
   let openDevice: @MainActor (DeviceOpenRequest) -> Void
+  var attached: @MainActor (NSWindow) -> Void = { _ in }
   let thumbnail: @MainActor (String) -> LivePreviewThumbnail?
 
   func makeNSView(context: Context) -> WindowCommandTargetView {
-    WindowCommandTargetView(perform: perform, openDevice: openDevice, thumbnail: thumbnail)
+    WindowCommandTargetView(perform: perform, openDevice: openDevice, attached: attached, thumbnail: thumbnail)
   }
 
   func updateNSView(_ nsView: WindowCommandTargetView, context: Context) {
     nsView.performCommand = perform
     nsView.openDeviceRequest = openDevice
+    nsView.onAttached = attached
     nsView.thumbnailForDevice = thumbnail
     nsView.attach(to: nsView.window)
   }
@@ -121,6 +133,7 @@ struct WindowCommandRegistration: NSViewRepresentable {
 final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   var performCommand: @MainActor (SnapOCommand) -> Void
   var openDeviceRequest: @MainActor (DeviceOpenRequest) -> Void
+  var onAttached: @MainActor (NSWindow) -> Void
   var thumbnailForDevice: @MainActor (String) -> LivePreviewThumbnail?
 
   private weak var observedWindow: NSWindow?
@@ -129,10 +142,12 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   init(
     perform: @escaping @MainActor (SnapOCommand) -> Void,
     openDevice: @escaping @MainActor (DeviceOpenRequest) -> Void,
+    attached: @escaping @MainActor (NSWindow) -> Void = { _ in },
     thumbnail: @escaping @MainActor (String) -> LivePreviewThumbnail?
   ) {
     performCommand = perform
     openDeviceRequest = openDevice
+    onAttached = attached
     thumbnailForDevice = thumbnail
     super.init(frame: .zero)
   }
@@ -152,9 +167,12 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   }
 
   func openDevice(_ request: DeviceOpenRequest) {
-    NSApplication.shared.activate(ignoringOtherApps: true)
-    window?.deminiaturize(nil)
-    window?.makeKeyAndOrderFront(nil)
+    // Let SwiftUI finish creating a hidden launch window before requesting focus.
+    if let window, window.isVisible || window.isMiniaturized {
+      NSApplication.shared.activate(ignoringOtherApps: true)
+      window.deminiaturize(nil)
+      window.makeKeyAndOrderFront(nil)
+    }
     openDeviceRequest(request)
   }
 
@@ -173,6 +191,8 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     detach()
     guard let window else { return }
     observedWindow = window
+    onAttached(window)
+    SnapOCommandCoordinator.shared.register(self)
 
     let center = NotificationCenter.default
     notificationTokens = [

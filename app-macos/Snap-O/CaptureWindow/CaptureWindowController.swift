@@ -6,6 +6,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class CaptureWindowController {
+  let captureCoordinator: CaptureCoordinator
   @ObservationIgnored private let screenshotService: ScreenshotService
   @ObservationIgnored private let recordingService: RecordingService
   @ObservationIgnored private let livePreviewService: LivePreviewService
@@ -46,6 +47,7 @@ final class CaptureWindowController {
     fileStore: FileStore,
     adbService: ADBService
   ) {
+    captureCoordinator = captureServices.coordinator
     screenshotService = captureServices.screenshots
     recordingService = captureServices.recording
     livePreviewService = captureServices.livePreview
@@ -61,9 +63,9 @@ final class CaptureWindowController {
     #if PERF_TRACING
     Perf.startupEvent("window controller start")
     #endif
-    isTornDown = false
-    let usePreview = pendingCommands.first.map { $0 == .livepreview }
-      ?? (usesPreviewDeviceStream || AppSettings.shared.startupCaptureMode == .livePreview)
+    guard !isTornDown, deviceStreamTask == nil else { return }
+    let usePreview = deviceOpenRequest != nil || (pendingCommands.first.map { $0 == .livepreview }
+      ?? (usesPreviewDeviceStream || AppSettings.shared.startupCaptureMode == .livePreview))
     isDeviceListInitialized = !deviceManager.latestDevices.isEmpty
     observeDevices(usePreview: usePreview)
   }
@@ -96,12 +98,29 @@ final class CaptureWindowController {
     deviceManager.retryADBServer()
   }
 
+  func enqueue(_ command: SnapOCommand) {
+    guard !isTornDown else { return }
+    // Reserve startup before the asynchronous command can yield to device discovery.
+    hasStartedInitialCapture = true
+    Task { await perform(command) }
+  }
+
   func perform(_ command: SnapOCommand) async {
+    guard !isTornDown else { return }
+    hasStartedInitialCapture = true
+    if command != .livepreview, startupPreparation.isAvailable {
+      await startupPreparation.discard()
+      guard !isTornDown, !Task.isCancelled else { return }
+    }
+    if command != .livepreview, let activity = captureCoordinator.captureActivity {
+      lastError = CaptureCoordinationError.captureBusy(activity).localizedDescription
+      return
+    }
     // Preview devices may still be booting and cannot capture yet.
-    guard !isTornDown, hasDevices, command == .livepreview || !usesPreviewDeviceStream else {
+    guard hasDevices, command == .livepreview || !usesPreviewDeviceStream else {
       pendingCommands.append(command)
       let usePreview = pendingCommands.first == .livepreview
-      if !isTornDown, deviceStreamTask != nil, usePreview != usesPreviewDeviceStream {
+      if deviceStreamTask != nil, usePreview != usesPreviewDeviceStream {
         observeDevices(usePreview: usePreview)
       }
       return
@@ -210,8 +229,16 @@ final class CaptureWindowController {
     return false
   }
 
-  var canCaptureNow: Bool {
+  private var canChangeCapture: Bool {
     !isTornDown && !isProcessing && !isSavingReview && !isRecording && !isStoppingLivePreview && hasDevices
+  }
+
+  var canCaptureNow: Bool {
+    canChangeCapture && !captureCoordinator.isCapturing
+  }
+
+  var captureUnavailableReason: String? {
+    captureCoordinator.captureActivity.map { CaptureCoordinationError.captureBusy($0).localizedDescription }
   }
 
   var isReviewingCapture: Bool {
@@ -242,7 +269,7 @@ final class CaptureWindowController {
   }
 
   var canStartLivePreviewNow: Bool {
-    canCaptureNow && !isLivePreviewActive
+    canChangeCapture && !isLivePreviewActive
   }
 
   var canSelectLivePreview: Bool {
@@ -314,11 +341,15 @@ final class CaptureWindowController {
     if !useStartupPreparation {
       guard await waitForInitialCaptureSetup() else { return }
     }
-    guard canCaptureNow else { return }
+    guard canChangeCapture else { return }
+    let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
+    guard preloadedTask != nil || !captureCoordinator.isCapturing else {
+      lastError = captureUnavailableReason
+      return
+    }
     prepareToLeaveReview()
     hasStartedInitialCapture = true
     isProcessing = true
-    let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
     if preloadedTask == nil { await startupPreparation.discard() }
     guard !isTornDown else {
       preloadedTask?.cancel()
@@ -352,7 +383,11 @@ final class CaptureWindowController {
   }
 
   func startRecording() async {
-    guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
+    guard await waitForInitialCaptureSetup(), canChangeCapture else { return }
+    guard !captureCoordinator.isCapturing else {
+      lastError = captureUnavailableReason
+      return
+    }
     prepareToLeaveReview()
     hasStartedInitialCapture = true
     let recordsBugReport = AppSettings.shared.recordAsBugReport
@@ -534,6 +569,8 @@ final class CaptureWindowController {
   func tearDown() async {
     guard !isTornDown else { return }
     isTornDown = true
+    pendingCommands.removeAll()
+    deviceOpenRequest = nil
     initialCaptureTask?.cancel()
     initialCaptureTask = nil
     resumeInitialCaptureWaiters()
@@ -544,7 +581,7 @@ final class CaptureWindowController {
     mode = .idle
     pendingPreferredDeviceID = nil
     if case .preparingScreenshot(let screenshotMode) = activeMode {
-      screenshotMode.cancel()
+      await screenshotMode.cancel()
     }
     if let recordingMode {
       self.recordingMode = nil
@@ -652,7 +689,7 @@ final class CaptureWindowController {
       return
     }
 
-    guard !hasStartedInitialCapture, mediaList.isEmpty, case .idle = mode else { return }
+    guard deviceOpenRequest == nil, !hasStartedInitialCapture, mediaList.isEmpty, case .idle = mode else { return }
     hasStartedInitialCapture = true
     initialCaptureTask = Task { [weak self] in
       guard let self else { return }

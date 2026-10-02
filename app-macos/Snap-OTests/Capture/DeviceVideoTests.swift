@@ -40,42 +40,49 @@ struct DeviceVideoTests {
   @Test
   func previewAndRecordingLeasesAreIndependent() async throws {
     let coordinator = CaptureCoordinator()
-    let preview = try await coordinator.acquire(deviceIDs: ["synthetic"], for: .livePreview)
-    let recording = try await coordinator.acquire(deviceIDs: ["synthetic"], for: .recording)
-    await #expect(throws: (any Error).self) {
-      try await coordinator.acquire(deviceIDs: ["synthetic"], for: .recording)
+    let preview = try coordinator.acquire(deviceIDs: ["synthetic"], for: .livePreview)
+    let otherPreview = try coordinator.acquire(deviceIDs: ["synthetic"], for: .livePreview)
+    let recording = try coordinator.acquire(deviceIDs: ["synthetic"], for: .recording)
+    #expect(throws: CaptureCoordinationError.captureBusy(.recording)) {
+      try coordinator.acquire(deviceIDs: ["another-device"], for: .recording)
     }
-    await coordinator.release(preview)
-    let nextPreview = try await coordinator.acquire(deviceIDs: ["synthetic"], for: .livePreview)
-    await coordinator.release(recording)
-    await coordinator.release(nextPreview)
+    coordinator.release(preview)
+    coordinator.release(recording)
+    #expect(!coordinator.isCapturing)
+    let screenshot = try coordinator.acquire(deviceIDs: ["synthetic"], for: .screenshot)
+    coordinator.release(otherPreview)
+    #expect(coordinator.captureActivity == .screenshot)
+    coordinator.release(screenshot)
     await coordinator.waitUntilIdle()
   }
 
   @Test
   func captureCompatibilityAppliesInBothAcquisitionOrders() async throws {
-    let activities: [DeviceCaptureActivity] = [.livePreview, .recording, .bugReportRecording]
+    let activities: [DeviceCaptureActivity] = [.screenshot, .livePreview, .recording, .bugReportRecording]
     for existing in activities {
       for requested in activities {
-        let coordinator = CaptureCoordinator()
-        let first = try await coordinator.acquire(deviceIDs: ["shared"], for: existing)
-        let independent = try await coordinator.acquire(deviceIDs: ["other"], for: requested)
-        await coordinator.release(independent)
-        switch (existing, requested) {
-        case (.livePreview, .livePreview), (.livePreview, .recording), (.recording, .livePreview):
-          let second = try await coordinator.acquire(deviceIDs: ["shared"], for: requested)
-          await coordinator.release(second)
-        default:
-          await #expect(throws: CaptureCoordinationError.deviceBusy(deviceID: "shared", activity: existing)) {
-            try await coordinator.acquire(deviceIDs: ["other", "shared"], for: requested)
+        for overlaps in [false, true] {
+          let coordinator = CaptureCoordinator()
+          let first = try coordinator.acquire(deviceIDs: ["first"], for: existing)
+          let nextDevices = overlaps ? ["first", "second"] : ["second"]
+          let expectedError: CaptureCoordinationError? = if existing != .livePreview, requested != .livePreview {
+            .captureBusy(existing)
+          } else if overlaps, existing == .bugReportRecording || requested == .bugReportRecording {
+            .deviceBusy(deviceID: "first", activity: existing)
+          } else {
+            nil
           }
-          let unaffected = try await coordinator.acquire(deviceIDs: ["other"], for: requested)
-          await coordinator.release(unaffected)
+          if let expectedError {
+            #expect(throws: expectedError) { try coordinator.acquire(deviceIDs: nextDevices, for: requested) }
+          } else {
+            let second = try coordinator.acquire(deviceIDs: nextDevices, for: requested)
+            coordinator.release(second)
+          }
+          coordinator.release(first)
+          let next = try coordinator.acquire(deviceIDs: nextDevices, for: requested)
+          coordinator.release(next)
+          await coordinator.waitUntilIdle()
         }
-        await coordinator.release(first)
-        let next = try await coordinator.acquire(deviceIDs: ["shared"], for: requested)
-        await coordinator.release(next)
-        await coordinator.waitUntilIdle()
       }
     }
   }

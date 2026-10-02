@@ -72,7 +72,7 @@ struct RecordingTests {
     let coordinator = CaptureCoordinator()
     let adb = ADBService(video: video)
     let service = RecordingService(adb: adb, fileStore: FileStore(baseDir: root), coordinator: coordinator)
-    let preview = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+    let preview = try coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
     do {
       _ = try await service.start(for: devices, options: RecordingOptions(recordsBugReport: true, showsTouches: false))
       fatalError("Another window's preview must block bug-report recording")
@@ -81,17 +81,17 @@ struct RecordingTests {
     }
     let settings = await adb.touchSettings
     precondition(settings.isEmpty, "Acquire exclusive access before changing device settings")
-    await coordinator.release(preview)
+    coordinator.release(preview)
     let recording = try await service.start(for: devices, options: RecordingOptions(recordsBugReport: true, showsTouches: false))
     do {
-      _ = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+      _ = try coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
       fatalError("An active bug-report recording must block another window's preview")
     } catch let error as CaptureCoordinationError {
       precondition(error == .deviceBusy(deviceID: devices[0].id, activity: .bugReportRecording))
     }
     await service.cancel(recording)
-    let resumed = try await coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
-    await coordinator.release(resumed)
+    let resumed = try coordinator.acquire(deviceIDs: [devices[0].id], for: .livePreview)
+    coordinator.release(resumed)
     await service.shutdown()
   }
 

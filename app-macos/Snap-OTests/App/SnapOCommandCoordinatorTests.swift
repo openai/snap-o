@@ -4,6 +4,26 @@ import Testing
 
 @MainActor
 struct SnapOCommandCoordinatorTests {
+  @Test func deliversColdLaunchCommandBeforeWindowBecomesKey() throws {
+    let coordinator = SnapOCommandCoordinator()
+    let url = try #require(URL(string: "snapo://capture"))
+    #expect(coordinator.handle(url: url))
+    let target = CommandTarget()
+    coordinator.register(target)
+    #expect(target.commands == [.capture])
+    coordinator.activate(target)
+    #expect(target.commands == [.capture])
+  }
+
+  @Test func deliversCommandsToAnInactiveWindow() throws {
+    let coordinator = SnapOCommandCoordinator()
+    let target = CommandTarget()
+    coordinator.register(target)
+    let url = try #require(URL(string: "snapo://record"))
+    #expect(coordinator.handle(url: url))
+    #expect(target.commands == [.record])
+  }
+
   @Test func queuesLatestRequestUntilWindowRegisters() throws {
     let coordinator = SnapOCommandCoordinator()
     var windowsOpened = 0

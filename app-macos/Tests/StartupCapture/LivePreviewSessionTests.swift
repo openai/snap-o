@@ -142,6 +142,7 @@ struct LivePreviewSessionTests {
         $0.context = .test
         $0.continuousClock = TestClock()
       } operation: {
+        try await previewWindowsStopIndependently()
         try await readinessWaitersReceiveFirstFormat()
         await streamingDurationStartsAtFirstFormat()
         await cancellationReleasesReadinessWaiters()
@@ -173,6 +174,32 @@ struct LivePreviewSessionTests {
         print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
       }
     }
+  }
+
+  static func previewWindowsStopIndependently() async throws {
+    let coordinator = CaptureCoordinator()
+    let adb = ADBService()
+    let service = LivePreviewService(adb: adb, coordinator: coordinator)
+    let options = LivePreviewOptions(showsTouches: true)
+    let first = try await service.start(for: "shared-preview", options: options)
+    let firstSource = DeviceVideoSource.latest!
+    let second = try await service.start(for: "shared-preview", options: options)
+    let secondSource = DeviceVideoSource.latest!
+    precondition(firstSource !== secondSource)
+    firstSource.emitFormat()
+    secondSource.emitFormat()
+    _ = try await first.session.waitUntilReady()
+    _ = try await second.session.waitUntilReady()
+    let recording = try coordinator.acquire(deviceIDs: ["shared-preview"], for: .recording)
+    _ = await service.stop(first)
+    precondition(firstSource.stops == 1 && secondSource.stops == 0 && second.session.isReady)
+    let settings = await adb.writes
+    precondition(settings == [true], "Closing a preview must preserve settings used by another preview")
+    coordinator.release(recording)
+    _ = await service.stop(second)
+    let restoredSettings = await adb.writes
+    precondition(secondSource.stops == 1 && restoredSettings == [true, false])
+    await coordinator.waitUntilIdle()
   }
 
   static func makeSession() -> LivePreviewSession {
@@ -517,8 +544,8 @@ struct LivePreviewSessionTests {
       }
       let settingsRead = await adb.settingsReadStarted
       precondition(!settingsRead)
-      let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .bugReportRecording)
-      await coordinator.release(lease)
+      let lease = try coordinator.acquire(deviceIDs: ["booting"], for: .bugReportRecording)
+      coordinator.release(lease)
     }
   }
 
@@ -671,8 +698,8 @@ struct LivePreviewSessionTests {
       } catch is CancellationError {
         // Expected while the device is still unresponsive.
       }
-      let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .bugReportRecording)
-      await coordinator.release(lease)
+      let lease = try coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .bugReportRecording)
+      coordinator.release(lease)
       await gate.open()
       await eventually { await adb.writes == [true, false] }
     }
@@ -710,8 +737,8 @@ struct LivePreviewSessionTests {
       await eventually { await adb.writes == [true, false] }
       let writes = await adb.writes
       precondition(writes == [true, false], "Every exit must restore the previous device setting")
-      let lease = try await coordinator.acquire(deviceIDs: ["phone"], for: .bugReportRecording)
-      await coordinator.release(lease)
+      let lease = try coordinator.acquire(deviceIDs: ["phone"], for: .bugReportRecording)
+      coordinator.release(lease)
     }
   }
 

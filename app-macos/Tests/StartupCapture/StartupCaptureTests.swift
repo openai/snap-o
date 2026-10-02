@@ -17,6 +17,7 @@ struct StartupCaptureTests {
         $0.context = .test
         $0.continuousClock = TestClock()
       } operation: {
+        try await WindowSessionTests.run()
         try await CaptureModeTests.run()
         try copyUsesSelectedCaptureCrop()
         await screenshotReuse()
@@ -137,7 +138,7 @@ struct StartupCaptureTests {
       }
       mode?.start()
     }
-    mode?.cancel()
+    await mode?.cancel()
     return result
   }
 
@@ -498,7 +499,8 @@ struct StartupCaptureTests {
     let screenshots = ScreenshotService()
     let controller = CaptureWindowController(
       captureServices: CaptureServices(
-        screenshots: screenshots, recording: RecordingService(), livePreview: live,
+        coordinator: screenshots.coordinator,
+        screenshots: screenshots, recording: RecordingService(coordinator: screenshots.coordinator), livePreview: live,
         startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
       ),
       deviceManager: tracker, fileStore: FileStore(),
@@ -695,7 +697,8 @@ struct StartupCaptureTests {
     let screenshots = ScreenshotService()
     let controller = CaptureWindowController(
       captureServices: CaptureServices(
-        screenshots: screenshots, recording: RecordingService(), livePreview: service,
+        coordinator: screenshots.coordinator,
+        screenshots: screenshots, recording: RecordingService(coordinator: screenshots.coordinator), livePreview: service,
         startup: StartupCapturePreparation(screenshots: screenshots, livePreview: service)
       ),
       deviceManager: devices, fileStore: FileStore(), adbService: ADBService()
@@ -812,7 +815,7 @@ struct StartupCaptureTests {
     let readyGate = TestGate()
     let stopGate = TestGate()
     let screenshots = ScreenshotService()
-    let recording = RecordingService()
+    let recording: RecordingService
     let tracker: DeviceManager
     let live: LivePreviewService
     let controller: CaptureWindowController
@@ -820,10 +823,12 @@ struct StartupCaptureTests {
     init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
       AppSettings.shared.lastViewedDeviceID = nil
       AppSettings.shared.startupCaptureMode = .livePreview
+      recording = RecordingService(coordinator: screenshots.coordinator)
       tracker = DeviceManager(devices: devices)
       live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
       controller = CaptureWindowController(
         captureServices: CaptureServices(
+          coordinator: screenshots.coordinator,
           screenshots: screenshots,
           recording: recording,
           livePreview: live,
@@ -1132,7 +1137,6 @@ struct StartupCaptureTests {
     if let command { await fixture.controller.perform(command) }
     await fixture.controller.start()
     if remounts {
-      await fixture.controller.tearDown()
       await fixture.controller.start()
     }
     await fixture.assertNoCaptureRequests()

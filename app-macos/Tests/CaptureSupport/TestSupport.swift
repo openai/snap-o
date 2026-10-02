@@ -133,18 +133,24 @@ actor LivePreviewService {
 }
 
 actor ScreenshotService {
+  nonisolated let coordinator: CaptureCoordinator
   private let gate: TestGate?
   private(set) var requests: [[String]] = [] {
     didSet { testChanges.signal() }
   }
 
-  init(gate: TestGate? = nil) {
+  init(gate: TestGate? = nil, coordinator: CaptureCoordinator = CaptureCoordinator()) {
+    self.coordinator = coordinator
     self.gate = gate
   }
 
   func capture(for devices: [Device]) async -> ScreenshotCaptureResult {
+    let lease: DeviceCaptureLease
+    do { lease = try await coordinator.acquire(deviceIDs: devices.map(\.id), for: .screenshot) }
+    catch { return ScreenshotCaptureResult(media: [], failures: devices.map { CaptureFailure(device: $0, error: error) }) }
     requests.append(devices.map(\.id))
     await gate?.wait()
+    await coordinator.release(lease)
     return ScreenshotCaptureResult(media: devices.map { testCapture($0) }, failures: [])
   }
 }
@@ -334,6 +340,7 @@ struct RecordingOptions {
 }
 
 struct RecordingOperationHandle {
+  let lease: DeviceCaptureLease
   let completion = TestGate()
 }
 
@@ -343,6 +350,12 @@ struct RecordingOperationResult {
 }
 
 actor RecordingService {
+  nonisolated let coordinator: CaptureCoordinator
+
+  init(coordinator: CaptureCoordinator = CaptureCoordinator()) {
+    self.coordinator = coordinator
+  }
+
   private(set) var requests: [[String]] = [] {
     didSet { testChanges.signal() }
   }
@@ -358,9 +371,12 @@ actor RecordingService {
     finishGate = gate
   }
 
-  func start(for devices: [Device], options _: RecordingOptions) throws -> RecordingOperationHandle {
+  func start(for devices: [Device], options: RecordingOptions) async throws -> RecordingOperationHandle {
+    let lease = try await coordinator.acquire(
+      deviceIDs: devices.map(\.id), for: options.recordsBugReport ? .bugReportRecording : .recording
+    )
     requests.append(devices.map(\.id))
-    return RecordingOperationHandle()
+    return RecordingOperationHandle(lease: lease)
   }
 
   func waitForCompletion(of handle: RecordingOperationHandle) async -> RecordingOperationResult? {
@@ -372,10 +388,13 @@ actor RecordingService {
 
   func finish(_ handle: RecordingOperationHandle) async {
     await finishGate?.wait()
+    await coordinator.release(handle.lease)
     await handle.completion.open()
   }
 
   func cancel(_ handle: RecordingOperationHandle) async {
+    await finishGate?.wait()
+    await coordinator.release(handle.lease)
     await handle.completion.open()
   }
 }

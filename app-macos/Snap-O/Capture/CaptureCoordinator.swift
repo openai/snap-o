@@ -1,6 +1,8 @@
 import Foundation
+import Observation
 
 enum DeviceCaptureActivity: String {
+  case screenshot
   case recording
   case bugReportRecording = "bug-report recording"
   case livePreview = "live preview"
@@ -8,6 +10,7 @@ enum DeviceCaptureActivity: String {
 
 enum CaptureCoordinationError: LocalizedError, Equatable {
   case noDevices
+  case captureBusy(DeviceCaptureActivity)
   case deviceBusy(deviceID: String, activity: DeviceCaptureActivity)
   case closed
 
@@ -15,6 +18,8 @@ enum CaptureCoordinationError: LocalizedError, Equatable {
     switch self {
     case .noDevices:
       "No devices are available for capture."
+    case .captureBusy(let activity):
+      "Another \(activity.rawValue) is in progress. Wait for it to finish before starting a capture."
     case .deviceBusy(let deviceID, let activity):
       "\(deviceID) is already being used for \(activity.rawValue) in another window."
     case .closed:
@@ -27,11 +32,23 @@ struct DeviceCaptureLease: Hashable {
   fileprivate let id: UUID
 }
 
-/// Owns capture compatibility across all windows. Bug-report recording is exclusive.
-actor CaptureCoordinator {
+/// Allows one capture across all windows while keeping compatible previews running.
+@Observable
+@MainActor
+final class CaptureCoordinator {
   private var leases: [UUID: (devices: Set<String>, activity: DeviceCaptureActivity)] = [:]
-  private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+  @ObservationIgnored private var idleWaiters: [CheckedContinuation<Void, Never>] = []
   private var isClosed = false
+
+  nonisolated init() {}
+
+  var captureActivity: DeviceCaptureActivity? {
+    leases.values.first { $0.activity != .livePreview }?.activity
+  }
+
+  var isCapturing: Bool {
+    captureActivity != nil
+  }
 
   func acquire(
     deviceIDs: [String],
@@ -41,6 +58,10 @@ actor CaptureCoordinator {
 
     let deviceIDs = Set(deviceIDs)
     guard !deviceIDs.isEmpty else { throw CaptureCoordinationError.noDevices }
+
+    if activity != .livePreview, let captureActivity {
+      throw CaptureCoordinationError.captureBusy(captureActivity)
+    }
 
     for deviceID in deviceIDs.sorted() {
       if let occupant = leases.values.first(where: { $0.devices.contains(deviceID) && !Self.canShare(activity, $0.activity) }) {
@@ -54,10 +75,7 @@ actor CaptureCoordinator {
   }
 
   private static func canShare(_ first: DeviceCaptureActivity, _ second: DeviceCaptureActivity) -> Bool {
-    switch (first, second) {
-    case (.livePreview, .livePreview), (.livePreview, .recording), (.recording, .livePreview): true
-    default: false
-    }
+    first != .bugReportRecording && second != .bugReportRecording
   }
 
   func release(_ lease: DeviceCaptureLease) {

@@ -13,6 +13,7 @@ actor ScreenshotService {
     let result: Result<CaptureMedia, Error>
   }
 
+  private let coordinator: CaptureCoordinator
   private let adb: ADBService
   private let fileStore: FileStore
   private let history: CaptureHistoryRepository?
@@ -22,14 +23,25 @@ actor ScreenshotService {
   private var isShuttingDown = false
   private var shutdownTask: Task<Void, Never>?
 
-  init(adb: ADBService, fileStore: FileStore, history: CaptureHistoryRepository? = nil) {
+  init(adb: ADBService, fileStore: FileStore, coordinator: CaptureCoordinator, history: CaptureHistoryRepository? = nil) {
+    self.coordinator = coordinator
     self.adb = adb
     self.fileStore = fileStore
     self.history = history
   }
 
   func capture(for devices: [Device]) async -> ScreenshotCaptureResult {
-    guard !isShuttingDown else { return Self.emptyResult }
+    guard !isShuttingDown, !Task.isCancelled else { return Self.emptyResult }
+    let lease: DeviceCaptureLease
+    do {
+      lease = try await coordinator.acquire(deviceIDs: devices.map(\.id), for: .screenshot)
+    } catch {
+      return ScreenshotCaptureResult(media: [], failures: devices.map { CaptureFailure(device: $0, error: error) })
+    }
+    guard !isShuttingDown, !Task.isCancelled else {
+      await coordinator.release(lease)
+      return Self.emptyResult
+    }
 
     let requests = devices.enumerated().map { index, device in
       Request(
@@ -57,6 +69,7 @@ actor ScreenshotService {
     } onCancel: {
       task.cancel()
     }
+    await coordinator.release(lease)
     activeTasks.removeValue(forKey: taskID)
     return result
   }

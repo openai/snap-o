@@ -31,9 +31,10 @@ final class PreparingScreenshotMode {
     }
   }
 
-  func cancel() {
+  func cancel() async {
     task?.cancel()
     preloadedTask?.cancel()
+    await task?.value
   }
 
   private func loadScreenshots() async -> ScreenshotCaptureResult {

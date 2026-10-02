@@ -236,7 +236,8 @@ struct CaptureToolbar: View {
         screenshot: { Task { await controller.captureScreenshots() } },
         canCaptureNow: controller.canCaptureNow,
         startRecording: { Task { await controller.startRecording() } },
-        canStartRecordingNow: controller.canStartRecordingNow
+        canStartRecordingNow: controller.canStartRecordingNow,
+        unavailableReason: controller.captureUnavailableReason
       )
     }
   }
@@ -346,6 +347,7 @@ struct CaptureActionToolbarControls: View {
   let canCaptureNow: Bool
   let startRecording: @MainActor () -> Void
   let canStartRecordingNow: Bool
+  var unavailableReason: String?
   @Environment(AppSettings.self)
   private var settings
 
@@ -359,7 +361,7 @@ struct CaptureActionToolbarControls: View {
           .font(SnapOToolbarStyle.iconFont)
           .frame(width: 34, height: 32)
       }
-      .help("New Screenshot (⇧⌘S)")
+      .help(unavailableReason ?? "New Screenshot (⇧⌘S)")
       .disabled(!canCaptureNow)
 
       if settings.recordAsBugReport {
@@ -381,7 +383,7 @@ struct CaptureActionToolbarControls: View {
         }
         .menuIndicator(.hidden)
         .menuStyle(.button)
-        .help("Start Recording Bug Report (⇧⌘V)")
+        .help(unavailableReason ?? "Start Recording Bug Report (⇧⌘V)")
         .disabled(!canStartRecordingNow)
       } else {
         Button {
@@ -391,7 +393,7 @@ struct CaptureActionToolbarControls: View {
             .font(SnapOToolbarStyle.iconFont)
             .frame(width: 34, height: 32)
         }
-        .help("Start Recording (⇧⌘V)")
+        .help(unavailableReason ?? "Start Recording (⇧⌘V)")
         .disabled(!canStartRecordingNow)
       }
     }
