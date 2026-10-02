@@ -88,6 +88,26 @@ struct CaptureTrimTests {
     #expect(playback.confirmTrim() == nil)
   }
 
+  @Test @MainActor
+  func draggingTrimEndDoesNotChangeThePlayerStopTime() async throws {
+    let fixture = try await TrimVideoFixture.make()
+    defer { fixture.remove() }
+    let playback = CaptureReviewPlayback()
+    await playback.load(fixture.url)
+    defer { playback.stop() }
+    playback.beginTrimming()
+    let item = try #require(playback.player.currentItem)
+    playback.setScrubbing(true)
+    for end in [2.8, 2.1, 1.4, 0.5, 2.7] {
+      playback.setTrimEnd(end)
+      #expect(!item.forwardPlaybackEndTime.isValid)
+      #expect(abs(playback.time - (end - 1 / playback.frameRate)) < 0.0001)
+    }
+    playback.setScrubbing(false)
+    #expect(!item.forwardPlaybackEndTime.isValid)
+    #expect(!playback.wantsPlayback)
+  }
+
   @Test(.timeLimit(.minutes(1))) @MainActor
   func trimPreviewStopsAtItsEndAndRestartsAtItsStart() async throws {
     let fixture = try await TrimVideoFixture.make()
@@ -98,7 +118,9 @@ struct CaptureTrimTests {
     playback.setWindowVisible(true)
     playback.beginTrimming()
     playback.setTrimStart(1.1)
+    playback.setScrubbing(true)
     playback.setTrimEnd(1.4)
+    playback.setScrubbing(false)
     let output = AVPlayerItemVideoOutput(pixelBufferAttributes: nil)
     playback.player.currentItem?.add(output)
     playback.togglePlayback()
@@ -107,6 +129,12 @@ struct CaptureTrimTests {
     playback.togglePlayback()
     #expect(playback.wantsPlayback)
     #expect(abs(playback.time - 1.1) < 0.0001)
+    playback.setScrubbing(true)
+    playback.setTrimEnd(1.8)
+    playback.setScrubbing(false)
+    playback.togglePlayback()
+    try await waitForState { !playback.wantsPlayback }
+    #expect(playback.time >= 1.7 && playback.time < 1.8)
   }
 
   @Test(arguments: [false, true])

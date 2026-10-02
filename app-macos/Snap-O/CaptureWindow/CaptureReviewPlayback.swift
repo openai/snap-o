@@ -161,9 +161,17 @@ final class CaptureReviewPlayback {
 
   private func updatePlayback() {
     if isPlaying, !seeks.isSeeking {
+      if isTrimming, let item = player.currentItem {
+        let end = mediaTime(trimSelection.end)
+        if item.forwardPlaybackEndTime != end { item.forwardPlaybackEndTime = end }
+      }
       player.playImmediately(atRate: isTrimming ? 1 : speed)
     } else {
       player.pause()
+      // Changing the playback end during scrubbing stalls AVPlayer's pending seek.
+      if isTrimming, let item = player.currentItem, item.forwardPlaybackEndTime.isValid {
+        item.forwardPlaybackEndTime = .invalid
+      }
     }
   }
 
@@ -207,7 +215,6 @@ final class CaptureReviewPlayback {
     guard isTrimming, seconds.isFinite else { return }
     let end = max(min(duration, snapped(seconds)), trimSelection.start + frameDuration)
     trimSelection = CaptureTrimRange(start: trimSelection.start, end: min(duration, end))
-    player.currentItem?.forwardPlaybackEndTime = mediaTime(trimSelection.end)
     previewTrimBoundary(lastPreviewFrame)
   }
 
@@ -240,14 +247,13 @@ final class CaptureReviewPlayback {
     player.removeAllItems()
     let item = AVPlayerItem(asset: asset)
     if isTrimming {
-      item.forwardPlaybackEndTime = mediaTime(trimSelection.end)
       player.actionAtItemEnd = .pause
       player.insert(item, after: nil)
       endObserver = NotificationCenter.default.addObserver(
         forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
       ) { [weak self] _ in
         MainActor.assumeIsolated {
-          guard let self, self.isTrimming else { return }
+          guard let self, self.isTrimming, self.wantsPlayback, !self.isScrubbing, !self.seeks.isSeeking else { return }
           self.wantsPlayback = false
           self.seek(to: self.lastPreviewFrame)
           self.updatePlayback()

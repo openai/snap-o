@@ -5,6 +5,7 @@ struct CaptureVideoPlayer: NSViewRepresentable {
   let player: AVPlayer
   var onFocusChange: (Bool) -> Void = { _ in }
   var showsPlaybackControls = true
+  var allowsVideoFrameAnalysis = true
   var togglePlayback: (() -> Void)?
   var stepFrame: ((Int) -> Void)?
   var playbackControlsFrame: CGRect?
@@ -18,6 +19,7 @@ struct CaptureVideoPlayer: NSViewRepresentable {
     nsView.onFocusChange = onFocusChange
     let style: AVPlayerViewControlsStyle = showsPlaybackControls ? .inline : .none
     if nsView.controlsStyle != style { nsView.controlsStyle = style }
+    if nsView.allowsVideoFrameAnalysis != allowsVideoFrameAnalysis { nsView.allowsVideoFrameAnalysis = allowsVideoFrameAnalysis }
     nsView.togglePlayback = togglePlayback
     nsView.stepFrame = stepFrame
     nsView.playbackControlsFrame = playbackControlsFrame

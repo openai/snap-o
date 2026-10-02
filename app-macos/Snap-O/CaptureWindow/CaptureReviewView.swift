@@ -140,7 +140,6 @@ struct CaptureReviewView: View {
           captures: controller.mediaList,
           selectedID: controller.selectedMediaID
         ) { controller.selectMedia(id: $0) }
-          .disabled(playback.isTrimming)
       } else {
         Spacer(minLength: 0)
       }
@@ -164,7 +163,7 @@ struct CaptureReviewView: View {
         .buttonStyle(.borderless)
         .foregroundStyle(.primary)
         .glassEffect(.regular.interactive(), in: Circle())
-        .disabled(!playback.canTrim || playback.isTrimming)
+        .disabled(!playback.canTrim)
         .help("Trim Recording")
         .accessibilityLabel("Trim Recording")
       }
@@ -177,7 +176,6 @@ struct CaptureReviewView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.white)
       .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
-      .disabled(playback.isTrimming)
       .help("Save \(reviewedMediaName) to History")
       .accessibilityLabel("Save \(reviewedMediaName) to History")
     }

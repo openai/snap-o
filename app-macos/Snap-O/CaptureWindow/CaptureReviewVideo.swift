@@ -13,6 +13,8 @@ struct CaptureReviewVideo: View {
       CaptureVideoPlayer(
         player: playback.player,
         showsPlaybackControls: false,
+        // Live Text analysis can steal focus from time fields after each seek.
+        allowsVideoFrameAnalysis: !playback.isTrimming,
         togglePlayback: { playback.togglePlayback() },
         stepFrame: { playback.stepFrame($0) },
         playbackControlsFrame: playback.isTrimming ? nil : controlsFrame.offsetBy(dx: -mediaFrame.minX, dy: -mediaFrame.minY)

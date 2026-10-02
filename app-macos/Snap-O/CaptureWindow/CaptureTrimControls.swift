@@ -61,13 +61,13 @@ struct CaptureTrimControls: View {
   }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 8) {
-      playButton
-      VStack(spacing: CaptureReviewLayout.trimTimeFieldSpacing) {
+    VStack(spacing: CaptureReviewLayout.trimTimeFieldSpacing) {
+      HStack(spacing: 8) {
+        playButton
         CaptureTrimTimeline(playback: playback, url: url)
-          .frame(height: CaptureReviewLayout.trimTimelineHeight)
-        timeFields
       }
+      .frame(height: CaptureReviewLayout.trimTimelineHeight)
+      timeFields
     }
     .font(.system(size: 11, weight: .medium).monospacedDigit())
     .controlSize(.mini)
@@ -98,27 +98,57 @@ struct CaptureTrimControls: View {
   private var timeFields: some View {
     HStack(spacing: 8) {
       timeField("Start", text: $startText, boundary: .start, isValid: validStart != nil)
-        .onChange(of: startText) {
-          if focusedField == .start, let value = validStart { playback.setTrimStart(value) }
-        }
-      Spacer(minLength: 0)
+      Text("to")
+        .foregroundStyle(.secondary)
+        .fixedSize()
       timeField("End", text: $endText, boundary: .end, isValid: validEnd != nil)
-        .onChange(of: endText) {
-          if focusedField == .end, let value = validEnd { playback.setTrimEnd(value) }
-        }
     }
+    .frame(maxWidth: .infinity)
   }
 
   private func timeField(_ label: String, text: Binding<String>, boundary: Boundary, isValid: Bool) -> some View {
-    TextField(label, text: text)
-      .textFieldStyle(.roundedBorder)
-      .multilineTextAlignment(.center)
-      .frame(width: 76, height: CaptureReviewLayout.trimTimeFieldHeight)
-      .focused($focusedField, equals: boundary)
-      .foregroundStyle(isValid ? Color.primary : Color.red)
-      .accessibilityLabel("Trim \(label.lowercased()) time")
-      .help("\(label): minutes:seconds:frames (\(playback.frameRate.formatted(.number.precision(.fractionLength(0 ... 2)))) fps)")
-      .onSubmit { focusedField = nil }
+    TextField(label, text: Binding(
+      get: { text.wrappedValue },
+      set: {
+        text.wrappedValue = $0
+        switch boundary {
+        case .start:
+          if let value = validStart { playback.setTrimStart(value) }
+        case .end:
+          if let value = validEnd { playback.setTrimEnd(value) }
+        }
+      }
+    ))
+    .textFieldStyle(.roundedBorder)
+    .multilineTextAlignment(.center)
+    .frame(width: 76, height: CaptureReviewLayout.trimTimeFieldHeight)
+    .focused($focusedField, equals: boundary)
+    .foregroundStyle(isValid ? Color.primary : Color.red)
+    .accessibilityLabel("Trim \(label.lowercased()) time")
+    .help(
+      "\(label): minutes:seconds:frames (\(playback.frameRate.formatted(.number.precision(.fractionLength(0 ... 2)))) fps)."
+        + " Up/Down to step one frame."
+    )
+    .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+      guard focusedField == boundary, press.modifiers.isDisjoint(with: [.command, .control, .option, .shift]) else { return .ignored }
+      stepTimeField(boundary, direction: press.key == .upArrow ? 1 : -1)
+      return .handled
+    }
+    .onSubmit { focusedField = nil }
+  }
+
+  private func stepTimeField(_ boundary: Boundary, direction: Int) {
+    let delta = Double(direction) / playback.frameRate
+    switch boundary {
+    case .start:
+      guard let value = validStart else { return }
+      playback.setTrimStart(value + delta)
+      startText = playback.timecode.string(for: playback.trimSelection.start)
+    case .end:
+      guard let value = validEnd else { return }
+      playback.setTrimEnd(value + delta)
+      endText = playback.timecode.string(for: playback.trimSelection.end)
+    }
   }
 
   private func synchronizeFields() {
