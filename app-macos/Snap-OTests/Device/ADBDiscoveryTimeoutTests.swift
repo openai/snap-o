@@ -1,4 +1,6 @@
+import Clocks
 import Darwin
+import Dependencies
 import Foundation
 @testable import Snap_O
 import Testing
@@ -69,12 +71,6 @@ struct ADBDiscoveryTimeoutTests {
   func cancelsTrackingHandshake() async throws {
     let server = FakeDiscoveryADB(stall: .transport)
     defer { server.close() }
-    let rescue = Task {
-      try await Task.sleep(for: .seconds(30))
-      Issue.record("Handshake did not reach the cancellation point")
-      server.close()
-    }
-    defer { rescue.cancel() }
     let task = Task {
       let (handle, _) = try await server.client(timeout: .seconds(10)).trackDevices()
       handle.cancel()
@@ -98,12 +94,6 @@ struct ADBDiscoveryTimeoutTests {
   func boundsTrackingHandshake() async throws {
     let server = FakeDiscoveryADB(stall: .transport)
     defer { server.close() }
-    let rescue = Task {
-      // The expected timeout is 500 ms; this only prevents a broken test from hanging.
-      try await Task.sleep(for: .seconds(10))
-      server.close()
-    }
-    defer { rescue.cancel() }
     do {
       let (handle, _) = try await server.client().trackDevices()
       handle.cancel()
@@ -131,8 +121,7 @@ struct ADBDiscoveryTimeoutTests {
     }
     var snapshots = received.stream.makeAsyncIterator()
     _ = await snapshots.next()
-    // An unchanged device list can stay silent longer than the setup timeout.
-    try await Task.sleep(for: .milliseconds(700))
+    server.expectStreamingTimeoutsCleared()
     task.cancel()
     server.expectClosedConnections()
     #expect(try await task.value)
@@ -153,11 +142,12 @@ struct ADBDiscoveryTimeoutTests {
       _ = try connection.withRequestTimeout(.milliseconds(5)) { try connection.readLine() }
       Issue.record("Expected an idle socket to time out")
     } catch ADBError.requestTimedOut {}
+    Self.expectTimeout(descriptors[0], option: SO_RCVTIMEO, seconds: 0)
+    Self.expectTimeout(descriptors[0], option: SO_SNDTIMEO, seconds: 0)
     let writer = DispatchGroup()
     writer.enter()
     DispatchQueue.global().async {
       defer { writer.leave() }
-      Thread.sleep(forTimeInterval: 0.05)
       try? peer.writeLine("record")
     }
     defer { writer.wait() }
@@ -271,12 +261,13 @@ struct ADBDiscoveryTimeoutTests {
   func boundsLegacyTrickle() async throws {
     let server = FakeDiscoveryADB(stall: .output, legacyReply: .trickle)
     defer { server.close() }
+    let start = server.clock.now
     let metadata = try await server.client().legacyPluginMetadata(
       reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
       pid: 42
     )
     #expect(metadata == nil)
-    #expect(!server.legacyStreamFinished)
+    #expect(start.duration(to: server.clock.now) >= .seconds(2))
     #expect(server.connectionCount == 1)
   }
 
@@ -301,8 +292,39 @@ struct ADBDiscoveryTimeoutTests {
     #expect(server.connectionCount == 1)
   }
 
-  @Test("native timeouts allow output that continues making progress")
-  func allowsContinuousOutput() async throws {
+  @Test("a total read deadline expires even while bytes remain available")
+  func expiresReadDeadline() async throws {
+    var descriptors: [Int32] = [0, 0]
+    try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0)
+    let connection = ADBSocketConnection(connectedSocket: descriptors[0])
+    let peer = ADBSocketConnection(connectedSocket: descriptors[1])
+    defer {
+      connection.close()
+      peer.close()
+    }
+    let clock = TestClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    for _ in 0 ..< 2 {
+      try peer.writeFully(Data([1]))
+      #expect(try connection.readChunk(maxLength: 1, deadline: deadline, clock: clock) == Data([1]))
+      await clock.advance(by: .seconds(1))
+    }
+    try peer.writeFully(Data([1]))
+    do {
+      _ = try connection.readChunk(maxLength: 1, deadline: deadline, clock: clock)
+      Issue.record("Expected the total deadline to expire")
+    } catch ADBError.requestTimedOut {}
+  }
+
+  static func expectTimeout(_ descriptor: Int32, option: Int32, seconds: Int) {
+    var timeout = timeval()
+    var size = socklen_t(MemoryLayout<timeval>.size)
+    #expect(getsockopt(descriptor, SOL_SOCKET, option, &timeout, &size) == 0)
+    #expect(timeout.tv_sec == seconds && timeout.tv_usec == 0)
+  }
+
+  @Test("native reads preserve fragmented output")
+  func readsFragmentedOutput() async throws {
     let server = FakeDiscoveryADB(stall: .trickle)
     defer { server.close() }
     let output = try await server.client().listUnixSockets(deviceID: "stalled")
@@ -319,6 +341,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     case raw(String), http(String), trickle
   }
 
+  let clock = ManualTestClock()
+  private var clientDescriptors: [Int32] = []
   private let legacyReply: LegacyReply?
   private let bootOutput: String
   private let deviceLists: [String]
@@ -329,7 +353,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private let lock = NSLock()
   private var peers: [(connection: ADBSocketConnection, descriptor: Int32)] = []
   private var connections: [ADBSocketConnection] = []
-  private var finishedLegacyStream = false
   private var isClosed = false
 
   init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n", deviceLists: [String] = []) {
@@ -343,10 +366,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     lock.withLock { peers.count }
   }
 
-  var legacyStreamFinished: Bool {
-    lock.withLock { finishedLegacyStream }
-  }
-
   func expectClosedConnections() {
     let active = lock.withLock { connections }
     #expect(!active.isEmpty)
@@ -355,7 +374,18 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
 
   func client(timeout: Duration = .milliseconds(500)) -> ADBClient {
     // Leave room for worker scheduling on shared CI runners.
-    ADBClient(discoveryTimeout: timeout) { try self.connect() }
+    withDependencies {
+      $0.continuousClock = clock
+    } operation: {
+      ADBClient(discoveryTimeout: timeout) { try self.connect() }
+    }
+  }
+
+  func expectStreamingTimeoutsCleared() {
+    for descriptor in lock.withLock({ clientDescriptors }) {
+      ADBDiscoveryTimeoutTests.expectTimeout(descriptor, option: SO_RCVTIMEO, seconds: 0)
+      ADBDiscoveryTimeoutTests.expectTimeout(descriptor, option: SO_SNDTIMEO, seconds: 0)
+    }
   }
 
   func close() {
@@ -388,6 +418,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
       }
       peers.append((peer, descriptor))
       connections.append(connection)
+      clientDescriptors.append(descriptors[0])
       workers.enter()
     }
     DispatchQueue.global().async { [stall, workers, requests, legacyReply, bootOutput] in
@@ -434,11 +465,9 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             while let header = try peer.readLine(), !header.isEmpty {}
             Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
           case .trickle:
-            for _ in 0 ..< 200 {
-              if !Self.send("x", to: descriptor) { return }
-              Thread.sleep(forTimeInterval: 0.03)
+            while Self.send("x", to: descriptor) {
+              self.clock.advance(by: .milliseconds(30))
             }
-            self.lock.withLock { self.finishedLegacyStream = true }
           }
           return
         }
@@ -447,8 +476,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
           if stall == .trickle {
             for _ in 0 ..< 50 {
               if !Self.send("x", to: descriptor) { break }
-              // Keep the full stream longer than the client's idle timeout.
-              Thread.sleep(forTimeInterval: 0.03)
             }
             _ = shutdown(descriptor, SHUT_RDWR)
           }

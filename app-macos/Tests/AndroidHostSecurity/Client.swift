@@ -18,7 +18,6 @@ struct SecurityClient {
     proxy.rotationEndpoint("snapo-security-test") { _, error in
       finish(error == "The emulator's rotation connection is unavailable." ? "accepted" : "unexpected reply")
     }
-    DispatchQueue.global().asyncAfter(deadline: .now() + 10) { finish("timeout") }
     dispatchMain()
   }
 }

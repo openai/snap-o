@@ -1,22 +1,27 @@
 @preconcurrency import AVFoundation
+import Dependencies
 import Foundation
 
 /// Writes the encoder's original samples; preview rendering never owns this subscription.
 @MainActor
 final class NativeScreenRecording: ScreenRecording {
   nonisolated let id = UUID()
+  private let clock: AnyClock<Duration>
   private let source: DeviceVideoSource
   private let url: URL
   private var writer: AVAssetWriter?
   private var input: AVAssetWriterInput?
   private var format: CMVideoFormatDescription?
   private var lastTimestamp: CMTime?
-  private var lastReceivedAt: TimeInterval?
+  private var lastReceivedAt: AnyClock<Duration>.Instant?
   private var hasSavedCopy = false
   private var finishTask: Task<Void, Error>?
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
 
   init(deviceID: String) {
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
     source = DeviceVideoSource(deviceID: deviceID)
     url = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(id).mp4")
   }
@@ -27,11 +32,11 @@ final class NativeScreenRecording: ScreenRecording {
       recording?.receive(event)
     }
     do {
-      let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+      let deadline = recording.clock.now.advanced(by: .seconds(8))
       while recording.writer == nil {
         if recording.finishTask != nil { try await recording.waitUntilStopped() }
-        guard ContinuousClock.now < deadline else { throw ADBError.requestTimedOut("Recording did not receive a video frame") }
-        try await Task.sleep(for: .milliseconds(10))
+        guard recording.clock.now < deadline else { throw ADBError.requestTimedOut("Recording did not receive a video frame") }
+        try await recording.clock.sleep(for: .milliseconds(10))
       }
       if recording.finishTask != nil { try await recording.waitUntilStopped() }
       return recording
@@ -89,7 +94,7 @@ final class NativeScreenRecording: ScreenRecording {
         guard input.isReadyForMoreMediaData else { throw ADBError.protocolFailure("Recording storage could not keep up with the device") }
         guard input.append(sample) else { throw writer.error ?? ADBError.protocolFailure("Could not write video frame") }
         lastTimestamp = CMSampleBufferGetPresentationTimeStamp(sample)
-        lastReceivedAt = ProcessInfo.processInfo.systemUptime
+        lastReceivedAt = clock.now
       case .stopped(let error):
         beginFinish(error: error ?? ADBError.protocolFailure("Device video ended unexpectedly"))
       }
@@ -115,10 +120,12 @@ final class NativeScreenRecording: ScreenRecording {
   private func beginFinish(error: Error?) {
     guard finishTask == nil else { return }
     source.stop()
+    let stoppedAt = clock.now
     finishTask = Task {
       if let writer, let input {
         if let lastTimestamp, let lastReceivedAt {
-          let tail = max(1.0 / 60, ProcessInfo.processInfo.systemUptime - lastReceivedAt)
+          let elapsed = lastReceivedAt.duration(to: stoppedAt).components
+          let tail = max(1.0 / 60, Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
           writer.endSession(atSourceTime: lastTimestamp + CMTime(seconds: tail, preferredTimescale: 1_000_000))
         }
         input.markAsFinished()

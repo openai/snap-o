@@ -20,18 +20,7 @@ struct DeviceClipboardTransportTests {
         try await transport.receive { _ in Issue.record("Unexpected clipboard event") }
       }
     }
-    // Rescue only a broken handshake; cancellation is checked through connection state.
-    let rescue = Task {
-      try await Task.sleep(for: .seconds(30))
-      ready.continuation.finish()
-      Issue.record("Handshake did not reach the cancellation point")
-      connection.close()
-      peer.close()
-    }
-    defer {
-      rescue.cancel()
-      task.cancel()
-    }
+    defer { task.cancel() }
     // Complete only the handshakes needed to reach the cancellation point.
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
       DispatchQueue.global().async {

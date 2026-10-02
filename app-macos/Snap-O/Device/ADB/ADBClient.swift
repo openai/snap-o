@@ -1,6 +1,9 @@
+import Dependencies
 import Foundation
 
 public struct ADBClient: Sendable {
+  @Dependency(\.continuousClock)
+  private var clock
   private let connectionFactory: @Sendable () throws -> ADBSocketConnection
   private let discoveryTimeout: Duration
   private var requestTimeout: Duration?
@@ -359,17 +362,18 @@ public struct ADBClient: Sendable {
     guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)",
           let request = LegacyPluginReader.request(kind: kind) else { return nil }
     try Task.checkCancellation()
+    let clock = AnyClock<Duration>(self.clock)
     do {
       return try await withConnection(maxAttempts: 1) { connection in
         try connection.withRequestTimeout(.seconds(2)) {
           try connection.sendTransport(to: reference.deviceId)
           try connection.sendLocalAbstract(reference.socketName)
+          let deadline = clock.now.advanced(by: .seconds(2))
           try connection.writeLine(String(request.dropLast()))
           let http = request.hasPrefix("GET ")
-          let deadline = ContinuousClock.now.advanced(by: .seconds(2))
           var bytes = Data()
           while true {
-            let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline)
+            let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline, clock: clock)
             if let chunk { bytes.append(chunk) }
             if let payload = try LegacyPluginReader.payload(bytes, http: http, ended: chunk == nil) {
               return try LegacyPluginReader.decode(payload, kind: kind, pid: pid, http: http)

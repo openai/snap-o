@@ -87,7 +87,7 @@ private final class EncodedSamples: @unchecked Sendable {
 @main
 @MainActor
 struct LivePreviewFrameExportTests {
-  static func main() throws {
+  static func main() async throws {
     _ = KeyboardTestApplication.shared
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("Snap-O-FrameExport-\(UUID().uuidString)", isDirectory: true)
@@ -99,8 +99,8 @@ struct LivePreviewFrameExportTests {
     focusLossReleasesBothContacts(store: store)
     print("Live preview keyboard focus tests passed (click routing, two windows, focus loss and Escape)")
     if CommandLine.arguments.contains("--keyboard-only") { return }
-    hiddenPreviewRetainsLatestFrame(store: store, raw: false)
-    hiddenPreviewRetainsLatestFrame(store: store, raw: true)
+    await hiddenPreviewRetainsLatestFrame(store: store, raw: false)
+    await hiddenPreviewRetainsLatestFrame(store: store, raw: true)
     print("Live preview keyboard focus, multitouch, hidden rendering and copy tests passed (H.264 and raw frames)")
   }
 
@@ -344,7 +344,7 @@ struct LivePreviewFrameExportTests {
     precondition(cancelledContacts == [CGPoint(x: 40, y: 32), CGPoint(x: 24, y: 32)])
   }
 
-  private static func hiddenPreviewRetainsLatestFrame(store: FileStore, raw: Bool) {
+  private static func hiddenPreviewRetainsLatestFrame(store: FileStore, raw: Bool) async {
     _ = NSApplication.shared
     let view = LivePreviewDisplayView(fileStore: store)
     let window = NSWindow(
@@ -398,7 +398,7 @@ struct LivePreviewFrameExportTests {
     }
 
     session.sampleBufferHandler?(samples[0])
-    eventually("Initial frame must decode") { displays(red: true) }
+    await waitForFrame(layer.sampleBufferRenderer) { displays(red: true) }
     copyAndCheck(red: true)
     precondition(copyFeedbackCount == 1, "Successful copy must report feedback once")
     let firstCopy = pasteboard.data(forType: .tiff)
@@ -406,17 +406,17 @@ struct LivePreviewFrameExportTests {
     precondition(layer.isHidden && session.sampleBufferHandler != nil)
     CMTimebaseSetTime(timebase, time: CMSampleBufferGetPresentationTimeStamp(samples[1]))
     session.sampleBufferHandler?(samples[1])
-    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    await waitForFrame(layer.sampleBufferRenderer) { displays(red: false) }
 
     view.update(with: renderer, isVisible: true)
     precondition(!layer.isHidden)
-    eventually("Uncover must show the latest frame without waiting for new video") { displays(red: false) }
+    await waitForFrame(layer.sampleBufferRenderer) { displays(red: false) }
     precondition(pasteboard.data(forType: .tiff) == firstCopy, "Playback must not change a previously copied image")
     copyAndCheck(red: false)
     precondition(copyFeedbackCount == 2, "Repeated copies must each report feedback")
     CMTimebaseSetTime(timebase, time: CMSampleBufferGetPresentationTimeStamp(samples[2]))
     session.sampleBufferHandler?(samples[2])
-    eventually("Decoding must continue after uncover without a new keyframe") { displays(red: true) }
+    await waitForFrame(layer.sampleBufferRenderer) { displays(red: true) }
     precondition(!layer.sampleBufferRenderer.requiresFlushToResumeDecoding)
     view.update(with: nil)
     precondition(session.sampleBufferHandler == nil, "Detaching must release the session callback")
@@ -474,12 +474,11 @@ struct LivePreviewFrameExportTests {
     return samples
   }
 
-  private static func eventually(_ message: String, _ condition: () -> Bool) {
-    let deadline = Date().addingTimeInterval(5)
-    while !condition(), Date() < deadline {
-      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+  private static func waitForFrame(_ renderer: AVSampleBufferVideoRenderer, _ condition: () -> Bool) async {
+    while !condition() {
+      // Await the renderer's completion callback while inspecting real decoded pixels.
+      _ = await renderer.videoPerformanceMetrics
     }
-    precondition(condition(), message)
   }
 
   private static func makeBuffer(width: Int = 16, height: Int = 24) -> CVPixelBuffer {

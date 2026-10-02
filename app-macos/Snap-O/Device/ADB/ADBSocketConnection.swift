@@ -204,9 +204,13 @@ public final class ADBSocketConnection {
   }
 
   func readChunk(maxLength: Int, deadline: ContinuousClock.Instant) throws -> Data? {
+    try readChunk(maxLength: maxLength, deadline: deadline, clock: ContinuousClock())
+  }
+
+  func readChunk<C: Clock<Duration>>(maxLength: Int, deadline: C.Instant, clock: C) throws -> Data? {
     while true {
       try Task.checkCancellation()
-      let remaining = ContinuousClock.now.duration(to: deadline)
+      let remaining = clock.now.duration(to: deadline)
       guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for socket data") }
       let parts = remaining.components
       let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1

@@ -1,3 +1,4 @@
+import Clocks
 import Darwin
 import Foundation
 @testable import Snap_O
@@ -94,7 +95,7 @@ struct ADBVirtualTouchscreenTests {
   }
 
   @Test("socket acknowledgments time out and accept data when readable")
-  func synchronizationSocketDeadline() throws {
+  func synchronizationSocketDeadline() async throws {
     var descriptors: [Int32] = [-1, -1]
     try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0)
     let connection = ADBSocketConnection(connectedSocket: descriptors[0])
@@ -102,8 +103,11 @@ struct ADBVirtualTouchscreenTests {
       connection.close()
       Darwin.close(descriptors[1])
     }
+    let clock = TestClock()
+    let deadline = clock.now.advanced(by: .milliseconds(5))
+    await clock.advance(by: .milliseconds(5))
     #expect(throws: (any Error).self) {
-      try connection.readChunk(maxLength: 1024, deadline: .now.advanced(by: .milliseconds(5)))
+      try connection.readChunk(maxLength: 1024, deadline: deadline, clock: clock)
     }
     let response = Data(#"{"reason":"sync","id":1,"syncToken":"7"}"#.utf8)
     let written = response.withUnsafeBytes {

@@ -40,6 +40,7 @@ completion signals explicit.
 - Use test time limits to bound failures, not to synchronize successful tests.
 
 Do not use a fixed number of `Task.yield()` calls or a short sleep to settle work.
+Do not add sleep-based watchdogs; bound failures with test or CI time limits.
 Do not send probe gestures or trigger repeated discovery to detect readiness.
 Do not mock the model whose behavior the test is checking.
 
