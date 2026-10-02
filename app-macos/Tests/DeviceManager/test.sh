@@ -30,3 +30,5 @@ swiftc_for_tests -swift-version 6 -parse-as-library -target arm64-apple-macosx26
   "$APP_DIR/Tests/DeviceManager/DeviceManagerTests.swift" \
   "$APP_DIR/Tests/DeviceManager/DeviceInventoryTests.swift" -o "$OUTPUT/device-inventory-tests"
 run_test "$OUTPUT/device-inventory-tests" "$@"
+
+bash "$APP_DIR/Tests/AndroidHostSecurity/test.sh"

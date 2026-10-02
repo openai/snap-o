@@ -46,9 +46,14 @@ The following checks exercise the production service through the normal UI:
 8. Quit Snap-O. Confirm its AndroidHostService process exits. Running emulators
    should remain available to other tools.
 
-The service accepts only the containing app's designated signing requirement
-and the same user. Emulator operations accept known AVD identifiers. ADB startup
-accepts only settings for finding adb and uses fixed command arguments.
+All builds restrict the service to the same user. Debug and Local builds skip
+signing checks and launch constraints, so developers can use ad-hoc signing.
+Release builds also require the expected app signing identifier and the helper's
+Apple developer team. The service reads this identity from its own signature,
+never from the containing app. A responsible-process launch constraint also
+prevents another app from launching an extracted Release helper.
+
+Emulator operations accept known AVD identifiers. ADB startup accepts only settings for finding adb and uses fixed command arguments.
 It has no login item, daemon, or public listening port.
 The app uses its native ADB client for device discovery, boot checks, and Live Preview.
 The helper talks directly to emulator consoles for AVD identity and shutdown. It reads
@@ -65,6 +70,32 @@ button. The button uses the same guarded startup policy. Starting ADB in Termina
 also lets Snap-O reconnect automatically.
 ADB startup is independent of the Emulator package and AVD inventory.
 The helper also uses SDK adb commands to read emulator display configuration.
+
+### XPC security checks
+
+The Device Manager suite always runs the unsigned policy checks. With
+`SNAPO_DERIVED_DATA` set, it also checks the built helper through a sandboxed app.
+Debug and Local helpers must accept an ad-hoc signed caller without an Apple
+certificate. `SNAPO_TEST_CONFIGURATION` selects the configuration and defaults to
+Debug; it must match the helper being tested.
+
+To test Release caller restrictions, build the Release helper and run:
+
+```sh
+SNAPO_TEST_CONFIGURATION=Release \
+  DEVICE_MANAGER_SIGNING_IDENTITY='Apple Development: Your Name (CERTIFICATE_ID)' \
+  bash app-macos/Tests/AndroidHostSecurity/test.sh /path/to/Release/AndroidHostService.xpc
+```
+
+The checks copy the Xcode-built helper and re-sign it for temporary apps with unique
+identifiers. Xcode and both signing tests use `scripts/write-host-constraint.sh`
+to generate the same launch policy. They verify
+an authorized caller, an unrelated app signed by the same developer, a forged
+identifier signed ad-hoc, and a repackaged helper with its signature unchanged.
+They test the listener both with and without the launch constraint. Set
+`SNAPO_TEST_OTHER_SIGNING_IDENTITY` to an identity from a different developer team
+to check that team mismatch also fails. No ADB server or emulator is started.
+Failed checks leave temporary artifacts for diagnosis.
 
 ### ADB executable discovery
 
