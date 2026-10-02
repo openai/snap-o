@@ -563,7 +563,11 @@ struct CaptureWindow: View {
     .accessibilityHidden(pendingDeviceOpenStatus != nil)
     .overlay {
       if let status = pendingDeviceOpenStatus {
-        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: status) {
+        WaitingForDeviceView(
+          deviceMessage: status,
+          serverState: controller.adbServerState,
+          retryADBServer: controller.retryADBServer
+        ) {
           controller.deviceOpenRequest = nil
           deviceOpenStatus = nil
           deviceOpenSerial = nil
@@ -676,15 +680,19 @@ struct CaptureWindow: View {
           fileStore: controller.fileStore,
           livePreviewHost: controller
         ) { controller.selectMedia(id: $0) }
+      } else if controller.adbServerState != .online {
+        WaitingForDeviceView(
+          serverState: controller.adbServerState,
+          retryADBServer: controller.retryADBServer
+        )
       } else if controller.isLivePreviewActive, controller.hasDevices {
         WaitingForDeviceView(
-          isDeviceListInitialized: true,
           deviceMessage: controller.loadingPreviewDeviceID.map(livePreviewLoadingMessage) ?? "Connecting"
         )
       } else if controller.isDeviceListInitialized {
         idleOverlay(controller: controller)
       } else {
-        WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
+        WaitingForDeviceView()
       }
 
       if controller.isLivePreviewActive, let error = controller.lastError {

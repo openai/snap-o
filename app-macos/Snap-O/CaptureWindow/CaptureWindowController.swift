@@ -83,6 +83,14 @@ final class CaptureWindowController {
     }
   }
 
+  var adbServerState: ADBServerState {
+    deviceManager.adbServerState
+  }
+
+  func retryADBServer() {
+    deviceManager.retryADBServer()
+  }
+
   func selectMedia(id: CaptureMedia.ID) {
     selectMedia(id: Optional(id))
   }

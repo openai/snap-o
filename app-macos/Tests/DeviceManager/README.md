@@ -60,7 +60,9 @@ tunnel, is left alone. Timeouts and other probe errors do not trigger startup.
 The helper checks again before launching, uses a five-second command timeout,
 and verifies that a listener appeared. It never sends `kill-server`.
 A successful device list, including an empty list, rearms recovery for the next
-outage. If startup fails, starting ADB manually lets Snap-O reconnect automatically.
+outage. If startup fails, the capture window shows the error and a **Start ADB server**
+button. The button uses the same guarded startup policy. Starting ADB in Terminal
+also lets Snap-O reconnect automatically.
 ADB startup is independent of the Emulator package and AVD inventory.
 The helper also uses SDK adb commands to read emulator display configuration.
 
@@ -80,7 +82,9 @@ No shell is launched and no shell startup files are read. Paths containing space
 are passed directly to the process API. The app forwards only these four discovery
 variables to the helper. Startup always targets the app's local endpoint, even if
 inherited ADB server variables point elsewhere. A custom wrapper must honor that
-endpoint. `SNAPO_ADB` never forces startup when a listener already exists.
+endpoint. The command uses `adb -L tcp:5037 start-server`; ADB treats the numeric
+host form `tcp:127.0.0.1:5037` as remote and refuses to start it.
+`SNAPO_ADB` never forces startup when a listener already exists.
 
 Finder launches do not inherit variables set only in `.zshrc` or `.zprofile`.
 To use a custom location, quit Snap-O and launch its executable from Terminal:
@@ -106,3 +110,10 @@ to Trash. Emulator logs are written to `~/Library/Logs/Snap-O/Emulators`.
 Before a release, also run the signing and notarization checks in
 [release/README.md](../../../release/README.md). A development-signed smoke test
 does not verify notarization or distribution policy.
+
+### Real ADB startup check
+
+Set `SNAPO_TEST_ADB` to a recent SDK `adb` executable when running `test.sh`.
+This optional check starts, stops, and restarts ADB on an ephemeral port. It restricts
+USB discovery to a nonexistent test device and disables automatic emulator and mDNS
+connections. The normal server on port 5037 is left alone.

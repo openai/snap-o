@@ -24,6 +24,7 @@ struct ToolRecoveryTests {
         $0.continuousClock = TestClock()
       } operation: {
         try await startsADBOncePerOutage()
+        try await retriesADBFromUnavailableState()
         try await cancelsADBRecovery()
         try await reconnectsAfterCooldown()
         try await waitsForInitialDevices()
@@ -82,6 +83,55 @@ struct ToolRecoveryTests {
     await clock.advance(by: .seconds(1))
     precondition(recoveries.value == 2, "Stopped tracking must not restart ADB")
     print("Device tracking starts ADB once per outage and rearms after an empty successful device list")
+  }
+
+  static func retriesADBFromUnavailableState() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    let clock = TestClock()
+    let recoveries = LockIsolated(0)
+    let retryGate = TestGate()
+    adb.setTrackingFailure(.serverUnavailable("Synthetic refusal"))
+    let tracker = withDependencies { $0.continuousClock = clock } operation: {
+      DeviceTracker(adbService: adbService) {
+        let attempt = recoveries.withValue { $0 += 1
+          return $0
+        }
+        if attempt == 1 { throw ADBError.serverUnavailable("Synthetic startup failure") }
+        await retryGate.wait()
+        adb.setTrackingFailure(nil)
+      }
+    }
+    let states = LockIsolated<[ADBServerState]>([])
+    let stream = await tracker.serverStateStream()
+    let observer = Task {
+      for await state in stream {
+        states.withValue { $0.append(state) }
+        testChanges.signal()
+      }
+    }
+    await withDependencies { $0.continuousClock = clock } operation: { await tracker.startTracking() }
+    try await eventually {
+      guard case .unavailable = states.value.last else { return false }
+      return true
+    }
+    precondition(states.value.contains(.starting), "Automatic startup must be visible")
+    let retry = Task { await tracker.retryADBServer() }
+    try await eventually { states.value.last == .starting }
+    await tracker.retryADBServer()
+    precondition(recoveries.value == 2, "Repeated clicks must not overlap startup requests")
+    await retryGate.open()
+    await retry.value
+    await clock.advance(by: .milliseconds(300))
+    adb.emitDevices("")
+    try await eventually { states.value.last == .online }
+    await tracker.retryADBServer()
+    precondition(recoveries.value == 2, "Online tracking must ignore startup requests")
+    await tracker.stopTracking()
+    await observer.value
+    await tracker.retryADBServer()
+    precondition(recoveries.value == 2, "Stopped tracking must ignore startup requests")
+    print("ADB failure is visible, manual retry is serialized, and an empty device list restores online state")
   }
 
   static func cancelsADBRecovery() async throws {

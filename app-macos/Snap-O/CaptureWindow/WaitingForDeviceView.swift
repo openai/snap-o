@@ -5,8 +5,9 @@ extension EnvironmentValues {
 }
 
 struct WaitingForDeviceView: View {
-  let isDeviceListInitialized: Bool
   var deviceMessage = "Waiting for device"
+  var serverState: ADBServerState = .online
+  var retryADBServer: () -> Void = {}
   var cancel: (() -> Void)?
 
   var body: some View {
@@ -18,15 +19,24 @@ struct WaitingForDeviceView: View {
         .frame(width: 64, height: 64)
         .infiniteRotate(animated: true)
 
-      if !isDeviceListInitialized {
-        Text("Waiting for ADB server")
+      switch serverState {
+      case .starting:
+        Text("Starting ADB server…")
           .foregroundStyle(.secondary)
-        Text("Snap-O tries to start ADB automatically. If it stays unavailable, run `adb start-server` in Terminal.")
+      case .connecting:
+        Text("Connecting to ADB server…")
+          .foregroundStyle(.secondary)
+      case .unavailable(let message):
+        Text("ADB server unavailable")
+          .foregroundStyle(.secondary)
+        Text(message)
           .font(.footnote)
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
-          .transition(.opacity)
-      } else {
+          .textSelection(.enabled)
+          .frame(maxWidth: 420)
+        Button("Start ADB server", action: retryADBServer)
+      case .online:
         Text(deviceMessage)
           .foregroundStyle(.gray)
           .transition(.opacity)

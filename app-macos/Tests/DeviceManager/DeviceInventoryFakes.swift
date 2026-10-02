@@ -10,6 +10,12 @@ final class DeviceTracker {
   private var currentReady: [Device]?
 
   func startTracking() async {}
+  func retryADBServer() async {}
+  func serverStateStream() async -> AsyncStream<ADBServerState> {
+    AsyncStream { $0.yield(.online)
+      $0.finish()
+    }
+  }
 
   func previewDeviceStream() async -> AsyncStream<[Device]> {
     AsyncStream {

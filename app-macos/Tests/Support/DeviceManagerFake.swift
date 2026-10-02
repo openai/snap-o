@@ -2,6 +2,9 @@ import Foundation
 
 @MainActor
 final class DeviceManager {
+  var adbServerState: ADBServerState = .online
+  func retryADBServer() {}
+
   private(set) var latestDevices: [Device]
   private var previewDevices: [Device]
   private let source: (@Sendable () async -> AsyncStream<[Device]>)?

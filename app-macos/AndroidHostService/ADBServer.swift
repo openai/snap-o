@@ -21,10 +21,11 @@ struct ADBServer {
     let executable = try resolveExecutable()
     guard try !isListening() else { return }
     var environment = environment
-    environment["ADB_SERVER_SOCKET"] = "tcp:127.0.0.1:5037"
+    // ADB treats a numeric host as remote and refuses to launch a server for it.
+    environment["ADB_SERVER_SOCKET"] = "tcp:5037"
     environment.removeValue(forKey: "ANDROID_ADB_SERVER_ADDRESS")
     environment.removeValue(forKey: "ANDROID_ADB_SERVER_PORT")
-    try run(executable, ["-L", "tcp:127.0.0.1:5037", "start-server"], environment)
+    try run(executable, ["-L", "tcp:5037", "start-server"], environment)
     guard try isListening() else {
       throw AndroidHostServiceError(message: "ADB exited without starting a server on 127.0.0.1:5037.")
     }

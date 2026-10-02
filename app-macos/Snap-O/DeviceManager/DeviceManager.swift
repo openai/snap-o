@@ -7,6 +7,8 @@ final class DeviceManager {
   private(set) var emulators: [ManagedEmulator] = []
   private(set) var connectedDevices: [Device] = []
   private(set) var latestDevices: [Device] = []
+  private(set) var adbServerState: ADBServerState = .connecting
+  @ObservationIgnored private var adbRecoveryTask: Task<Void, Never>?
 
   @ObservationIgnored private var trackedDevices: [Device]?
   @ObservationIgnored private var readyDevices: [Device]?
@@ -95,11 +97,28 @@ final class DeviceManager {
     guard observationTask == nil else { return }
     observationTask = Task {
       await deviceTracker.startTracking()
+      async let serverState: Void = observeServerState()
       async let connections: Void = observeConnections(preview: true)
       async let properties: Void = observeConnections(preview: false)
       await observeEmulators()
       await connections
       await properties
+      await serverState
+    }
+  }
+
+  func retryADBServer() {
+    guard adbRecoveryTask == nil else { return }
+    adbRecoveryTask = Task {
+      defer { adbRecoveryTask = nil }
+      await deviceTracker.retryADBServer()
+    }
+  }
+
+  private func observeServerState() async {
+    for await state in await deviceTracker.serverStateStream() {
+      guard !Task.isCancelled else { return }
+      adbServerState = state
     }
   }
 
@@ -332,6 +351,8 @@ final class DeviceManager {
   }
 
   func shutdown() {
+    adbRecoveryTask?.cancel()
+    adbRecoveryTask = nil
     inventoryGeneration += 1
     matchingTask?.cancel()
     matchingTask = nil

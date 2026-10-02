@@ -17,6 +17,7 @@ swiftc_for_tests -swift-version 6 -target arm64-apple-macosx26.0 \
 run_test "$OUTPUT/tests"
 
 swiftc_for_tests -swift-version 6 -parse-as-library -target arm64-apple-macosx26.0 \
+  "$APP_DIR/Snap-O/Device/ADBServerState.swift" \
   "$APP_DIR/Snap-O/Device/Device.swift" \
   "$APP_DIR/Snap-O/Models/Device+Formatting.swift" \
   "$APP_DIR/Snap-O/Device/AndroidHostServiceProtocol.swift" \

@@ -53,7 +53,7 @@ func testsADBStartup() throws {
   }
   try server.startIfNeeded()
   let arguments = try String(contentsOf: URL(fileURLWithPath: customADB.path + ".arguments"), encoding: .utf8)
-  try expect(arguments == "-L\ntcp:127.0.0.1:5037\nstart-server\n", "Startup must use fixed arguments and the native client's endpoint")
+  try expect(arguments == "-L\ntcp:5037\nstart-server\n", "Startup must use fixed arguments and the native client's endpoint")
   try expect(probes == 3, "Check before discovery, immediately before launch, and after launch")
 
   var launches = 0
@@ -93,7 +93,7 @@ func testsADBStartup() throws {
     return probes == 3
   }
   redirected.run = { _, _, environment in
-    try expect(environment["ADB_SERVER_SOCKET"] == "tcp:127.0.0.1:5037", "The child must target the native client's endpoint")
+    try expect(environment["ADB_SERVER_SOCKET"] == "tcp:5037", "The child must target the native client's endpoint")
     try expect(environment["ANDROID_ADB_SERVER_ADDRESS"] == nil, "An inherited remote address must not redirect startup")
     try expect(environment["ANDROID_ADB_SERVER_PORT"] == nil, "An inherited remote port must not redirect startup")
   }
@@ -121,5 +121,37 @@ func testsADBStartup() throws {
   Darwin.close(listener)
   listener = -1
   try expect(try !ADBServer.isListening(port: port), "Connection refusal means the server is absent")
+  try testRealADBStartup(port: port)
   print("ADB startup tests passed (existing server, races, errors, custom paths, and local endpoint)")
+}
+
+/// Opt in with SNAPO_TEST_ADB to validate the real CLI without touching port 5037 or attached devices.
+private func testRealADBStartup(port: UInt16) throws {
+  guard let path = ProcessInfo.processInfo.environment["SNAPO_TEST_ADB"] else { return }
+  let executable = URL(fileURLWithPath: path)
+  let endpoint = "tcp:\(port)"
+  var server = ADBServer(environment: ["SNAPO_ADB": path])
+  server.isListening = { try ADBServer.isListening(port: port) }
+  server.run = { executable, arguments, environment in
+    var environment = environment.mapValues { $0.replacingOccurrences(of: ":5037", with: ":\(port)") }
+    environment["ADB_MDNS_AUTO_CONNECT"] = "0"
+    environment["ADB_LOCAL_TRANSPORT_MAX_PORT"] = "0"
+    let arguments = ["--one-device", "snapo-test-no-device"]
+      + arguments.map { $0.replacingOccurrences(of: ":5037", with: ":\(port)") }
+    _ = try EmulatorCommand(executable: executable, arguments: arguments, environment: environment).run()
+  }
+  defer {
+    _ = try? EmulatorCommand(executable: executable, arguments: ["-L", endpoint, "kill-server"]).run()
+  }
+  try server.startIfNeeded()
+  try expect(try ADBServer.isListening(port: port), "Real ADB must start on the isolated local endpoint")
+  let launch = server.run
+  server.run = { _, _, _ in throw AndroidHostServiceError(message: "A live server must not launch ADB again") }
+  try server.startIfNeeded()
+  _ = try EmulatorCommand(executable: executable, arguments: ["-L", endpoint, "kill-server"]).run()
+  try expect(try !ADBServer.isListening(port: port), "The isolated server must stop before testing recovery")
+  server.run = launch
+  try server.startIfNeeded()
+  try expect(try ADBServer.isListening(port: port), "Real ADB must restart after kill-server")
+  print("Real ADB startup, existing-listener preservation, and kill-server recovery passed on isolated port \(port)")
 }

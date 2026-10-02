@@ -60,7 +60,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
           keyboard: settings.keyboardInput ? keyboard : nil
         )
         if readyRendererID != renderer.operation.id {
-          WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: loadingMessage(deviceID))
+          WaitingForDeviceView(deviceMessage: loadingMessage(deviceID))
         }
       } else if lifecycle.connection?.hasFailed == true {
         VStack(spacing: 8) {
@@ -72,7 +72,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
         }
         .padding(16)
       } else if lifecycle.isConnecting {
-        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: loadingMessage(deviceID))
+        WaitingForDeviceView(deviceMessage: loadingMessage(deviceID))
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
