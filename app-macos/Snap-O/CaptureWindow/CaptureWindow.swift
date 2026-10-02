@@ -172,17 +172,6 @@ struct CaptureWindow: View {
       )
   }
 
-  private var livePreviewDeviceOptions: [CaptureDeviceOption] {
-    deviceManager.entries.compactMap { entry in
-      let status: String? = if case .emulator(let device) = entry {
-        deviceManager.startupStatus(for: device)
-      } else {
-        nil
-      }
-      return CaptureDeviceOption(entry: entry, startupStatus: status)
-    }
-  }
-
   private var captureDeviceTitle: String? {
     if let request = controller.deviceOpenRequest {
       switch request {
@@ -277,12 +266,8 @@ struct CaptureWindow: View {
           capturePaneVisibleWidth: captureVisibleWidth,
           toolPaneVisibleWidth: toolVisibleWidth,
           transitioningPane: layoutTransition?.pane,
-          titlebarHeight: titlebarHeight,
-          deviceOptions: livePreviewDeviceOptions,
-          deviceSelection: controller.deviceOpenRequest ?? controller.loadingPreviewDeviceID.map { .serial($0) },
-          showsDevicePicker: controller.deviceOpenRequest != nil || controller.isLivePreviewActive
-            || (!controller.isReviewingCapture && settings.startupCaptureMode == .livePreview)
-        ) { session.openDevice($0) }
+          titlebarHeight: titlebarHeight
+        )
 
         captureWorkspace(
           controller: controller,
