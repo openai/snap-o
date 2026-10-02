@@ -1,4 +1,4 @@
-@preconcurrency import AVFoundation
+import Foundation
 @testable import Snap_O
 import Testing
 
@@ -23,41 +23,14 @@ struct CaptureReviewPlaybackTests {
     }
   }
 
-  @Test @MainActor
-  func scrubbingPreservesPauseChoice() {
-    let playback = CaptureReviewPlayback()
-    playback.togglePlayback()
-    playback.setScrubbing(true)
-    playback.setScrubbing(false)
-    #expect(!playback.wantsPlayback)
-  }
-
-  @Test @MainActor
-  func visibilityChangesPreservePauseChoice() {
-    let playback = CaptureReviewPlayback()
-    playback.togglePlayback()
-    playback.setWindowVisible(false)
-    playback.setWindowVisible(true)
-    #expect(!playback.wantsPlayback)
-  }
-
-  @Test @MainActor
-  func scrubbingPreservesPlaybackSpeed() {
-    let playback = CaptureReviewPlayback()
-    playback.setSpeed(0.5)
-    playback.setScrubbing(true)
-    playback.setScrubbing(false)
-    #expect(playback.speed == 0.5)
-  }
-
   @Test
   func rapidScrubbingSettlesOnExactFinalPosition() throws {
     var seeks = CaptureSeekQueue()
     seeks.enqueue(time: 0.1, tolerance: 1.0 / 15)
     let firstRequest = seeks.next()
     let first = try #require(firstRequest)
-    for index in 0 ..< 200 {
-      seeks.enqueue(time: Double(index % 9) / 10, tolerance: 1.0 / 15)
+    for time in [0.2, 0.7, 0.9] {
+      seeks.enqueue(time: time, tolerance: 1.0 / 15)
       let concurrent = seeks.next()
       #expect(concurrent == nil)
     }

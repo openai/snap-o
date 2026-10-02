@@ -14,11 +14,15 @@ final class CaptureReviewPlayback {
   private var isWindowVisible = false
   private var isActive = false
   private(set) var frameRate = 30.0
-  private(set) var isTrimming = false
-  private(set) var trimSelection = CaptureTrimRange(start: 0, end: 0)
-  private var savedTrim: CaptureTrimRange?
-  private var timeBeforeTrimming = 0.0
-  private var wasPlayingBeforeTrimming = false
+  private var trimSession = CaptureTrimSession()
+  var isTrimming: Bool {
+    trimSession.isEditing
+  }
+
+  var trimSelection: CaptureTrimRange {
+    trimSession.selection
+  }
+
   private var frameDuration: Double {
     1 / frameRate
   }
@@ -35,7 +39,7 @@ final class CaptureReviewPlayback {
   }
 
   var playbackRange: CaptureTrimRange {
-    isTrimming ? trimSelection : savedTrim ?? CaptureTrimRange(start: 0, end: duration)
+    trimSession.range
   }
 
   var elapsedTime: Double {
@@ -65,7 +69,7 @@ final class CaptureReviewPlayback {
       duration = seconds
       frameRate = rate.isFinite && rate >= 1 ? Double(rate) : 30
       self.asset = asset
-      savedTrim = trim?.isValid(for: seconds) == true ? trim : nil
+      trimSession = CaptureTrimSession(duration: seconds, frameRate: frameRate, trim: trim)
       configurePlayer()
       isActive = true
       timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
@@ -88,8 +92,7 @@ final class CaptureReviewPlayback {
     isActive = false
     isScrubbing = false
     player.pause()
-    isTrimming = false
-    savedTrim = nil
+    trimSession = CaptureTrimSession()
     asset = nil
     if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
     endObserver = nil
@@ -176,54 +179,42 @@ final class CaptureReviewPlayback {
   }
 
   func beginTrimming() {
-    guard canTrim, !isTrimming else { return }
-    timeBeforeTrimming = time
-    wasPlayingBeforeTrimming = wantsPlayback
-    trimSelection = playbackRange
-    isTrimming = true
+    guard canTrim, trimSession.begin(time: time, playing: wantsPlayback) else { return }
     wantsPlayback = false
     configurePlayer()
     seek(to: trimSelection.start)
   }
 
   func cancelTrimming() {
-    guard isTrimming else { return }
-    isTrimming = false
-    wantsPlayback = wasPlayingBeforeTrimming
+    guard let playback = trimSession.cancel() else { return }
+    wantsPlayback = playback.playing
     configurePlayer()
-    seek(to: timeBeforeTrimming)
+    seek(to: playback.time)
   }
 
   func confirmTrim() -> CaptureTrimRange? {
-    guard isTrimming else { return savedTrim }
-    savedTrim = trimSelection == CaptureTrimRange(start: 0, end: duration) ? nil : trimSelection
-    isTrimming = false
+    guard isTrimming else { return trimSession.confirm() }
+    let trim = trimSession.confirm()
     wantsPlayback = false
     configurePlayer()
     seek(to: playbackRange.start)
-    return savedTrim
+    return trim
   }
 
   func setTrimStart(_ seconds: Double) {
     guard isTrimming, seconds.isFinite else { return }
-    let start = min(max(0, snapped(seconds)), max(0, trimSelection.end - frameDuration))
-    trimSelection = CaptureTrimRange(start: start, end: trimSelection.end)
-    previewTrimBoundary(start)
+    trimSession.setStart(seconds)
+    previewTrimBoundary(trimSelection.start)
   }
 
   func setTrimEnd(_ seconds: Double) {
     guard isTrimming, seconds.isFinite else { return }
-    let end = max(min(duration, snapped(seconds)), trimSelection.start + frameDuration)
-    trimSelection = CaptureTrimRange(start: trimSelection.start, end: min(duration, end))
+    trimSession.setEnd(seconds)
     previewTrimBoundary(lastPreviewFrame)
   }
 
   private var lastPreviewFrame: Double {
     max(playbackRange.start, playbackRange.end - frameDuration)
-  }
-
-  private func snapped(_ seconds: Double) -> Double {
-    (seconds * frameRate).rounded() / frameRate
   }
 
   private func previewTrimBoundary(_ seconds: Double) {
