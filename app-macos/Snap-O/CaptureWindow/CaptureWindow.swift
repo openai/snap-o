@@ -117,7 +117,9 @@ struct CaptureWindow: View {
         toolSession.startIfNeeded()
       }
       .onDisappear {
+        let previousTeardown = teardownTask
         teardownTask = Task {
+          await previousTeardown?.value
           await history.repository.protect([], owner: historyProtectionID)
           await controller.tearDown()
           await toolSession.stop()
