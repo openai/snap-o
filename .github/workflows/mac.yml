@@ -107,6 +107,10 @@ jobs:
           name: mac-test-results
           path: ${{ runner.temp }}/snap-o-tests.xcresult
           if-no-files-found: ignore
+      - name: Test capture export permissions
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+        run: sh scripts/test-capture-export.sh
       - name: Test capture integration
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data

@@ -1,31 +1,22 @@
 @preconcurrency import AVFoundation
+import CoreData
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
 enum CaptureCropExporter {
   static func save(_ capture: CaptureMedia, crop: CGRect, trim: CaptureTrimRange? = nil, to destination: URL) async throws {
-    let staging = destination.deletingLastPathComponent()
-      .appendingPathComponent(".\(UUID().uuidString).\(destination.pathExtension)")
-    defer { try? FileManager.default.removeItem(at: staging) }
-    _ = try await export(capture, crop: crop, trim: trim, to: staging)
-    try replaceDestination(destination, with: staging)
+    let fileExport = try StagedFileExport(to: destination)
+    defer { fileExport.cleanup() }
+    _ = try await export(capture, crop: crop, trim: trim, to: fileExport.url)
+    try fileExport.commit()
   }
 
   static func saveImage(at source: URL, crop: CGRect, to destination: URL) throws {
-    let staging = destination.deletingLastPathComponent()
-      .appendingPathComponent(".\(UUID().uuidString).png")
-    defer { try? FileManager.default.removeItem(at: staging) }
-    _ = try exportImage(at: source, crop: crop, to: staging)
-    try replaceDestination(destination, with: staging)
-  }
-
-  private static func replaceDestination(_ destination: URL, with staging: URL) throws {
-    if FileManager.default.fileExists(atPath: destination.path) {
-      _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
-    } else {
-      try FileManager.default.moveItem(at: staging, to: destination)
-    }
+    let fileExport = try StagedFileExport(to: destination)
+    defer { fileExport.cleanup() }
+    _ = try exportImage(at: source, crop: crop, to: fileExport.url)
+    try fileExport.commit()
   }
 
   static func pixelRect(_ crop: CGRect, size: CGSize, alignment: CGFloat = 1) -> CGRect {

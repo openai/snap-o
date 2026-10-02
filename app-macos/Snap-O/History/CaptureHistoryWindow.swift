@@ -442,13 +442,10 @@ struct CaptureHistoryWindow: View {
     guard panel.runModal() == .OK, let destination = panel.url else { return }
     do {
       let source = entry.fileURL(for: item, in: history.repository.root)
-      // Stage the export before replacement so the managed original is never modified.
-      let staging = destination.deletingLastPathComponent().appendingPathComponent(UUID().uuidString)
-      try FileManager.default.copyItem(at: source, to: staging)
-      defer { try? FileManager.default.removeItem(at: staging) }
-      if FileManager.default.fileExists(atPath: destination.path) {
-        _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
-      } else { try FileManager.default.moveItem(at: staging, to: destination) }
+      let fileExport = try StagedFileExport(to: destination)
+      defer { fileExport.cleanup() }
+      try FileManager.default.copyItem(at: source, to: fileExport.url)
+      try fileExport.commit()
       SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: kind)
     } catch { errorMessage = error.localizedDescription }
   }
