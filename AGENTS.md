@@ -21,6 +21,12 @@ Snap-O is a public, open-source Android inspection tool.
 - Each Python CLI implements its own transport; it does not use the Swift client.
 - When changing shared behavior, check the Android libraries, macOS client, web tool, and both Python CLIs. Use `contracts/`, its fixtures, and `docs/tweaks-protocol.md` to keep them compatible.
 
+## Test clocks
+
+- macOS timing tests use the existing `continuousClock` dependency and `TestClock` for both time reads and sleeps. See [Native test synchronization](app-macos/Tests/README.md).
+- Do not add helper framework dependencies or change packaging just to introduce test clocks.
+- Preserve regression coverage when removing sleeps. Do not replace them with deleted tests or extra test time limits; CI already bounds hangs.
+
 ## Public Repository
 
 Use synthetic data in tests and examples. Never publish credentials, captured private traffic, confidential implementation details, or private issue-tracker links, identifiers, or content. Review the full diff, commit message, and PR text for sensitive information before publishing.
