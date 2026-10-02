@@ -14,8 +14,9 @@ struct CaptureReviewPlaybackTests {
     for size in [CGSize(width: 260, height: 500), CGSize(width: 400, height: 800), CGSize(width: 800, height: 400)] {
       for ratio: CGFloat in [0.5, 1, 2] {
         let video = CaptureReviewLayout.mediaFrame(in: size, aspectRatio: ratio, showsPlayback: true)
-        let controls = CaptureReviewLayout.playbackFrame(in: size, mediaFrame: video)
-        #expect(controls.maxY <= size.height - CaptureReviewLayout.edgeSpacing + 0.0001)
+        let controls = CaptureReviewLayout.playbackFrame(in: size)
+        #expect(abs(controls.maxY - (size.height - CaptureReviewLayout.edgeSpacing)) < 0.0001)
+        #expect(video.maxY + CaptureReviewLayout.playbackSpacing <= controls.minY + 0.0001)
         #expect(controls.minX >= CaptureReviewLayout.edgeSpacing)
         #expect(controls.maxX <= size.width - CaptureReviewLayout.edgeSpacing)
       }
