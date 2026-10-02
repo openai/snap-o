@@ -43,6 +43,7 @@ struct CaptureWindow: View {
   @State private var deviceOpenStatus: String?
   @State private var deviceOpenSerial: String?
   @State private var deviceOpenError: String?
+  @State private var teardownTask: Task<Void, Never>?
   @State private var controller: CaptureWindowController
   @State private var workspace: WorkspaceLayoutController
   @State private var toolSession: ToolSession
@@ -81,6 +82,9 @@ struct CaptureWindow: View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
       .task {
+        // URL routing can remount the view before its previous cleanup finishes.
+        await teardownTask?.value
+        guard !Task.isCancelled else { return }
         await controller.start()
       }
       .task(id: controller.deviceOpenRequest) {
@@ -113,7 +117,7 @@ struct CaptureWindow: View {
         toolSession.startIfNeeded()
       }
       .onDisappear {
-        Task {
+        teardownTask = Task {
           await history.repository.protect([], owner: historyProtectionID)
           await controller.tearDown()
           await toolSession.stop()
@@ -171,7 +175,7 @@ struct CaptureWindow: View {
       .background(
         WindowCommandRegistration { command in
           workspace.revealCapture()
-          Task { await handle(command, controller: controller) }
+          Task { await controller.perform(command) }
         } openDevice: { request in
           workspace.revealCapture()
           controller.deviceOpenRequest = request
@@ -790,17 +794,5 @@ struct CaptureWindow: View {
       availableCaptureIDs: Set(snapshot.entries.flatMap { $0.items.compactMap(\.captureID) }),
       root: history.repository.root
     )
-  }
-
-  private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
-    switch command {
-    case .record:
-      await controller.startRecording()
-    case .capture:
-      await controller.captureScreenshots()
-    case .livepreview:
-      guard controller.canStartLivePreviewNow else { return }
-      await controller.startLivePreview()
-    }
   }
 }

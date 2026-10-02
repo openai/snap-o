@@ -30,6 +30,7 @@ final class CaptureWindowController {
   var deviceOpenRequest: DeviceOpenRequest?
 
   private var knownDevices: [Device] = []
+  @ObservationIgnored private var pendingCommands: [SnapOCommand] = []
   @ObservationIgnored private var usesPreviewDeviceStream = false
   @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
@@ -89,6 +90,22 @@ final class CaptureWindowController {
 
   func retryADBServer() {
     deviceManager.retryADBServer()
+  }
+
+  func perform(_ command: SnapOCommand) async {
+    guard !isTornDown, hasDevices else {
+      pendingCommands.append(command)
+      return
+    }
+    switch command {
+    case .record:
+      await startRecording()
+    case .capture:
+      await captureScreenshots()
+    case .livepreview:
+      guard canStartLivePreviewNow else { return }
+      await startLivePreview()
+    }
   }
 
   func selectMedia(id: CaptureMedia.ID) {
@@ -601,6 +618,15 @@ final class CaptureWindowController {
     }
     if !devices.isEmpty {
       startInitialCaptureIfNeeded()
+      let commands = pendingCommands
+      pendingCommands.removeAll()
+      if !commands.isEmpty {
+        Task { @MainActor [weak self] in
+          for command in commands {
+            await self?.perform(command)
+          }
+        }
+      }
     }
     Task { @MainActor [weak self] in
       guard let self else { return }

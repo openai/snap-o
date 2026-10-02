@@ -52,6 +52,8 @@ struct StartupCaptureTests {
         await stopDuringRendererClaim()
         await disconnectWaitsForCleanup()
         await reconnectDuringPreparedReadiness()
+        await commandBeforeDeviceDiscovery(remounts: false)
+        await commandBeforeDeviceDiscovery(remounts: true)
         await commandDuringAutomaticPreview(recordsVideo: true)
         await commandDuringAutomaticPreview(recordsVideo: false)
         await tearDownDuringQueuedCommand(recordsVideo: true)
@@ -1109,6 +1111,26 @@ struct StartupCaptureTests {
       fixture.controller.synchronizeCaptureHistory(availableCaptureIDs: [], root: root)
       precondition(fixture.controller.currentCapture?.id == previewID, "History updates do not restart Live Preview")
     }
+    await fixture.controller.tearDown()
+  }
+
+  static func commandBeforeDeviceDiscovery(remounts: Bool) async {
+    let fixture = ControllerFixture(devices: [])
+    await fixture.controller.perform(.capture)
+    await fixture.controller.start()
+    if remounts {
+      await fixture.controller.tearDown()
+      await fixture.controller.start()
+    }
+    await fixture.assertNoCaptureRequests()
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await fixture.stopGate.open()
+    fixture.tracker.updateDevices([first])
+    await eventually("A startup URL command must run when discovery finishes") {
+      await fixture.screenshots.requests == [[first.id]]
+    }
+    await eventually { fixture.controller.isReviewingCapture }
     await fixture.controller.tearDown()
   }
 
