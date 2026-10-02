@@ -133,6 +133,84 @@ struct CaptureCropTests {
     #expect(requests == (startsInside ? 1 : 0))
   }
 
+  @Test(arguments: [CGFloat(200), 98]) @MainActor
+  func escapeCancelsOnlyTheActiveCropGesture(startX: CGFloat) throws {
+    let view = makeView()
+    let window = makeWindow(view)
+    defer {
+      view.stopMonitoringEscape()
+      window.contentView = nil
+    }
+    let original = view.crop
+    var latestCrop = original
+    view.cropChanged = { latestCrop = $0 }
+    try view.mouseDown(with: event(.leftMouseDown, x: startX))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: startX + 40))
+    #expect(view.crop != original)
+
+    try NSApplication.shared.sendEvent(escape(in: window))
+
+    #expect(view.crop == original)
+    #expect(latestCrop == original)
+    try view.mouseDragged(with: event(.leftMouseDragged, x: startX + 60))
+    #expect(view.crop == original)
+  }
+
+  @Test @MainActor
+  func escapeInAnotherWindowDoesNotCancelTheCrop() throws {
+    let view = makeView()
+    let window = makeWindow(view)
+    let other = makeWindow(NSView())
+    defer {
+      view.stopMonitoringEscape()
+      window.contentView = nil
+      other.contentView = nil
+    }
+    try view.mouseDown(with: event(.leftMouseDown, x: 200))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 240))
+    let cropped = view.crop
+
+    try NSApplication.shared.sendEvent(escape(in: other))
+
+    #expect(view.crop == cropped)
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 260))
+    #expect(view.crop != cropped)
+  }
+
+  @Test @MainActor
+  func escapeAfterMouseUpPreservesTheCompletedCrop() throws {
+    let view = makeView()
+    let window = makeWindow(view)
+    defer { window.contentView = nil }
+    try view.mouseDown(with: event(.leftMouseDown, x: 200))
+    try view.mouseDragged(with: event(.leftMouseDragged, x: 240))
+    try view.mouseUp(with: event(.leftMouseUp, x: 240))
+    let cropped = view.crop
+
+    try NSApplication.shared.sendEvent(escape(in: window))
+
+    #expect(view.crop == cropped)
+  }
+
+  @MainActor
+  private func makeWindow(_ view: NSView) -> NSWindow {
+    let window = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 400, height: 400),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    return window
+  }
+
+  @MainActor
+  private func escape(in window: NSWindow) throws -> NSEvent {
+    try #require(NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: window.windowNumber, context: nil, characters: "\u{1B}",
+      charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53
+    ))
+  }
+
   @MainActor
   private func makeView() -> CaptureCropOverlay.CropView {
     let view = CaptureCropOverlay.CropView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))

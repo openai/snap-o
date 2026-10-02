@@ -92,7 +92,9 @@ New screenshots and recordings stay in review until you save or discard them. Dr
 
 Click the checkmark (**Save to History**) to keep all captures in the review with their crops. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
 
-Starting another capture, returning to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.
+Press `Esc` to open a discard confirmation. Press `Enter` to discard, or `Esc` again to keep editing. During a crop drag or while trimming a recording, `Esc` cancels that edit first.
+
+Starting another capture, pressing `⇧⌘L` to return to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
@@ -132,6 +134,7 @@ To remove a group, open it and choose **Delete Capture**. **Clear History…** r
 | New screenshot            | `⇧⌘S`    |
 | Start / stop recording    | `⇧⌘V`    |
 | Start live preview        | `⇧⌘L`    |
+| Leave capture review      | `Esc`    |
 | Open Capture History      | `⌘Y`     |
 | Open Device Manager       | `⇧⌘M`    |
 | Save as                   | `⌘S`     |

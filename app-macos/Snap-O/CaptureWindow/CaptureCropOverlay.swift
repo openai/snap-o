@@ -23,6 +23,10 @@ struct CaptureCropOverlay: NSViewRepresentable {
     view.window?.invalidateCursorRects(for: view)
   }
 
+  static func dismantleNSView(_ view: CropView, coordinator: ()) {
+    view.stopMonitoringEscape()
+  }
+
   final class CropView: NSView, NSDraggingSource {
     private static let handleOutlineWidth: CGFloat = 4
     private static let cornerArmLength: CGFloat = 24
@@ -41,6 +45,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     private var initialCrop = CaptureCropGeometry.fullImage
     private var activeHandle: CaptureCropHandle?
     private var isExporting = false
+    private var escapeMonitor: Any?
     private var targetHandleOpacity: CGFloat = 0.45
     @objc dynamic var handleOpacity: CGFloat = 0.45 {
       didSet { needsDisplay = true }
@@ -133,6 +138,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     }
 
     override func mouseDown(with event: NSEvent) {
+      stopMonitoringEscape()
       let point = convert(event.locationInWindow, from: nil)
       let handle = handle(at: point)
       isExporting = event.modifierFlags.contains(.command)
@@ -144,6 +150,33 @@ struct CaptureCropOverlay: NSViewRepresentable {
       origin = point
       initialCrop = crop
       activeHandle = handle
+      if !isExporting { monitorEscape() }
+    }
+
+    private func monitorEscape() {
+      guard window != nil else { return }
+      escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        guard let self, let window, event.window === window, event.keyCode == 53 else { return event }
+        // A crop gesture consumes Escape before the review can offer to discard the capture.
+        crop = initialCrop
+        cropChanged?(crop)
+        origin = nil
+        activeHandle = nil
+        needsDisplay = true
+        window.invalidateCursorRects(for: self)
+        stopMonitoringEscape()
+        return nil
+      }
+    }
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      if window == nil { stopMonitoringEscape() }
+    }
+
+    func stopMonitoringEscape() {
+      if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+      escapeMonitor = nil
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -180,6 +213,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     }
 
     override func mouseUp(with event: NSEvent) {
+      stopMonitoringEscape()
       origin = nil
       activeHandle = nil
       isExporting = false
