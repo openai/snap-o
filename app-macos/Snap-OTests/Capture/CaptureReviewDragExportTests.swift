@@ -19,7 +19,7 @@ struct CaptureReviewDragExportTests {
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
     let pending = TestValue<[Pending]>([])
-    let exporter = CaptureReviewDragExport { _, _, destination in
+    let exporter = CaptureReviewDragExport { _, _, _, destination in
       try await withCheckedThrowingContinuation { completion in
         pending.value.append(Pending(destination: destination, completion: completion))
       }
@@ -53,7 +53,7 @@ struct CaptureReviewDragExportTests {
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
     let pending = TestValue<[Pending]>([])
-    let exporter = CaptureReviewDragExport { _, _, destination in
+    let exporter = CaptureReviewDragExport { _, _, _, destination in
       try await withCheckedThrowingContinuation { completion in
         pending.value.append(Pending(destination: destination, completion: completion))
       }
@@ -75,7 +75,7 @@ struct CaptureReviewDragExportTests {
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
     var partialFile: URL?
-    let exporter = CaptureReviewDragExport { _, _, destination in
+    let exporter = CaptureReviewDragExport { _, _, _, destination in
       partialFile = destination
       try Data([1]).write(to: destination)
       throw CocoaError(.fileReadCorruptFile)
@@ -93,7 +93,7 @@ struct CaptureReviewDragExportTests {
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
     var exported: URL?
-    let exporter = CaptureReviewDragExport { _, _, destination in
+    let exporter = CaptureReviewDragExport { _, _, _, destination in
       exported = destination
       try Data([1, 2, 3]).write(to: destination)
       return NSImage(size: CGSize(width: 64, height: 32))

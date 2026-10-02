@@ -8,9 +8,10 @@ final class CaptureReviewDragExport {
   struct Request: Equatable {
     let capture: CaptureMedia
     let crop: CGRect
+    var trim: CaptureTrimRange?
   }
 
-  typealias Preparation = @MainActor (CaptureMedia, CGRect, URL) async throws -> NSImage
+  typealias Preparation = @MainActor (CaptureMedia, CGRect, CaptureTrimRange?, URL) async throws -> NSImage
 
   private(set) var isPreparing = false
   private(set) var errorMessage: String?
@@ -43,7 +44,7 @@ final class CaptureReviewDragExport {
       guard token == generation else { return }
       let url = try fileStore.makeUniqueDragDestination(capturedAt: request.capture.media.capturedAt, kind: .video)
       destination = url
-      let image = try await prepareFile(request.capture, request.crop, url)
+      let image = try await prepareFile(request.capture, request.crop, request.trim, url)
       try Task.checkCancellation()
       guard token == generation else {
         try? FileManager.default.removeItem(at: url)
@@ -82,8 +83,13 @@ final class CaptureReviewDragExport {
     return item
   }
 
-  private static func exportFile(_ capture: CaptureMedia, crop: CGRect, to destination: URL) async throws -> NSImage {
-    _ = try await CaptureCropExporter.export(capture, crop: crop, to: destination)
+  private static func exportFile(
+    _ capture: CaptureMedia,
+    crop: CGRect,
+    trim: CaptureTrimRange?,
+    to destination: URL
+  ) async throws -> NSImage {
+    _ = try await CaptureCropExporter.export(capture, crop: crop, trim: trim, to: destination)
     let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
     generator.appliesPreferredTrackTransform = true
     generator.maximumSize = CGSize(width: 640, height: 640)

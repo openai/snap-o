@@ -7,30 +7,43 @@ struct CaptureReviewView: View {
   @State private var isNaming = false
   @State private var isFinishing = false
   @State private var errorMessage: String?
+  @State private var playback = CaptureReviewPlayback()
+  @State private var trimFieldsValid = true
   @State private var dragExport = CaptureReviewDragExport()
 
   var body: some View {
     GeometryReader { geometry in
       if let capture = controller.currentCapture {
         let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
-        let dragRequest = CaptureReviewDragExport.Request(capture: capture, crop: crop)
+        let dragRequest = CaptureReviewDragExport.Request(capture: capture, crop: crop, trim: controller.reviewTrims[capture.id])
         let frame = CaptureReviewLayout.mediaFrame(
-          in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo
+          in: geometry.size, aspectRatio: capture.media.aspectRatio, showsPlayback: capture.media.isVideo, isTrimming: playback.isTrimming
         )
         ZStack(alignment: .topLeading) {
           Color.clear
-          reviewToolbar
-            .frame(height: CaptureReviewLayout.toolbarHeight)
-            .padding(.horizontal, CaptureReviewLayout.edgeSpacing)
-            .padding(.vertical, CaptureReviewLayout.toolbarSpacing)
+          Group {
+            if playback.isTrimming {
+              CaptureTrimToolbar(canApply: trimFieldsValid) {
+                playback.cancelTrimming()
+              } apply: {
+                controller.reviewTrims[capture.id] = playback.confirmTrim()
+              }
+            } else {
+              reviewToolbar
+            }
+          }
+          .frame(height: CaptureReviewLayout.toolbarHeight)
+          .padding(.horizontal, CaptureReviewLayout.edgeSpacing)
+          .padding(.vertical, CaptureReviewLayout.toolbarSpacing)
           if case .video(let url, _) = capture.media {
             CaptureReviewVideo(
               url: url,
               mediaFrame: frame,
-              controlsFrame: CaptureReviewLayout.playbackFrame(in: geometry.size, mediaFrame: frame)
-            )
-            .id(capture.id)
-            .zIndex(1)
+              controlsFrame: CaptureReviewLayout.playbackFrame(in: geometry.size, isTrimming: playback.isTrimming),
+              playback: playback,
+              trim: controller.reviewTrims[capture.id]
+            ) { trimFieldsValid = $0 }
+              .zIndex(1)
           } else {
             CaptureMediaView(
               fileStore: controller.fileStore,
@@ -50,7 +63,7 @@ struct CaptureReviewView: View {
               get: { controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage },
               set: { controller.reviewCrops[capture.id] = $0 }
             ),
-            isEnabled: !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview,
+            isEnabled: !playback.isTrimming && !isNaming && !isFinishing && !controller.isProcessing && !controller.isSavingReview,
             allowsFileDrag: !capture.media.isVideo || dragExport.isReady(for: dragRequest)
           ) { makeDragItem(capture, frame: $0) }
             .id(capture.id)
@@ -79,7 +92,8 @@ struct CaptureReviewView: View {
             deviceID: capture.device.id, capturedAt: capture.media.capturedAt, kind: kind
           )
           try await exports.append(CaptureCropExporter.export(
-            capture, crop: controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage, to: destination
+            capture, crop: controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage,
+            trim: controller.reviewTrims[capture.id], to: destination
           ))
         }
         try await history.repository.saveReviewedCaptures(exports, name: name, selectedID: controller.selectedMediaID)
@@ -126,6 +140,7 @@ struct CaptureReviewView: View {
           captures: controller.mediaList,
           selectedID: controller.selectedMediaID
         ) { controller.selectMedia(id: $0) }
+          .disabled(playback.isTrimming)
       } else {
         Spacer(minLength: 0)
       }
@@ -137,6 +152,23 @@ struct CaptureReviewView: View {
           .accessibilityLabel("Preparing recording for dragging")
       }
 
+      if controller.currentCapture?.media.isVideo == true {
+        Button {
+          trimFieldsValid = true
+          playback.beginTrimming()
+        } label: {
+          Image(systemName: "scissors")
+            .font(SnapOToolbarStyle.iconFont)
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
+        .glassEffect(.regular.interactive(), in: Circle())
+        .disabled(!playback.canTrim || playback.isTrimming)
+        .help("Trim Recording")
+        .accessibilityLabel("Trim Recording")
+      }
+
       Button { isNaming = true } label: {
         Image(systemName: "checkmark")
           .font(SnapOToolbarStyle.iconFont)
@@ -145,6 +177,7 @@ struct CaptureReviewView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.white)
       .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
+      .disabled(playback.isTrimming)
       .help("Save \(reviewedMediaName) to History")
       .accessibilityLabel("Save \(reviewedMediaName) to History")
     }
@@ -169,7 +202,7 @@ struct CaptureReviewView: View {
         item.setDraggingFrame(frame, contents: NSImage(contentsOf: destination))
         return item
       }
-      return dragExport.draggingItem(for: .init(capture: capture, crop: crop), frame: frame)
+      return dragExport.draggingItem(for: .init(capture: capture, crop: crop, trim: controller.reviewTrims[capture.id]), frame: frame)
     } catch {
       errorMessage = error.localizedDescription
       return nil

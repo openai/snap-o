@@ -4,7 +4,9 @@ struct CaptureReviewVideo: View {
   let url: URL
   let mediaFrame: CGRect
   let controlsFrame: CGRect
-  @State private var playback = CaptureReviewPlayback()
+  let playback: CaptureReviewPlayback
+  let trim: CaptureTrimRange?
+  let onTrimValidityChange: (Bool) -> Void
 
   var body: some View {
     ZStack(alignment: .topLeading) {
@@ -13,22 +15,28 @@ struct CaptureReviewVideo: View {
         showsPlaybackControls: false,
         togglePlayback: { playback.togglePlayback() },
         stepFrame: { playback.stepFrame($0) },
-        playbackControlsFrame: controlsFrame.offsetBy(dx: -mediaFrame.minX, dy: -mediaFrame.minY)
+        playbackControlsFrame: playback.isTrimming ? nil : controlsFrame.offsetBy(dx: -mediaFrame.minX, dy: -mediaFrame.minY)
       )
       .frame(width: mediaFrame.width, height: mediaFrame.height)
       .clipped()
       .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
       .position(x: mediaFrame.midX, y: mediaFrame.midY)
 
-      CapturePlaybackControls(playback: playback)
-        .frame(width: controlsFrame.width, height: controlsFrame.height)
-        .position(x: controlsFrame.midX, y: controlsFrame.midY)
+      Group {
+        if playback.isTrimming {
+          CaptureTrimControls(playback: playback, url: url, onValidityChange: onTrimValidityChange)
+        } else {
+          CapturePlaybackControls(playback: playback)
+        }
+      }
+      .frame(width: controlsFrame.width, height: controlsFrame.height)
+      .position(x: controlsFrame.midX, y: controlsFrame.midY)
     }
     .background {
       WindowVisibilityReader { playback.setWindowVisible($0) }
         .frame(width: 0, height: 0)
     }
-    .task(id: url) { await playback.load(url) }
+    .task(id: url) { await playback.load(url, trim: trim) }
     .onAppear { markPerfMilestones() }
     .onDisappear { playback.stop() }
   }
@@ -46,18 +54,18 @@ private struct CapturePlaybackControls: View {
       .help(playback.wantsPlayback ? "Pause (Space)" : "Play (Space)")
       .accessibilityLabel(playback.wantsPlayback ? "Pause" : "Play")
 
-      Text(CaptureReviewPlayback.timestamp(playback.time))
+      Text(CaptureReviewPlayback.timestamp(playback.elapsedTime))
         .fixedSize()
         .accessibilityLabel("Elapsed time")
       Slider(
-        value: Binding(get: { playback.time }, set: { playback.seek(to: $0) }),
-        in: 0 ... max(playback.duration, 0.01)
+        value: Binding(get: { playback.elapsedTime }, set: { playback.seek(to: playback.playbackRange.start + $0) }),
+        in: 0 ... max(playback.playbackRange.duration, 0.01)
       ) { playback.setScrubbing($0) }
         .controlSize(.mini)
         .tint(.primary)
         .accessibilityLabel("Playback position")
-        .accessibilityValue(CaptureReviewPlayback.timestamp(playback.time))
-      Text(CaptureReviewPlayback.timestamp(playback.duration))
+        .accessibilityValue(CaptureReviewPlayback.timestamp(playback.elapsedTime))
+      Text(CaptureReviewPlayback.timestamp(playback.playbackRange.duration))
         .fixedSize()
         .accessibilityLabel("Duration")
 

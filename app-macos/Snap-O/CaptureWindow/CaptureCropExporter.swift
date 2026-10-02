@@ -4,11 +4,11 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum CaptureCropExporter {
-  static func save(_ capture: CaptureMedia, crop: CGRect, to destination: URL) async throws {
+  static func save(_ capture: CaptureMedia, crop: CGRect, trim: CaptureTrimRange? = nil, to destination: URL) async throws {
     let staging = destination.deletingLastPathComponent()
       .appendingPathComponent(".\(UUID().uuidString).\(destination.pathExtension)")
     defer { try? FileManager.default.removeItem(at: staging) }
-    _ = try await export(capture, crop: crop, to: staging)
+    _ = try await export(capture, crop: crop, trim: trim, to: staging)
     try replaceDestination(destination, with: staging)
   }
 
@@ -56,20 +56,25 @@ enum CaptureCropExporter {
     return CGSize(width: image.width, height: image.height)
   }
 
-  static func export(_ capture: CaptureMedia, crop: CGRect, to destination: URL) async throws -> CaptureMedia {
+  static func export(
+    _ capture: CaptureMedia,
+    crop: CGRect,
+    trim: CaptureTrimRange? = nil,
+    to destination: URL
+  ) async throws -> CaptureMedia {
     guard let source = capture.media.url else { throw CocoaError(.fileReadUnsupportedScheme) }
     guard !FileManager.default.fileExists(atPath: destination.path) else {
       throw CocoaError(.fileWriteFileExists)
     }
     let size: CGSize
     do {
-      if crop == CaptureCropGeometry.fullImage {
+      if crop == CaptureCropGeometry.fullImage, trim == nil {
         try FileManager.default.copyItem(at: source, to: destination)
         size = capture.media.size
       } else if capture.media.isImage {
         size = try exportImage(at: source, crop: crop, to: destination)
       } else {
-        size = try await exportVideo(at: source, crop: crop, to: destination)
+        size = try await exportVideo(at: source, crop: crop, trim: trim, to: destination)
       }
     } catch {
       try? FileManager.default.removeItem(at: destination)
@@ -86,7 +91,7 @@ enum CaptureCropExporter {
     )
   }
 
-  private static func exportVideo(at source: URL, crop: CGRect, to destination: URL) async throws -> CGSize {
+  private static func exportVideo(at source: URL, crop: CGRect, trim: CaptureTrimRange? = nil, to destination: URL) async throws -> CGSize {
     let asset = AVURLAsset(url: source)
     guard let track = try await asset.loadTracks(withMediaType: .video).first,
           let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
@@ -97,6 +102,17 @@ enum CaptureCropExporter {
     let oriented = CGRect(origin: .zero, size: naturalSize).applying(transform)
     let rect = pixelRect(crop, size: oriented.size, alignment: 2)
     let duration = try await asset.load(.duration)
+    if let trim {
+      guard trim.isValid(for: duration.seconds) else { throw CocoaError(.validationMissingMandatoryProperty) }
+      exporter.timeRange = CMTimeRange(
+        start: CMTime(seconds: trim.start, preferredTimescale: 60000),
+        end: CMTime(seconds: trim.end, preferredTimescale: 60000)
+      )
+    }
+    if crop == CaptureCropGeometry.fullImage {
+      try await exporter.export(to: destination, as: .mp4)
+      return oriented.size
+    }
     var layer = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
     layer.setTransform(transform.concatenating(CGAffineTransform(
       translationX: -oriented.minX - rect.minX, y: -oriented.minY - rect.minY

@@ -22,6 +22,7 @@ final class CaptureWindowController {
   private(set) var isProcessing: Bool = false
   var isSavingReview = false
   var reviewCrops: [UUID: CGRect] = [:]
+  var reviewTrims: [UUID: CaptureTrimRange] = [:]
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var imageCopyID: UUID?
@@ -249,6 +250,7 @@ final class CaptureWindowController {
   func finishCaptureReview() async {
     guard isReviewingCapture else { return }
     reviewCrops = [:]
+    reviewTrims = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle
     lastError = nil
@@ -260,6 +262,7 @@ final class CaptureWindowController {
     guard isReviewingCapture else { return }
     fileStore.discardPreviews(mediaList)
     reviewCrops = [:]
+    reviewTrims = [:]
     mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
     mode = .idle
   }
