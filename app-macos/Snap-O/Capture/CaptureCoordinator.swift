@@ -55,7 +55,7 @@ actor CaptureCoordinator {
 
   private static func canShare(_ first: DeviceCaptureActivity, _ second: DeviceCaptureActivity) -> Bool {
     switch (first, second) {
-    case (.livePreview, .recording), (.recording, .livePreview): true
+    case (.livePreview, .livePreview), (.livePreview, .recording), (.recording, .livePreview): true
     default: false
     }
   }

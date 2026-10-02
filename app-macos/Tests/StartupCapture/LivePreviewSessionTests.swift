@@ -151,6 +151,7 @@ struct LivePreviewSessionTests {
         try await emulatorDensityUpdatesAfterBoot()
         try await emulatorTouchSettingsAreRestored()
         try await stoppingEmulatorCancelsBootSetup()
+        try await previewsStopIndependently()
         try await sourceFailureReleasesReadinessWaiters()
         cancellationStopsSourceOnce()
         await showTouchesRestoration()
@@ -316,6 +317,54 @@ struct LivePreviewSessionTests {
     precondition(writes.isEmpty, "Stopping during boot must cancel deferred Android setup")
   }
 
+  static func previewsStopIndependently() async throws {
+    for deviceID in ["shared-phone", "emulator-5554"] {
+      for stopsFirstPreview in [false, true] {
+        let adb = ADBService()
+        let coordinator = CaptureCoordinator()
+        let service = LivePreviewService(adb: adb, coordinator: coordinator)
+        let options = LivePreviewOptions(showsTouches: true)
+        let isEmulator = EmulatorGRPCEndpoint.isEmulator(deviceID)
+        let first = try await service.start(for: deviceID, options: options)
+        let firstSource: TestRawFrameSource = isEmulator ? EmulatorPreviewFrameSource.latest! : DeviceVideoSource.latest!
+        let second = try await service.start(for: deviceID, options: options)
+        let secondSource: TestRawFrameSource = isEmulator ? EmulatorPreviewFrameSource.latest! : DeviceVideoSource.latest!
+        precondition(first.session !== second.session)
+        _ = await service.waitUntilInteractive(first)
+        _ = await service.waitUntilInteractive(second)
+
+        let stopped = stopsFirstPreview ? first : second
+        let stoppedSource = stopsFirstPreview ? firstSource : secondSource
+        let remaining = stopsFirstPreview ? second : first
+        let remainingSource = stopsFirstPreview ? secondSource : firstSource
+        _ = await service.stop(stopped)
+        _ = await service.stop(stopped)
+        precondition(stoppedSource.stops == 1 && remainingSource.stops == 0)
+        let activeWrites = await adb.writes
+        precondition(activeWrites == [true], "Closing one preview must retain shared touch settings")
+
+        let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 4), width: 1, height: 1, timestamp: 0)!
+        var frames = 0
+        remaining.session.sampleBufferHandler = { _ in frames += 1 }
+        remainingSource.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+        remainingSource.deliver?(.sample(sample, isKeyFrame: true))
+        precondition(remaining.session.isReady && frames == 1, "The other preview must keep receiving frames")
+        do {
+          _ = try await coordinator.acquire(deviceIDs: [deviceID], for: .bugReportRecording)
+          fatalError("The remaining preview must retain its capture lease")
+        } catch CaptureCoordinationError.deviceBusy(let busyDeviceID, let activity) {
+          precondition(busyDeviceID == deviceID && activity == .livePreview)
+        }
+
+        _ = await service.stop(remaining)
+        precondition(remainingSource.stops == 1)
+        let finalWrites = await adb.writes
+        precondition(finalWrites == [true, false], "Closing the final preview must restore touch settings")
+        await coordinator.waitUntilIdle()
+      }
+    }
+  }
+
   static func cancellationStopsSourceOnce() {
     let source = TestRawFrameSource()
     let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
@@ -468,7 +517,7 @@ struct LivePreviewSessionTests {
       }
       let settingsRead = await adb.settingsReadStarted
       precondition(!settingsRead)
-      let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
+      let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .bugReportRecording)
       await coordinator.release(lease)
     }
   }
@@ -622,7 +671,7 @@ struct LivePreviewSessionTests {
       } catch is CancellationError {
         // Expected while the device is still unresponsive.
       }
-      let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .livePreview)
+      let lease = try await coordinator.acquire(deviceIDs: ["shutdown-settings"], for: .bugReportRecording)
       await coordinator.release(lease)
       await gate.open()
       await eventually { await adb.writes == [true, false] }
@@ -661,7 +710,7 @@ struct LivePreviewSessionTests {
       await eventually { await adb.writes == [true, false] }
       let writes = await adb.writes
       precondition(writes == [true, false], "Every exit must restore the previous device setting")
-      let lease = try await coordinator.acquire(deviceIDs: ["phone"], for: .livePreview)
+      let lease = try await coordinator.acquire(deviceIDs: ["phone"], for: .bugReportRecording)
       await coordinator.release(lease)
     }
   }
