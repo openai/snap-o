@@ -7,9 +7,7 @@ export interface CapturedRequestBody {
 }
 
 export type DecodedBody =
-  | { kind: "text"; text: string }
-  | { kind: "binary"; byteLength: number }
-  | { kind: "unavailable" };
+  { kind: "text"; text: string } | { kind: "binary"; byteLength: number } | { kind: "unavailable" };
 
 const maxDecodedBytes = 8 * 1024 * 1024;
 
