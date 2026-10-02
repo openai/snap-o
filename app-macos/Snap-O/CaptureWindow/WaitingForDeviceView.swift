@@ -21,7 +21,7 @@ struct WaitingForDeviceView: View {
       if !isDeviceListInitialized {
         Text("Waiting for ADB server")
           .foregroundStyle(.secondary)
-        Text("Run `adb start-server` in Terminal. Snap-O reconnects automatically.")
+        Text("Snap-O tries to start ADB automatically. If it stays unavailable, run `adb start-server` in Terminal.")
           .font(.footnote)
           .foregroundStyle(.tertiary)
           .multilineTextAlignment(.center)

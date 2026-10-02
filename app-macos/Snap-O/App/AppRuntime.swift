@@ -19,8 +19,16 @@ final class AppRuntime {
 
   init() {
     let adbService = ADBService()
-    let deviceTracker = DeviceTracker(adbService: adbService)
-    let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker)
+    let hostClient = AndroidHostClient()
+    let deviceTracker = DeviceTracker(adbService: adbService) {
+      do {
+        try await hostClient.ensureADBServerRunning()
+      } catch {
+        SnapOLog.tracker.error("Could not start ADB: \(error.localizedDescription, privacy: .public)")
+        throw error
+      }
+    }
+    let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker, client: hostClient)
     let captureHistory = CaptureHistory()
     let fileStore = FileStore { url, deviceID, size in
       captureHistory.recordFrame(url: url, size: size) {

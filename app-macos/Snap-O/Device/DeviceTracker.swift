@@ -5,6 +5,7 @@ private let log = SnapOLog.tracker
 
 actor DeviceTracker {
   private let adbService: ADBService
+  private let recoverADBServer: @Sendable () async throws -> Void
   @Dependency(\.continuousClock)
   private var clock
   private let infoCache = DeviceInfoCache()
@@ -44,8 +45,9 @@ actor DeviceTracker {
 
   private var hasSeenFirstMessage: Bool = false
 
-  init(adbService: ADBService) {
+  init(adbService: ADBService, recoverADBServer: @escaping @Sendable () async throws -> Void = {}) {
     self.adbService = adbService
+    self.recoverADBServer = recoverADBServer
   }
 
   // MARK: - Public API
@@ -121,11 +123,17 @@ actor DeviceTracker {
       try? await clock.sleep(for: .milliseconds(300))
     }
 
+    var attemptedRecovery = false
     while !Task.isCancelled {
       let exec = await adbService.exec()
       guard let (handle, stream) = try? await exec.trackDevices() else {
         if Task.isCancelled { break }
         await handleTrackingInterruption()
+        if Task.isCancelled { break }
+        if !attemptedRecovery {
+          attemptedRecovery = true
+          try? await recoverADBServer()
+        }
         await pause()
         continue
       }
@@ -135,6 +143,7 @@ actor DeviceTracker {
       do {
         for try await payload in stream {
           if Task.isCancelled { break }
+          attemptedRecovery = false
           let devices = payload.split(separator: "\n").compactMap(parseDeviceRow).map { row in
             Device(
               id: row.id,

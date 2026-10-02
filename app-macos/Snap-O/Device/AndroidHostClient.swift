@@ -13,8 +13,10 @@ final class AndroidHostClient {
     })
   }
 
-  func startADBServer() async throws {
-    _ = try await request { proxy, reply in proxy.startADBServer(reply: reply) }
+  func ensureADBServerRunning() async throws {
+    let keys: Set = ["SNAPO_ADB", "ANDROID_HOME", "ANDROID_SDK_ROOT", "PATH"]
+    let environment = ProcessInfo.processInfo.environment.filter { keys.contains($0.key) }
+    _ = try await request { proxy, reply in proxy.ensureADBServerRunning(environment, reply: reply) }
   }
 
   func controls(serial: String) async throws -> EmulatorControls {

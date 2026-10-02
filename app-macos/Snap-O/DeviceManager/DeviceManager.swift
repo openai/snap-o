@@ -368,12 +368,6 @@ final class DeviceManager {
 
   private func emulatorConnections(checkBoot: Bool = true) async throws -> [EmulatorConnection] {
     let exec = await adb.exec()
-    do {
-      return try await exec.emulatorConnections(checkBoot: checkBoot)
-    } catch ADBError.serverUnavailable {
-      try Task.checkCancellation()
-      try await client.startADBServer()
-      return try await exec.emulatorConnections(checkBoot: checkBoot)
-    }
+    return try await exec.emulatorConnections(checkBoot: checkBoot)
   }
 }

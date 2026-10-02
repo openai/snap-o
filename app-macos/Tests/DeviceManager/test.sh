@@ -8,6 +8,8 @@ cd "$APP_DIR"
 swiftc_for_tests -swift-version 6 -target arm64-apple-macosx26.0 \
   "$APP_DIR/Snap-O/Device/AndroidHostServiceProtocol.swift" \
   "$APP_DIR/AndroidHostService/EmulatorCommand.swift" \
+  "$APP_DIR/AndroidHostService/ADBServer.swift" \
+  "$APP_DIR/Tests/DeviceManager/ADBServerTests.swift" \
   "$APP_DIR/AndroidHostService/EmulatorConsole.swift" \
   "$APP_DIR/Tests/DeviceManager/EmulatorConsoleTests.swift" \
   "$APP_DIR/AndroidHostService/EmulatorHost.swift" \

@@ -11,6 +11,7 @@ struct AndroidHostServiceError: LocalizedError {
 struct EmulatorCommand {
   let executable: URL
   let arguments: [String]
+  var environment: [String: String]?
 
   func run(timeout: TimeInterval = 5, timeoutMessage: String = "The Android SDK command timed out. Try again.") throws -> String {
     let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -21,6 +22,7 @@ struct EmulatorCommand {
     let process = Process()
     process.executableURL = executable
     process.arguments = arguments
+    process.environment = environment
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = output
     process.standardError = output

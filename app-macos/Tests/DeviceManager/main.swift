@@ -14,18 +14,6 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
   throw AndroidHostServiceError(message: "Expected failure: \(message)")
 }
 
-func startsADBWithoutEmulatorPackage(_ fixture: HostFixture) throws {
-  try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("sdk/emulator/emulator"))
-  let adb = fixture.root.appendingPathComponent("sdk/platform-tools/adb")
-  try fixture.write("sdk/platform-tools/adb", "#!/bin/sh\nprintf '%s' \"$1\" > \"$0.argument\"\n")
-  try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: adb.path)
-  try fixture.host().startADBServer()
-  try expect(
-    try String(contentsOf: URL(fileURLWithPath: adb.path + ".argument"), encoding: .utf8) == "start-server",
-    "ADB must start without the Emulator package"
-  )
-}
-
 func rejectsDeletingRunningEmulator(_ fixture: HostFixture) throws {
   try expectFailure("Stop the emulator") {
     _ = try fixture.host().delete(fixture.avd.path, serials: ["emulator-5554"])
@@ -112,7 +100,7 @@ struct HostFixture {
 }
 
 for test in [
-  startsADBWithoutEmulatorPackage, rejectsDeletingRunningEmulator, restoresAVDAfterTrashFailure,
+  rejectsDeletingRunningEmulator, restoresAVDAfterTrashFailure,
   preservesDeletedDataInTrash, ignoresDeadProcessLock, launchesResizableWithHiddenUI
 ] {
   let fixture = try HostFixture()
@@ -122,3 +110,5 @@ for test in [
 
 try runConsoleTests()
 print("Emulator helper tests passed (console and device lifecycle)")
+
+try testsADBStartup()

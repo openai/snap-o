@@ -1,9 +1,10 @@
 import Foundation
 import Security
 
-/// All host state and SDK commands are confined to the worker queue.
+/// Emulator state stays on its worker queue; ADB startup has a separate serial queue.
 final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
   private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
+  private let adbWorker = DispatchQueue(label: "com.openai.snapo.adb")
   private let host = EmulatorHost()
   private let discovery = EmulatorGRPCDiscovery()
   private let clientRequirement: String?
@@ -75,10 +76,12 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     }
   }
 
-  func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void) {
-    worker.async { [self] in
+  func ensureADBServerRunning(_ environment: [String: String], reply: @escaping @Sendable (Data?, String?) -> Void) {
+    adbWorker.async {
       do {
-        try host.startADBServer()
+        let keys: Set = ["SNAPO_ADB", "ANDROID_HOME", "ANDROID_SDK_ROOT", "PATH"]
+        let configuration = ProcessInfo.processInfo.environment.merging(environment.filter { keys.contains($0.key) }) { _, new in new }
+        try ADBServer(environment: configuration).startIfNeeded()
         reply(Data(), nil)
       } catch { reply(nil, error.localizedDescription) }
     }

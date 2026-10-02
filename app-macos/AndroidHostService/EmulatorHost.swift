@@ -57,11 +57,6 @@ final class EmulatorHost {
     throw AndroidHostServiceError(message: message)
   }
 
-  func startADBServer() throws {
-    let adb = try sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
-    _ = try EmulatorCommand(executable: adb, arguments: ["start-server"]).run()
-  }
-
   func controls(serial: String) throws -> EmulatorControls {
     try EmulatorConsole(home: home).controls(serial: serial) { try self.displaySize(serial: serial) }
   }

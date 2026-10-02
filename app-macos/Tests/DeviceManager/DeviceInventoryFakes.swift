@@ -87,7 +87,6 @@ final class AndroidHostClient {
     )])
   }
 
-  func startADBServer() async throws {}
   func close() {}
   func delete(_: String, serials: [String]) async throws -> EmulatorInventory {
     try await snapshot(serials: serials)
