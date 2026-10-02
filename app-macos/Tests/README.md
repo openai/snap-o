@@ -113,3 +113,21 @@ The physical-device preview/recording smoke test remains opt-in through
 Run both the Xcode test target and the standalone scripts in
 `.github/workflows/mac.yml`. The Xcode target does not include the standalone
 suites. `scripts/test-capture-history.sh` covers the additional history tests.
+
+### File-transfer unit and integration tests
+
+`ADBFileTransferTests` covers file-command parsing, quoting, policy, and UI state.
+
+`ADBFileTransferIntegrationTests` uses real socket pairs and temporary files to
+check upload bytes, protocol framing, and device error responses. It is opt-in:
+
+```sh
+TEST_RUNNER_SNAPO_FILE_TRANSFER_INTEGRATION=1 xcodebuild test-without-building \
+  -xctestrun "$SNAPO_DERIVED_DATA/Build/Products/"*.xctestrun \
+  -destination 'platform=macOS' \
+  -only-testing:Snap-OTests/ADBFileTransferIntegrationTests \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+```
+
+The device cases additionally require `SNAPO_RESTRICTED_DEVICE` or
+`SNAPO_FILE_TRANSFER_DEVICE` in the test process environment.
