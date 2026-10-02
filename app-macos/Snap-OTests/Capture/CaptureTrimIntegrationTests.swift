@@ -5,32 +5,6 @@ import Testing
 
 /// Real media coverage for exported duration, transformed pixels, and source preservation.
 struct CaptureTrimIntegrationTests {
-  @Test @MainActor
-  func nativePlayerMapsMetadataStopTimeAndEndNotification() async throws {
-    let fixture = try await TrimVideoFixture.make()
-    defer { fixture.remove() }
-    let driver = CaptureAVPlaybackDriver()
-    defer { driver.stop() }
-    let metadata = try await driver.load(fixture.url)
-    #expect(abs(metadata.duration - 3) < 0.0001)
-    #expect(metadata.frameRate == 10)
-    var ended = false
-    driver.configure(range: CaptureTrimRange(start: 1.1, end: 1.7), loops: false) { ended = true }
-    let item = try #require(driver.player.currentItem)
-    #expect(driver.player.actionAtItemEnd == .pause)
-    driver.setPlaybackEnd(1.7)
-    #expect(abs(item.forwardPlaybackEndTime.seconds - 1.7) < 0.0001)
-    driver.setPlaybackEnd(nil)
-    #expect(!item.forwardPlaybackEndTime.isValid)
-    NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: item)
-    #expect(ended)
-    ended = false
-    driver.stop()
-    NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: item)
-    #expect(!ended)
-    #expect(driver.player.currentItem == nil)
-  }
-
   @Test(arguments: [false, true])
   func exportAppliesTrimAndCropWithoutChangingSource(cropped: Bool) async throws {
     let fixture = try await TrimVideoFixture.make(rotated: true)

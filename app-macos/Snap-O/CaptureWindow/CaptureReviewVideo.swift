@@ -10,21 +10,19 @@ struct CaptureReviewVideo: View {
 
   var body: some View {
     ZStack(alignment: .topLeading) {
-      if let player = playback.player {
-        CaptureVideoPlayer(
-          player: player,
-          showsPlaybackControls: false,
-          // Live Text analysis can steal focus from time fields after each seek.
-          allowsVideoFrameAnalysis: !playback.isTrimming,
-          togglePlayback: { playback.togglePlayback() },
-          stepFrame: { playback.stepFrame($0) },
-          playbackControlsFrame: playback.isTrimming ? nil : controlsFrame.offsetBy(dx: -mediaFrame.minX, dy: -mediaFrame.minY)
-        )
-        .frame(width: mediaFrame.width, height: mediaFrame.height)
-        .clipped()
-        .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
-        .position(x: mediaFrame.midX, y: mediaFrame.midY)
-      }
+      CaptureVideoPlayer(
+        player: playback.player,
+        showsPlaybackControls: false,
+        // Live Text analysis can steal focus from time fields after each seek.
+        allowsVideoFrameAnalysis: !playback.isTrimming,
+        togglePlayback: { playback.togglePlayback() },
+        stepFrame: { playback.stepFrame($0) },
+        playbackControlsFrame: playback.isTrimming ? nil : controlsFrame.offsetBy(dx: -mediaFrame.minX, dy: -mediaFrame.minY)
+      )
+      .frame(width: mediaFrame.width, height: mediaFrame.height)
+      .clipped()
+      .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+      .position(x: mediaFrame.midX, y: mediaFrame.midY)
 
       Group {
         if playback.isTrimming {

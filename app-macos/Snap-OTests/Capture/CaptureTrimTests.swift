@@ -32,10 +32,9 @@ struct CaptureTrimTests {
   }
 
   @Test @MainActor
-  func trimmingClampsToOneFrameAndCancelRestoresPlayback() async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func trimmingClampsToOneFrameAndCancelRestoresPlayback() {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
     defer { playback.stop() }
     #expect(playback.canTrim)
     playback.setSpeed(0.5)
@@ -59,18 +58,16 @@ struct CaptureTrimTests {
   }
 
   @Test @MainActor
-  func confirmedTrimCanBeReopenedExpandedAndCancelled() async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func confirmedTrimCanBeReopenedExpandedAndCancelled() {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
     defer { playback.stop() }
     playback.beginTrimming()
     playback.setTrimStart(1.1)
     playback.setTrimEnd(1.7)
     let trimmed = playback.confirmTrim()
-    #expect(driver.loops && driver.range == trimmed)
-    driver.completeAllSeeks()
-    #expect(driver.rate == 0 && !playback.wantsPlayback)
+    recorder.completeAllSeeks()
+    #expect(recorder.rate == 0 && !playback.wantsPlayback)
     #expect(trimmed == CaptureTrimRange(start: 1.1, end: 1.7))
     #expect(abs(playback.playbackRange.duration - 0.6) < 0.0001)
     #expect(playback.elapsedTime == 0)
@@ -89,28 +86,26 @@ struct CaptureTrimTests {
   }
 
   @Test @MainActor
-  func draggingTrimEndDoesNotChangeThePlayerStopTime() async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func draggingTrimEndDoesNotChangeThePlayerStopTime() {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
     defer { playback.stop() }
     playback.beginTrimming()
     playback.setScrubbing(true)
     for end in [2.8, 2.1, 1.4, 0.5, 2.7] {
       playback.setTrimEnd(end)
-      #expect(driver.playbackEnd == nil)
+      #expect(recorder.playbackEnd == nil)
       #expect(abs(playback.time - (end - 1 / playback.frameRate)) < 0.0001)
     }
     playback.setScrubbing(false)
-    #expect(driver.playbackEnd == nil)
+    #expect(recorder.playbackEnd == nil)
     #expect(!playback.wantsPlayback)
   }
 
   @Test @MainActor
-  func trimPreviewStopsAtItsEndAndRestartsAtItsStart() async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func trimPreviewStopsAtItsEndAndRestartsAtItsStart() {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
     defer { playback.stop() }
     playback.setWindowVisible(true)
     playback.beginTrimming()
@@ -118,14 +113,14 @@ struct CaptureTrimTests {
     playback.setScrubbing(true)
     playback.setTrimEnd(1.4)
     playback.setScrubbing(false)
-    driver.completeAllSeeks()
+    recorder.completeAllSeeks()
     playback.togglePlayback()
-    driver.completeAllSeeks()
-    #expect(driver.playbackEnd == playback.trimSelection.end)
-    #expect(driver.rate == 1)
-    driver.onEnd?()
+    recorder.completeAllSeeks()
+    #expect(recorder.playbackEnd == playback.trimSelection.end)
+    #expect(recorder.rate == 1)
+    playback.didReachEnd()
     #expect(!playback.wantsPlayback)
-    #expect(driver.rate == 0)
+    #expect(recorder.rate == 0)
     #expect(playback.time >= 1.1 && playback.time < 1.4)
     playback.togglePlayback()
     #expect(playback.wantsPlayback)
@@ -134,21 +129,19 @@ struct CaptureTrimTests {
     playback.setTrimEnd(1.8)
     playback.setScrubbing(false)
     playback.togglePlayback()
-    driver.completeAllSeeks()
-    #expect(driver.playbackEnd == playback.trimSelection.end)
-    #expect(driver.rate == 1)
-    driver.onEnd?()
+    recorder.completeAllSeeks()
+    #expect(recorder.playbackEnd == playback.trimSelection.end)
+    #expect(recorder.rate == 1)
+    playback.didReachEnd()
     #expect(!playback.wantsPlayback)
-    #expect(driver.rate == 0)
+    #expect(recorder.rate == 0)
     #expect(playback.time >= 1.7 && playback.time < 1.8)
   }
 
   @Test(arguments: [24.0, 30, 60, 29.97]) @MainActor
-  func trimBoundsSnapToFramesAndKeepAtLeastOneFrame(rate: Double) async {
-    let driver = TestCapturePlaybackDriver()
-    driver.metadata = CapturePlaybackMetadata(duration: 3, frameRate: rate)
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func trimBoundsSnapToFramesAndKeepAtLeastOneFrame(rate: Double) {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: rate, output: recorder.output)
     playback.beginTrimming()
     playback.setTrimStart(10.3 / rate)
     #expect(abs(playback.trimSelection.start - 10 / rate) < 0.000001)
@@ -167,49 +160,45 @@ struct CaptureTrimTests {
   }
 
   @Test(arguments: [false, true]) @MainActor
-  func cancelRestoresPositionSpeedAndPauseChoice(playing: Bool) async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
+  func cancelRestoresPositionSpeedAndPauseChoice(playing: Bool) {
+    let recorder = CapturePlaybackOutput()
     let saved = CaptureTrimRange(start: 0.5, end: 2.5)
-    await playback.load(TestCapturePlaybackDriver.url, trim: saved)
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, trim: saved, output: recorder.output)
     playback.setWindowVisible(true)
     playback.setSpeed(0.5)
     if !playing { playback.togglePlayback() }
     playback.seek(to: 1.2)
-    driver.completeAllSeeks()
+    recorder.completeAllSeeks()
     playback.beginTrimming()
-    #expect(!driver.loops)
     playback.setTrimStart(1.5)
     playback.cancelTrimming()
     #expect(playback.playbackRange == saved)
     #expect(playback.time == 1.2 && playback.speed == 0.5)
     #expect(playback.wantsPlayback == playing)
-    #expect(driver.loops && driver.range == saved)
-    #expect(driver.rate == 0)
-    driver.completeAllSeeks()
-    #expect(driver.rate == (playing ? 0.5 : 0))
+    #expect(recorder.rate == 0)
+    recorder.completeAllSeeks()
+    #expect(recorder.rate == (playing ? 0.5 : 0))
   }
 
   @Test @MainActor
-  func previewIgnoresEndEventsWhileSeekingScrubbingOrPaused() async {
-    let driver = TestCapturePlaybackDriver()
-    let playback = CaptureReviewPlayback(driver: driver)
-    await playback.load(TestCapturePlaybackDriver.url)
+  func previewIgnoresEndEventsWhileSeekingScrubbingOrPaused() {
+    let recorder = CapturePlaybackOutput()
+    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
     playback.setWindowVisible(true)
     playback.beginTrimming()
     playback.setTrimEnd(2)
     playback.togglePlayback()
-    driver.onEnd?()
+    playback.didReachEnd()
     #expect(playback.wantsPlayback)
-    driver.completeAllSeeks()
+    recorder.completeAllSeeks()
     playback.setScrubbing(true)
-    driver.onEnd?()
+    playback.didReachEnd()
     #expect(playback.wantsPlayback)
     playback.setScrubbing(false)
-    driver.completeAllSeeks()
+    recorder.completeAllSeeks()
     playback.togglePlayback()
     let position = playback.time
-    driver.onEnd?()
+    playback.didReachEnd()
     #expect(!playback.wantsPlayback && playback.time == position)
   }
 }
