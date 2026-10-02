@@ -16,11 +16,6 @@ struct RecordingTests {
       $0.context = .test
       $0.continuousClock = TestClock()
     } operation: {
-      let watchdog = Task {
-        try await Task.sleep(for: .seconds(30))
-        fatalError("Recording tests timed out")
-      }
-      defer { watchdog.cancel() }
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       defer { try? FileManager.default.removeItem(at: root) }

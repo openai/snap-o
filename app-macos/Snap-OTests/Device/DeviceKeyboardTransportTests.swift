@@ -19,16 +19,7 @@ struct DeviceKeyboardTransportTests {
       defer { transport.close() }
       _ = try await transport.send(.copy)
     }
-    let rescue = Task {
-      try await Task.sleep(for: .seconds(30))
-      Issue.record("Handshake did not reach the cancellation point")
-      connection.close()
-      peer.close()
-    }
-    defer {
-      rescue.cancel()
-      task.cancel()
-    }
+    defer { task.cancel() }
     try await perform {
       _ = try peer.readLengthPrefixedPayload()
       if !duringHandshake {

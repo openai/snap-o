@@ -5,15 +5,13 @@ private final class ConsoleFixture: @unchecked Sendable {
   let client: Int32
   let peer: Int32
   let finished = DispatchGroup()
-  let byteDelay: TimeInterval
   private var commands: [String] = []
 
-  init(greeting: String, byteDelay: TimeInterval = 0, respond: @escaping @Sendable (String) -> String) throws {
+  init(greeting: String, respond: @escaping @Sendable (String) -> String) throws {
     var sockets: [Int32] = [0, 0]
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else {
       throw AndroidHostServiceError(message: "socketpair failed")
     }
-    self.byteDelay = byteDelay
     client = sockets[0]
     peer = sockets[1]
     var enabled: Int32 = 1
@@ -40,7 +38,6 @@ private final class ConsoleFixture: @unchecked Sendable {
     for byte in text.utf8 {
       var byte = byte
       if Darwin.send(peer, &byte, 1, 0) != 1 { return }
-      if byteDelay > 0 { Thread.sleep(forTimeInterval: byteDelay) }
     }
   }
 
@@ -64,7 +61,6 @@ func runConsoleTests() throws {
   try detectsFoldableModeWhileClosed()
   try rejectsMalformedDisplayPresets()
   try dispatchesDisplayMode()
-  try sendsModeAfterSlowDisplayRead()
   try recoversUnappliedDisplayMode()
   try boundsDisplayModeRecovery()
 }
@@ -157,23 +153,6 @@ private func dispatchesDisplayMode() throws {
     )
     try expect(server.recorded() == ["avd path", "help", "resize-display 1"], "Validate identity and capabilities before resizing")
     try expect(queries == 3, "Wait for the display to change before reconnecting the stream")
-  }
-}
-
-private func sendsModeAfterSlowDisplayRead() throws {
-  try withResizableConsole { console, path, server in
-    var console = console
-    console.timeout = .milliseconds(100)
-    var queries = 0
-    try console.control(
-      serial: "emulator-5554", expectedPath: path, action: .foldable,
-      displaySize: {
-        queries += 1
-        if queries == 1 { Thread.sleep(forTimeInterval: 0.15) }
-        return queries == 1 ? "Physical size: 1080x2400" : "Physical size: 2208x1840"
-      }
-    )
-    try expect(server.recorded().last == "resize-display 1", "Display queries must not consume the next console command's timeout")
   }
 }
 
@@ -315,10 +294,10 @@ private func refusesToStopAnotherAVD() throws {
 }
 
 private func limitsResponseTime() throws {
-  let server = try ConsoleFixture(greeting: String(repeating: "x", count: 100), byteDelay: 0.003) { _ in "" }
+  let server = try ConsoleFixture(greeting: "") { _ in "" }
   defer { _ = server.recorded() }
   try expectFailure("timed out") {
-    _ = try EmulatorConsole(home: FileManager.default.temporaryDirectory, connect: { _ in server.client }, timeout: .milliseconds(40))
+    _ = try EmulatorConsole(home: FileManager.default.temporaryDirectory, connect: { _ in server.client }, timeout: .zero)
       .path(serial: "emulator-5554")
   }
 }

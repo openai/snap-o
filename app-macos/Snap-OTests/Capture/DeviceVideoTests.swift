@@ -1,5 +1,9 @@
 import AppKit
 @preconcurrency import AVFoundation
+import Clocks
+import Combine
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 @testable import Snap_O
 import Testing
@@ -87,8 +91,10 @@ struct DeviceVideoTests {
     }
   }
 
-  @Test
-  func nativeRecordingPreservesSourceTimingAndRecoversOnDisconnect() async throws {
+  @Test(.dependency(\.continuousClock, TestClock()), arguments: [0.0, 0.25, 3.0])
+  func nativeRecordingPreservesSourceTimingAndRecoversOnDisconnect(tail: Double) async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -109,9 +115,9 @@ struct DeviceVideoTests {
       if count == 0 { recording.receive(.format(format)) }
       recording.receive(.sample(sample, isKeyFrame: count == 0))
       count += 1
-      try await Task.sleep(for: .milliseconds(10))
     }
     #expect(count == 3)
+    await clock.advance(by: .seconds(tail))
     recording.receive(.stopped(CocoaError(.fileReadUnknown)))
     await #expect(throws: (any Error).self) { try await stopped.value }
     await #expect(throws: (any Error).self) { try await recording.waitUntilStopped() }
@@ -124,13 +130,16 @@ struct DeviceVideoTests {
     let result = AVURLAsset(url: saved)
     #expect(try await result.load(.isPlayable))
     let duration = try await result.load(.duration).seconds
-    #expect(duration >= 1.5 && duration < 2)
+    #expect(abs(duration - (1.5 + max(1.0 / 60, tail))) < 0.001)
     await recording.close()
     #expect(!FileManager.default.fileExists(atPath: temporary.path), "Closing a recovered recording must remove its temporary file")
     #expect(FileManager.default.fileExists(atPath: saved.path))
   }
 
-  @Test(.enabled(if: ProcessInfo.processInfo.environment["SNAPO_VIDEO_DEVICE_ID"] != nil))
+  @Test(
+    .enabled(if: ProcessInfo.processInfo.environment["SNAPO_VIDEO_DEVICE_ID"] != nil),
+    .dependency(\.continuousClock, ContinuousClock())
+  )
   func physicalDeviceKeepsPreviewAndRecordingIndependent() async throws {
     let deviceID = try #require(ProcessInfo.processInfo.environment["SNAPO_VIDEO_DEVICE_ID"])
     let preview = DeviceVideoSource(deviceID: deviceID)
@@ -149,36 +158,46 @@ struct DeviceVideoTests {
     window.contentView = view
     window.orderFront(nil)
     defer { window.close() }
-    var frames = 0
+    let frames = TestValue(0)
+    let previewTime = TestValue(CMTime.zero)
+    let previewStopped = TestValue(false)
     var previewError: Error?
     preview.start { event in
       if case .sample(let sample, _) = event {
         display.sampleBufferRenderer.enqueue(sample)
-        frames += 1
+        frames.value += 1
+        previewTime.value = CMSampleBufferGetPresentationTimeStamp(sample)
       }
-      if case .stopped(let error) = event { previewError = error }
+      if case .stopped(let error) = event { previewError = error
+        previewStopped.value = true
+      }
     }
     defer { preview.stop() }
     let recording = try await NativeScreenRecording.start(deviceID: deviceID)
-    try await Task.sleep(for: .seconds(1))
-    #expect(frames > 0)
-    #expect(display.sampleBufferRenderer.displayedPixelBuffer() != nil)
+    try await waitForState { frames.value > 0 || previewStopped.value }
+    try #require(!previewStopped.value)
+    for await ready in display.publisher(for: \.isReadyForDisplay).values where ready {
+      break
+    }
+    let firstTimestamp = previewTime.value
     preview.stop()
-    try await Task.sleep(for: .seconds(1))
     preview.start { event in
       if case .sample(let sample, _) = event {
         display.sampleBufferRenderer.enqueue(sample)
-        frames += 1
+        frames.value += 1
+        previewTime.value = CMSampleBufferGetPresentationTimeStamp(sample)
       }
-      if case .stopped(let error) = event { previewError = error }
+      if case .stopped(let error) = event { previewError = error
+        previewStopped.value = true
+      }
     }
-    try await Task.sleep(for: .seconds(1))
+    try await waitForState { (previewTime.value - firstTimestamp).seconds >= 2 || previewStopped.value }
+    try #require(!previewStopped.value)
     try await recording.stop()
-    let framesAtStop = frames
-    try await Task.sleep(for: .seconds(2))
+    let framesAtStop = frames.value
     let nextRecording = try await NativeScreenRecording.start(deviceID: deviceID)
-    try await Task.sleep(for: .milliseconds(300))
-    #expect(frames > framesAtStop)
+    try await waitForState { frames.value > framesAtStop || previewStopped.value }
+    #expect(frames.value > framesAtStop)
     try await nextRecording.stop()
     await nextRecording.remove()
     #expect(previewError == nil)
