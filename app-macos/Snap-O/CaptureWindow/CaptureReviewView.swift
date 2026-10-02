@@ -6,6 +6,7 @@ struct CaptureReviewView: View {
   private var history
   @State private var isNaming = false
   @State private var isFinishing = false
+  @State private var isConfirmingDiscard = false
   @State private var errorMessage: String?
   @State private var playback = CaptureReviewPlayback()
   @State private var trimFieldsValid = true
@@ -74,7 +75,19 @@ struct CaptureReviewView: View {
         }
       }
     }
-    .background(CaptureSheetAnchor(isPresented: isNaming))
+    .background(CaptureSheetAnchor(isPresented: isNaming || isConfirmingDiscard))
+    .background(CaptureReviewFocus(onExit: handleEscape))
+    .onKeyPress(.escape) {
+      handleEscape()
+      return .handled
+    }
+    .alert("Discard \(reviewedMediaName)?", isPresented: $isConfirmingDiscard) {
+      Button("Keep Editing", role: .cancel) {}
+      Button("Discard", role: .destructive, action: discard)
+        .keyboardShortcut(.defaultAction)
+    } message: {
+      Text("This will return to Live Preview without saving to Capture History.")
+    }
     .onDisappear { dragExport.stop() }
     .onChange(of: dragExport.errorMessage) { _, message in
       if let message { errorMessage = message }
@@ -180,6 +193,16 @@ struct CaptureReviewView: View {
       .accessibilityLabel("Save \(reviewedMediaName) to History")
     }
     .disabled(isFinishing || controller.isProcessing || controller.isSavingReview)
+  }
+
+  private func handleEscape() {
+    guard !isNaming, !isFinishing, !controller.isProcessing, !controller.isSavingReview,
+          errorMessage == nil else { return }
+    if playback.isTrimming {
+      playback.cancelTrimming()
+    } else {
+      isConfirmingDiscard = true
+    }
   }
 
   private func discard() {
