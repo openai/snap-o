@@ -33,19 +33,22 @@ struct CaptureWindow: View {
   private var openWindow
   @Environment(CaptureHistory.self)
   private var history
-  @State private var historyProtectionID = UUID()
   @Environment(\.colorScheme)
   private var colorScheme
   @Environment(\.accessibilityReduceMotion)
   private var reduceMotion
 
   private let deviceManager: DeviceManager
-  @State private var deviceOpenStatus: String?
-  @State private var deviceOpenSerial: String?
-  @State private var deviceOpenError: String?
-  @State private var controller: CaptureWindowController
+  @State private var session: CaptureWindowSession
+  private var controller: CaptureWindowController {
+    session.controller
+  }
+
+  private var toolSession: ToolSession {
+    session.tools
+  }
+
   @State private var workspace: WorkspaceLayoutController
-  @State private var toolSession: ToolSession
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
@@ -65,14 +68,12 @@ struct CaptureWindow: View {
       adbService: adbService
     )
     let workspace = WorkspaceLayoutController(snapshot: initialWorkspace)
-    _controller = State(initialValue: captureController)
     _workspace = State(initialValue: workspace)
-    _toolSession = State(
-      initialValue: ToolSession(
-        adbService: adbService,
-        deviceManager: deviceManager
-      )
-    )
+    _session = State(initialValue: CaptureWindowSession(
+      controller: captureController,
+      tools: ToolSession(adbService: adbService, deviceManager: deviceManager),
+      deviceManager: deviceManager
+    ))
     _presentedLayout = State(initialValue: workspace.layout)
     _layoutTransition = State(initialValue: nil)
   }
@@ -80,20 +81,19 @@ struct CaptureWindow: View {
   var body: some View {
     @Bindable var controller = controller
     workspaceContent(controller: controller)
-      .task {
-        await controller.start()
-      }
-      .task(id: controller.deviceOpenRequest) {
-        await openRequestedDevice()
+      .onChange(of: controller.deviceOpenRequest, initial: true) {
+        session.resolveRequestedDevice()
       }
       .alert("Open Device", isPresented: Binding(
-        get: { deviceOpenError != nil },
-        set: { if !$0 { deviceOpenError = nil } }
+        get: { session.deviceOpenError != nil },
+        set: { if !$0 { session.deviceOpenError = nil } }
       )) {
-        Button("OK") { deviceOpenError = nil }
-      } message: { Text(deviceOpenError ?? "") }
+        Button("OK") { session.deviceOpenError = nil }
+      } message: { Text(session.deviceOpenError ?? "") }
+      .onChange(of: controller.mediaList.map(\.id), initial: true) {
+        session.protectCaptures(Set(controller.mediaList.map(\.id)), in: history.repository)
+      }
       .task(id: controller.mediaList.map(\.id)) {
-        await history.repository.protect(Set(controller.mediaList.map(\.id)), owner: historyProtectionID)
         await synchronizeCaptureHistory()
       }
       .task(id: history.entries) {
@@ -104,20 +104,8 @@ struct CaptureWindow: View {
           await history.repository.recordCapturePaneSelection(captureID)
         }
       }
-      .task(id: workspace.showsTool) {
-        guard workspace.showsTool else {
-          toolSession.model?.webContainer?.closeNativeColorPanel()
-          // Hiding the pane is a layout change, not a session boundary. Preserve its streams and history until the window closes.
-          return
-        }
-        toolSession.startIfNeeded()
-      }
-      .onDisappear {
-        Task {
-          await history.repository.protect([], owner: historyProtectionID)
-          await controller.tearDown()
-          await toolSession.stop()
-        }
+      .onChange(of: workspace.showsTool, initial: true) {
+        session.updateTools(workspace.showsTool)
       }
       .focusedSceneValue(\.captureController, controller)
       .background {
@@ -171,57 +159,17 @@ struct CaptureWindow: View {
       .background(
         WindowCommandRegistration { command in
           workspace.revealCapture()
-          Task { await handle(command, controller: controller) }
+          session.perform(command)
         } openDevice: { request in
           workspace.revealCapture()
-          controller.deviceOpenRequest = request
+          session.openDevice(request)
+        } attached: { window in
+          session.attach(to: window)
         } thumbnail: { deviceID in
           controller.livePreviewConnection(for: deviceID)?.thumbnail
         }
         .frame(width: 0, height: 0)
       )
-  }
-
-  private func openRequestedDevice() async {
-    deviceOpenStatus = nil
-    deviceOpenSerial = nil
-    guard let request = controller.deviceOpenRequest else { return }
-    deviceOpenError = nil
-    defer {
-      if !Task.isCancelled, controller.deviceOpenRequest == request {
-        deviceOpenStatus = nil
-        controller.deviceOpenRequest = nil
-      }
-    }
-    let resolver = DeviceOpenResolver {
-      DeviceOpenSnapshot(
-        connectedSerials: Set(deviceManager.connectedDevices.map(\.id)),
-        emulators: deviceManager.entries.compactMap {
-          guard case .emulator(let device) = $0 else { return nil }
-          return device
-        },
-        hasLoaded: deviceManager.hasLoaded,
-        isRefreshing: deviceManager.isRefreshing || !deviceManager.matchingSerials.isEmpty,
-        loadError: deviceManager.loadError,
-        actions: deviceManager.actions,
-        launchErrors: deviceManager.launchErrors
-      )
-    } start: { device in
-      deviceManager.start(device)
-    }
-    do {
-      let serial = try await resolver.resolve(request) { deviceOpenStatus = $0 }
-      try Task.checkCancellation()
-      guard controller.deviceOpenRequest == request else { return }
-      deviceOpenSerial = serial
-      deviceOpenStatus = "Opening"
-      await controller.showLivePreview(deviceID: serial)
-    } catch is CancellationError {
-      return
-    } catch {
-      guard !Task.isCancelled, controller.deviceOpenRequest == request else { return }
-      deviceOpenError = error.localizedDescription
-    }
   }
 
   private var livePreviewDeviceOptions: [CaptureDeviceOption] {
@@ -334,7 +282,7 @@ struct CaptureWindow: View {
           deviceSelection: controller.deviceOpenRequest ?? controller.loadingPreviewDeviceID.map { .serial($0) },
           showsDevicePicker: controller.deviceOpenRequest != nil || controller.isLivePreviewActive
             || (!controller.isReviewingCapture && settings.startupCaptureMode == .livePreview)
-        ) { controller.deviceOpenRequest = $0 }
+        ) { session.openDevice($0) }
 
         captureWorkspace(
           controller: controller,
@@ -568,9 +516,7 @@ struct CaptureWindow: View {
           serverState: controller.adbServerState,
           retryADBServer: controller.retryADBServer
         ) {
-          controller.deviceOpenRequest = nil
-          deviceOpenStatus = nil
-          deviceOpenSerial = nil
+          session.openDevice(nil)
         }
       }
     }
@@ -619,10 +565,10 @@ struct CaptureWindow: View {
   }
 
   private var pendingDeviceOpenStatus: String? {
-    if let serial = deviceOpenSerial, controller.isLivePreviewActive,
+    if let serial = session.deviceOpenSerial, controller.isLivePreviewActive,
        controller.currentCapture?.device.id == serial { return nil }
-    guard let status = deviceOpenStatus else { return nil }
-    return deviceOpenSerial.map(livePreviewLoadingMessage) ?? status
+    guard let status = session.deviceOpenStatus else { return nil }
+    return session.deviceOpenSerial.map(livePreviewLoadingMessage) ?? status
   }
 
   private func livePreviewLoadingMessage(for serial: String) -> String {
@@ -790,17 +736,5 @@ struct CaptureWindow: View {
       availableCaptureIDs: Set(snapshot.entries.flatMap { $0.items.compactMap(\.captureID) }),
       root: history.repository.root
     )
-  }
-
-  private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
-    switch command {
-    case .record:
-      await controller.startRecording()
-    case .capture:
-      await controller.captureScreenshots()
-    case .livepreview:
-      guard controller.canStartLivePreviewNow else { return }
-      await controller.startLivePreview()
-    }
   }
 }

@@ -37,7 +37,7 @@ final class AppRuntime {
       }
     }
     let captureCoordinator = CaptureCoordinator()
-    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
+    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore, coordinator: captureCoordinator)
     let startRecording: RecordingService.StartRecording = { deviceID, bugReport in
       if EmulatorGRPCEndpoint.isEmulator(deviceID) || bugReport {
         let session = try await adbService.exec().startScreenrecord(deviceID: deviceID, bugReport: bugReport)
@@ -60,6 +60,7 @@ final class AppRuntime {
     self.captureHistory = captureHistory
     self.captureCoordinator = captureCoordinator
     captureServices = CaptureServices(
+      coordinator: captureCoordinator,
       screenshots: screenshots,
       recording: recording,
       livePreview: livePreview,
@@ -140,7 +141,7 @@ final class AppRuntime {
     let captureServices = captureServices
     let task = Task {
       Perf.start(.appShutdown, name: "App Quit → Cleanup")
-      await captureCoordinator.beginShutdown()
+      captureCoordinator.beginShutdown()
       await captureServices.startup.discard()
       Perf.step(.appShutdown, "startup preparation discarded")
       await withTaskGroup(of: Void.self) { group in

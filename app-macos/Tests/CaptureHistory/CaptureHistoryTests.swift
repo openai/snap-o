@@ -36,6 +36,7 @@ struct CaptureHistoryTests {
     try await retentionAndProtection()
     try await oversizedGrace()
     try await failureAndRecovery()
+    try await screenshotCoordination()
     try await screenshotCancellation()
     try await screenshotTimeoutPreservesHealthyDevice()
     print("Capture history tests passed")
@@ -57,10 +58,47 @@ struct CaptureHistoryTests {
     ))
   }
 
+  @MainActor
+  static func screenshotCoordination() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let coordinator = CaptureCoordinator()
+    let adb = ADBService()
+    let service = ScreenshotService(adb: adb, fileStore: FileStore(baseDir: root), coordinator: coordinator)
+    let recording = try coordinator.acquire(deviceIDs: ["other-device"], for: .recording)
+    let blocked = await service.capture(for: [firstDevice])
+    precondition(blocked.media.isEmpty && blocked.failures.count == 1)
+    precondition(blocked.failures[0].error as? CaptureCoordinationError == .captureBusy(.recording))
+    coordinator.release(recording)
+    let capture = Task { await service.capture(for: [secondDevice]) }
+    await waitForActorTestState { await adb.waitingForCancellation }
+    precondition(coordinator.captureActivity == .screenshot)
+    do {
+      _ = try coordinator.acquire(deviceIDs: ["other-device"], for: .recording)
+      preconditionFailure("Recording must wait for screenshots, even with different devices")
+    } catch let error as CaptureCoordinationError {
+      precondition(error == .captureBusy(.screenshot))
+    }
+    let overlapping = await service.capture(for: [firstDevice])
+    precondition(overlapping.media.isEmpty && overlapping.failures.count == 1)
+    capture.cancel()
+    _ = await capture.value
+    precondition(!coordinator.isCapturing, "Canceling a screenshot must release capture access")
+    let failed = await service.capture(for: [testFailureDevice])
+    precondition(failed.media.isEmpty && !coordinator.isCapturing)
+    let next = await service.capture(for: [firstDevice])
+    precondition(next.media.count == 1 && !coordinator.isCapturing)
+    await service.shutdown()
+  }
+
+  static var testFailureDevice: Device {
+    Device(id: "failure", model: "Failure", androidVersion: "16", vendorModel: nil, manufacturer: nil, avdName: nil)
+  }
+
   static func screenshotTimeoutPreservesHealthyDevice() async throws {
     let root = try temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
-    let service = ScreenshotService(adb: ADBService(timesOut: true), fileStore: FileStore(baseDir: root))
+    let service = ScreenshotService(adb: ADBService(timesOut: true), fileStore: FileStore(baseDir: root), coordinator: CaptureCoordinator())
     let result = await service.capture(for: [firstDevice, secondDevice])
     precondition(result.media.map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
     precondition(result.failures.count == 1 && result.failures[0].device.id == secondDevice.id)
@@ -78,7 +116,7 @@ struct CaptureHistoryTests {
       let service = ScreenshotService(
         adb: adb,
         fileStore: FileStore(baseDir: directory.appendingPathComponent("temporary")),
-        history: repository
+        coordinator: CaptureCoordinator(), history: repository
       )
       let devices = keepsCompletedScreenshot ? [firstDevice, secondDevice] : [secondDevice]
       let task = Task { await service.capture(for: devices) }
@@ -106,7 +144,7 @@ struct CaptureHistoryTests {
     let service = ScreenshotService(
       adb: ADBService(),
       fileStore: FileStore(baseDir: root.appendingPathComponent("failed-temporary")),
-      history: repository
+      coordinator: CaptureCoordinator(), history: repository
     )
     let device = Device(
       id: "failed-device",

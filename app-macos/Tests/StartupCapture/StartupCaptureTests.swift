@@ -17,6 +17,7 @@ struct StartupCaptureTests {
         $0.context = .test
         $0.continuousClock = TestClock()
       } operation: {
+        try await WindowSessionTests.run()
         try await CaptureModeTests.run()
         try copyUsesSelectedCaptureCrop()
         await screenshotReuse()
@@ -52,6 +53,17 @@ struct StartupCaptureTests {
         await stopDuringRendererClaim()
         await disconnectWaitsForCleanup()
         await reconnectDuringPreparedReadiness()
+        for startupMode in [StartupCaptureMode.screenshot, .livePreview] {
+          for command in [SnapOCommand.record, .capture, .livepreview, nil] {
+            await startupUsesRequestedMode(command, startupMode: startupMode, remounts: false)
+            await startupUsesRequestedMode(command, startupMode: startupMode, remounts: true)
+          }
+        }
+        for command in [SnapOCommand.capture, .record] {
+          await captureURLWaitsForReadyDevice(command, afterDiscovery: false)
+          await captureURLWaitsForReadyDevice(command, afterDiscovery: true)
+        }
+        await previewURLUsesBootingDevice()
         await commandDuringAutomaticPreview(recordsVideo: true)
         await commandDuringAutomaticPreview(recordsVideo: false)
         await tearDownDuringQueuedCommand(recordsVideo: true)
@@ -126,7 +138,7 @@ struct StartupCaptureTests {
       }
       mode?.start()
     }
-    mode?.cancel()
+    await mode?.cancel()
     return result
   }
 
@@ -487,7 +499,8 @@ struct StartupCaptureTests {
     let screenshots = ScreenshotService()
     let controller = CaptureWindowController(
       captureServices: CaptureServices(
-        screenshots: screenshots, recording: RecordingService(), livePreview: live,
+        coordinator: screenshots.coordinator,
+        screenshots: screenshots, recording: RecordingService(coordinator: screenshots.coordinator), livePreview: live,
         startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
       ),
       deviceManager: tracker, fileStore: FileStore(),
@@ -684,7 +697,8 @@ struct StartupCaptureTests {
     let screenshots = ScreenshotService()
     let controller = CaptureWindowController(
       captureServices: CaptureServices(
-        screenshots: screenshots, recording: RecordingService(), livePreview: service,
+        coordinator: screenshots.coordinator,
+        screenshots: screenshots, recording: RecordingService(coordinator: screenshots.coordinator), livePreview: service,
         startup: StartupCapturePreparation(screenshots: screenshots, livePreview: service)
       ),
       deviceManager: devices, fileStore: FileStore(), adbService: ADBService()
@@ -801,7 +815,7 @@ struct StartupCaptureTests {
     let readyGate = TestGate()
     let stopGate = TestGate()
     let screenshots = ScreenshotService()
-    let recording = RecordingService()
+    let recording: RecordingService
     let tracker: DeviceManager
     let live: LivePreviewService
     let controller: CaptureWindowController
@@ -809,10 +823,12 @@ struct StartupCaptureTests {
     init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
       AppSettings.shared.lastViewedDeviceID = nil
       AppSettings.shared.startupCaptureMode = .livePreview
+      recording = RecordingService(coordinator: screenshots.coordinator)
       tracker = DeviceManager(devices: devices)
       live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
       controller = CaptureWindowController(
         captureServices: CaptureServices(
+          coordinator: screenshots.coordinator,
           screenshots: screenshots,
           recording: recording,
           livePreview: live,
@@ -1109,6 +1125,88 @@ struct StartupCaptureTests {
       fixture.controller.synchronizeCaptureHistory(availableCaptureIDs: [], root: root)
       precondition(fixture.controller.currentCapture?.id == previewID, "History updates do not restart Live Preview")
     }
+    await fixture.controller.tearDown()
+  }
+
+  static func startupUsesRequestedMode(
+    _ command: SnapOCommand?, startupMode: StartupCaptureMode, remounts: Bool
+  ) async {
+    let fixture = ControllerFixture(devices: [])
+    AppSettings.shared.startupCaptureMode = startupMode
+    AppSettings.shared.recordAsBugReport = false
+    if let command { await fixture.controller.perform(command) }
+    await fixture.controller.start()
+    if remounts {
+      await fixture.controller.start()
+    }
+    await fixture.assertNoCaptureRequests()
+    await fixture.readyGate.open()
+    await fixture.displayGate.open()
+    await fixture.stopGate.open()
+    // Repeated discovery must not start the default alongside a queued command.
+    fixture.tracker.updateDevices([first])
+    fixture.tracker.updateDevices([first])
+
+    await eventually {
+      fixture.controller.isReviewingCapture || fixture.controller.isRecording
+        || (fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing)
+    }
+    let expected = command ?? (startupMode == .screenshot ? .capture : .livepreview)
+    let matchesRequest = switch expected {
+    case .capture: fixture.controller.isReviewingCapture
+    case .record: fixture.controller.isRecording
+    case .livepreview: fixture.controller.isLivePreviewActive
+    }
+    precondition(matchesRequest, "The URL command must take priority over the startup setting")
+    let captures = await fixture.screenshots.requests
+    precondition(captures == (expected == .capture ? [[first.id]] : []))
+    let previews = await fixture.live.starts
+    precondition(expected != .capture || previews.isEmpty)
+    await fixture.controller.tearDown()
+  }
+
+  static func captureURLWaitsForReadyDevice(_ command: SnapOCommand, afterDiscovery: Bool) async {
+    let fixture = ControllerFixture(devices: [])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    fixture.tracker.updatePreviewDevices([first])
+    if afterDiscovery {
+      await fixture.controller.start()
+      await eventually { fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing }
+      await fixture.controller.perform(command)
+    } else {
+      await fixture.controller.perform(command)
+      await fixture.controller.start()
+      await eventually { fixture.controller.isDeviceListInitialized }
+    }
+    precondition(!fixture.controller.hasDevices, "Capture URLs must wait for a capture-ready device")
+    await fixture.assertNoCaptureRequests()
+
+    fixture.tracker.updateDevices([first])
+    if command == .capture {
+      await eventually { fixture.controller.isReviewingCapture }
+      let requests = await fixture.screenshots.requests
+      precondition(requests == [[first.id]])
+    } else {
+      await eventually { await fixture.recording.requests == [[first.id]] }
+      precondition(fixture.controller.isRecording)
+    }
+    await fixture.controller.tearDown()
+  }
+
+  static func previewURLUsesBootingDevice() async {
+    let fixture = ControllerFixture(devices: [])
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    fixture.tracker.updatePreviewDevices([first])
+    await fixture.controller.perform(.livepreview)
+    await fixture.controller.start()
+    await eventually { fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing }
+    precondition(fixture.tracker.latestDevices.isEmpty)
+    await fixture.assertNoCaptureRequests()
     await fixture.controller.tearDown()
   }
 
