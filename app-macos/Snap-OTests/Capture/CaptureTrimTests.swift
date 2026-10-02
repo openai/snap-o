@@ -33,8 +33,7 @@ struct CaptureTrimTests {
 
   @Test @MainActor
   func trimmingClampsToOneFrameAndCancelRestoresPlayback() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     defer { playback.stop() }
     #expect(playback.canTrim)
     playback.setSpeed(0.5)
@@ -59,15 +58,14 @@ struct CaptureTrimTests {
 
   @Test @MainActor
   func confirmedTrimCanBeReopenedExpandedAndCancelled() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     defer { playback.stop() }
     playback.beginTrimming()
     playback.setTrimStart(1.1)
     playback.setTrimEnd(1.7)
     let trimmed = playback.confirmTrim()
-    recorder.completeAllSeeks()
-    #expect(recorder.rate == 0 && !playback.wantsPlayback)
+    finishSeeks(&playback)
+    #expect(playback.playbackRate == 0 && !playback.wantsPlayback)
     #expect(trimmed == CaptureTrimRange(start: 1.1, end: 1.7))
     #expect(abs(playback.playbackRange.duration - 0.6) < 0.0001)
     #expect(playback.elapsedTime == 0)
@@ -82,30 +80,29 @@ struct CaptureTrimTests {
     playback.beginTrimming()
     playback.setTrimStart(0)
     playback.setTrimEnd(3)
-    #expect(playback.confirmTrim() == nil)
+    let expanded = playback.confirmTrim()
+    #expect(expanded == nil)
   }
 
   @Test @MainActor
   func draggingTrimEndDoesNotChangeThePlayerStopTime() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     defer { playback.stop() }
     playback.beginTrimming()
     playback.setScrubbing(true)
     for end in [2.8, 2.1, 1.4, 0.5, 2.7] {
       playback.setTrimEnd(end)
-      #expect(recorder.playbackEnd == nil)
+      #expect(playback.playbackEnd == nil)
       #expect(abs(playback.time - (end - 1 / playback.frameRate)) < 0.0001)
     }
     playback.setScrubbing(false)
-    #expect(recorder.playbackEnd == nil)
+    #expect(playback.playbackEnd == nil)
     #expect(!playback.wantsPlayback)
   }
 
   @Test @MainActor
   func trimPreviewStopsAtItsEndAndRestartsAtItsStart() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     defer { playback.stop() }
     playback.setWindowVisible(true)
     playback.beginTrimming()
@@ -113,14 +110,14 @@ struct CaptureTrimTests {
     playback.setScrubbing(true)
     playback.setTrimEnd(1.4)
     playback.setScrubbing(false)
-    recorder.completeAllSeeks()
+    finishSeeks(&playback)
     playback.togglePlayback()
-    recorder.completeAllSeeks()
-    #expect(recorder.playbackEnd == playback.trimSelection.end)
-    #expect(recorder.rate == 1)
+    finishSeeks(&playback)
+    #expect(playback.playbackEnd == playback.trimSelection.end)
+    #expect(playback.playbackRate == 1)
     playback.didReachEnd()
     #expect(!playback.wantsPlayback)
-    #expect(recorder.rate == 0)
+    #expect(playback.playbackRate == 0)
     #expect(playback.time >= 1.1 && playback.time < 1.4)
     playback.togglePlayback()
     #expect(playback.wantsPlayback)
@@ -129,19 +126,18 @@ struct CaptureTrimTests {
     playback.setTrimEnd(1.8)
     playback.setScrubbing(false)
     playback.togglePlayback()
-    recorder.completeAllSeeks()
-    #expect(recorder.playbackEnd == playback.trimSelection.end)
-    #expect(recorder.rate == 1)
+    finishSeeks(&playback)
+    #expect(playback.playbackEnd == playback.trimSelection.end)
+    #expect(playback.playbackRate == 1)
     playback.didReachEnd()
     #expect(!playback.wantsPlayback)
-    #expect(recorder.rate == 0)
+    #expect(playback.playbackRate == 0)
     #expect(playback.time >= 1.7 && playback.time < 1.8)
   }
 
   @Test(arguments: [24.0, 30, 60, 29.97]) @MainActor
   func trimBoundsSnapToFramesAndKeepAtLeastOneFrame(rate: Double) {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: rate, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: rate)
     playback.beginTrimming()
     playback.setTrimStart(10.3 / rate)
     #expect(abs(playback.trimSelection.start - 10 / rate) < 0.000001)
@@ -161,41 +157,39 @@ struct CaptureTrimTests {
 
   @Test(arguments: [false, true]) @MainActor
   func cancelRestoresPositionSpeedAndPauseChoice(playing: Bool) {
-    let recorder = CapturePlaybackOutput()
     let saved = CaptureTrimRange(start: 0.5, end: 2.5)
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, trim: saved, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10, trim: saved)
     playback.setWindowVisible(true)
     playback.setSpeed(0.5)
     if !playing { playback.togglePlayback() }
     playback.seek(to: 1.2)
-    recorder.completeAllSeeks()
+    finishSeeks(&playback)
     playback.beginTrimming()
     playback.setTrimStart(1.5)
     playback.cancelTrimming()
     #expect(playback.playbackRange == saved)
     #expect(playback.time == 1.2 && playback.speed == 0.5)
     #expect(playback.wantsPlayback == playing)
-    #expect(recorder.rate == 0)
-    recorder.completeAllSeeks()
-    #expect(recorder.rate == (playing ? 0.5 : 0))
+    #expect(playback.playbackRate == 0)
+    finishSeeks(&playback)
+    #expect(playback.playbackRate == (playing ? 0.5 : 0))
   }
 
   @Test @MainActor
   func previewIgnoresEndEventsWhileSeekingScrubbingOrPaused() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     playback.setWindowVisible(true)
     playback.beginTrimming()
     playback.setTrimEnd(2)
     playback.togglePlayback()
     playback.didReachEnd()
     #expect(playback.wantsPlayback)
-    recorder.completeAllSeeks()
+    finishSeeks(&playback)
     playback.setScrubbing(true)
     playback.didReachEnd()
     #expect(playback.wantsPlayback)
     playback.setScrubbing(false)
-    recorder.completeAllSeeks()
+    finishSeeks(&playback)
     playback.togglePlayback()
     let position = playback.time
     playback.didReachEnd()

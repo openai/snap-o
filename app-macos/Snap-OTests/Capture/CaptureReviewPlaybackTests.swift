@@ -25,9 +25,8 @@ struct CaptureReviewPlaybackTests {
 
   @Test @MainActor
   func scrubbingPreservesPauseChoice() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
-    recorder.completeAllSeeks()
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
+    finishSeeks(&playback)
     playback.togglePlayback()
     playback.setScrubbing(true)
     playback.setScrubbing(false)
@@ -36,9 +35,8 @@ struct CaptureReviewPlaybackTests {
 
   @Test @MainActor
   func visibilityChangesPreservePauseChoice() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
-    recorder.completeAllSeeks()
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
+    finishSeeks(&playback)
     playback.togglePlayback()
     playback.setWindowVisible(false)
     playback.setWindowVisible(true)
@@ -47,9 +45,8 @@ struct CaptureReviewPlaybackTests {
 
   @Test @MainActor
   func scrubbingPreservesPlaybackSpeed() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
-    recorder.completeAllSeeks()
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
+    finishSeeks(&playback)
     playback.setSpeed(0.5)
     playback.setScrubbing(true)
     playback.setScrubbing(false)
@@ -57,37 +54,41 @@ struct CaptureReviewPlaybackTests {
   }
 
   @Test @MainActor
-  func scrubCoalescesSeeksAndResumesOnlyAfterExactCompletion() {
-    let recorder = CapturePlaybackOutput()
-    let playback = CaptureReviewPlayback(duration: 3, frameRate: 10, output: recorder.output)
+  func scrubCoalescesSeeksAndResumesOnlyAfterExactCompletion() throws {
+    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
     playback.setWindowVisible(true)
     playback.setSpeed(0.5)
-    #expect(recorder.rate == 0)
-    recorder.completeAllSeeks()
-    #expect(recorder.rate == 0.5)
+    #expect(playback.playbackRate == 0)
+    finishSeeks(&playback)
+    #expect(playback.playbackRate == 0.5)
 
     playback.setScrubbing(true)
     playback.seek(to: 0.2)
-    let count = recorder.requests.count
+    let firstRequest = playback.nextSeek()
+    let first = try #require(firstRequest)
     for position in [0.4, 1.0, 2.2] {
       playback.seek(to: position)
     }
     playback.didUpdateTime(0.7)
     #expect(playback.time == 2.2)
-    #expect(recorder.rate == 0)
-    #expect(recorder.requests.count == count)
-    #expect(recorder.requests.last?.tolerance == 1.0 / 15)
+    #expect(playback.playbackRate == 0)
+    let concurrent = playback.nextSeek()
+    #expect(concurrent == nil)
+    #expect(first.tolerance == 1.0 / 15)
 
     playback.setScrubbing(false)
-    recorder.completeNextSeek()
-    #expect(recorder.requests.count == count + 1)
-    #expect(recorder.requests.last?.time == 2.2)
-    #expect(recorder.requests.last?.tolerance == 0)
-    #expect(recorder.rate == 0)
+    let completedFirst = playback.completeSeek(first)
+    #expect(completedFirst)
+    let finalRequest = playback.nextSeek()
+    let final = try #require(finalRequest)
+    #expect(final.time == 2.2)
+    #expect(final.tolerance == 0)
+    #expect(playback.playbackRate == 0)
     playback.didUpdateTime(0.8)
     #expect(playback.time == 2.2)
-    recorder.completeNextSeek()
-    #expect(recorder.rate == 0.5)
+    let completedFinal = playback.completeSeek(final)
+    #expect(completedFinal)
+    #expect(playback.playbackRate == 0.5)
     playback.didUpdateTime(2.3)
     #expect(playback.time == 2.3)
     playback.didUpdateTime(.nan)
@@ -137,5 +138,12 @@ struct CaptureReviewPlaybackTests {
     #expect(seeks.isSeeking)
     let finishedCurrent = seeks.complete(current)
     #expect(finishedCurrent)
+  }
+}
+
+func finishSeeks(_ state: inout CapturePlaybackState) {
+  while let request = state.nextSeek() {
+    let completed = state.completeSeek(request)
+    #expect(completed)
   }
 }
