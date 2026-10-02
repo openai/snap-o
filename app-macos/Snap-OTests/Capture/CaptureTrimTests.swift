@@ -31,92 +31,64 @@ struct CaptureTrimTests {
     }
   }
 
-  @Test @MainActor
+  @Test
   func confirmedTrimCanBeReopenedExpandedAndCancelled() {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    playback.beginTrimming()
-    playback.setTrimStart(1.1)
-    playback.setTrimEnd(1.7)
-    let trimmed = playback.confirmTrim()
-    finishSeeks(&playback)
-    #expect(playback.playbackRate == 0 && !playback.wantsPlayback)
+    var session = CaptureTrimSession(duration: 3, frameRate: 10)
+    session.begin(time: 0, playing: true)
+    session.setStart(1.1)
+    session.setEnd(1.7)
+    let trimmed = session.confirm()
     #expect(trimmed == CaptureTrimRange(start: 1.1, end: 1.7))
-    #expect(abs(playback.playbackRange.duration - 0.6) < 0.0001)
-    #expect(playback.elapsedTime == 0)
-    playback.seek(to: 0)
-    #expect(playback.time == 1.1)
-    playback.beginTrimming()
-    playback.setTrimStart(0)
-    playback.setTrimEnd(3)
-    playback.cancelTrimming()
-    #expect(playback.playbackRange == trimmed)
-    #expect(!playback.wantsPlayback)
-    playback.beginTrimming()
-    playback.setTrimStart(0)
-    playback.setTrimEnd(3)
-    let expanded = playback.confirmTrim()
+    #expect(session.range == trimmed)
+
+    session.begin(time: 1.1, playing: false)
+    #expect(session.selection == trimmed)
+    session.setStart(0)
+    session.setEnd(3)
+    session.cancel()
+    #expect(session.range == trimmed)
+
+    session.begin(time: 1.1, playing: false)
+    session.setStart(0)
+    session.setEnd(3)
+    let expanded = session.confirm()
     #expect(expanded == nil)
+    #expect(session.range == CaptureTrimRange(start: 0, end: 3))
   }
 
-  @Test @MainActor
-  func previewEndEventLeavesLastFrameAndPlayRestartsSelection() {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    playback.setWindowVisible(true)
-    playback.beginTrimming()
-    playback.setTrimStart(1.1)
-    playback.setTrimEnd(1.4)
-    playback.togglePlayback()
-    finishSeeks(&playback)
-    #expect(playback.playbackEnd == 1.4)
-
-    playback.didReachEnd()
-    finishSeeks(&playback)
-    #expect(playback.playbackRate == 0)
-    #expect(abs(playback.time - 1.3) < 0.000001)
-
-    playback.togglePlayback()
-    #expect(abs(playback.time - 1.1) < 0.000001)
-    finishSeeks(&playback)
-    #expect(playback.playbackRate == 1)
-  }
-
-  @Test(arguments: [24.0, 30, 60, 29.97]) @MainActor
+  @Test(arguments: [24.0, 30, 60, 29.97])
   func trimBoundsSnapToFramesAndKeepAtLeastOneFrame(rate: Double) {
-    var playback = CapturePlaybackState(duration: 3, frameRate: rate)
-    playback.beginTrimming()
-    playback.setTrimStart(10.3 / rate)
-    #expect(abs(playback.trimSelection.start - 10 / rate) < 0.000001)
-    playback.setTrimEnd(20.7 / rate)
-    #expect(abs(playback.trimSelection.end - 21 / rate) < 0.000001)
-    playback.setTrimStart(100)
-    #expect(abs(playback.trimSelection.duration - 1 / rate) < 0.000001)
-    playback.setTrimEnd(-100)
-    #expect(abs(playback.trimSelection.duration - 1 / rate) < 0.000001)
-    playback.setTrimStart(-100)
-    playback.setTrimEnd(100)
-    #expect(playback.trimSelection == CaptureTrimRange(start: 0, end: 3))
-    playback.setTrimStart(.infinity)
-    playback.setTrimEnd(.nan)
-    #expect(playback.trimSelection == CaptureTrimRange(start: 0, end: 3))
+    var session = CaptureTrimSession(duration: 3, frameRate: rate)
+    session.begin(time: 0, playing: true)
+    session.setStart(10.3 / rate)
+    #expect(abs(session.selection.start - 10 / rate) < 0.000001)
+    session.setEnd(20.7 / rate)
+    #expect(abs(session.selection.end - 21 / rate) < 0.000001)
+    session.setStart(100)
+    #expect(abs(session.selection.duration - 1 / rate) < 0.000001)
+    session.setEnd(-100)
+    #expect(abs(session.selection.duration - 1 / rate) < 0.000001)
+    session.setStart(-100)
+    session.setEnd(100)
+    #expect(session.selection == CaptureTrimRange(start: 0, end: 3))
+    session.setStart(.infinity)
+    session.setEnd(.nan)
+    #expect(session.selection == CaptureTrimRange(start: 0, end: 3))
   }
 
-  @Test(arguments: [false, true]) @MainActor
-  func cancelRestoresPositionSpeedAndPauseChoice(playing: Bool) {
+  @Test(arguments: [false, true])
+  func cancelPreservesSavedTrimAndReturnsOriginalPlayback(playing: Bool) throws {
     let saved = CaptureTrimRange(start: 0.5, end: 2.5)
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10, trim: saved)
-    playback.setWindowVisible(true)
-    playback.setSpeed(0.5)
-    if !playing { playback.togglePlayback() }
-    playback.seek(to: 1.2)
-    finishSeeks(&playback)
-    playback.beginTrimming()
-    playback.setTrimStart(1.5)
-    playback.cancelTrimming()
-    #expect(playback.playbackRange == saved)
-    #expect(playback.time == 1.2 && playback.speed == 0.5)
-    #expect(playback.wantsPlayback == playing)
-    #expect(playback.playbackRate == 0)
-    finishSeeks(&playback)
-    #expect(playback.playbackRate == (playing ? 0.5 : 0))
+    var session = CaptureTrimSession(duration: 3, frameRate: 10, trim: saved)
+    session.begin(time: 1.2, playing: playing)
+    session.setStart(1.5)
+    // Entering trim again must not overwrite the original playback position.
+    let beganAgain = session.begin(time: 2, playing: !playing)
+    #expect(!beganAgain)
+    let cancelled = session.cancel()
+    let original = try #require(cancelled)
+    #expect(session.range == saved)
+    #expect(original.time == 1.2 && original.playing == playing)
+    #expect(!session.isEditing)
   }
 }

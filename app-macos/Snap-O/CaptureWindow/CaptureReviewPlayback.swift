@@ -5,39 +5,26 @@ import Observation
 @Observable
 final class CaptureReviewPlayback {
   let player = AVQueuePlayer()
-  private var state = CapturePlaybackState()
+  private(set) var duration: Double = 0
+  private(set) var time: Double = 0
+  private(set) var wantsPlayback = true
+  private(set) var speed: Float = 1
+  private(set) var isScrubbing = false
   private(set) var errorMessage: String?
-
-  var duration: Double {
-    state.duration
-  }
-
-  var time: Double {
-    state.time
-  }
-
-  var wantsPlayback: Bool {
-    state.wantsPlayback
-  }
-
-  var speed: Float {
-    state.speed
-  }
-
-  var isScrubbing: Bool {
-    state.isScrubbing
-  }
-
-  var frameRate: Double {
-    state.frameRate
-  }
-
+  private var isWindowVisible = false
+  private var isActive = false
+  private(set) var frameRate = 30.0
+  private var trimSession = CaptureTrimSession()
   var isTrimming: Bool {
-    state.isTrimming
+    trimSession.isEditing
   }
 
   var trimSelection: CaptureTrimRange {
-    state.trimSelection
+    trimSession.selection
+  }
+
+  private var frameDuration: Double {
+    1 / frameRate
   }
 
   @ObservationIgnored private var asset: AVAsset?
@@ -45,17 +32,18 @@ final class CaptureReviewPlayback {
   @ObservationIgnored private var looper: AVPlayerLooper?
   @ObservationIgnored private var timeObserver: Any?
   @ObservationIgnored private var generation = UUID()
+  @ObservationIgnored private var seeks = CaptureSeekQueue()
 
   var isPlaying: Bool {
-    state.isPlaying
+    isActive && isWindowVisible && wantsPlayback && !isScrubbing
   }
 
   var playbackRange: CaptureTrimRange {
-    state.playbackRange
+    trimSession.range
   }
 
   var elapsedTime: Double {
-    state.elapsedTime
+    max(0, time - playbackRange.start)
   }
 
   var timecode: CaptureTrimTimecode {
@@ -63,13 +51,14 @@ final class CaptureReviewPlayback {
   }
 
   var canTrim: Bool {
-    state.canTrim
+    isActive && duration > frameDuration
   }
 
   func load(_ url: URL, trim: CaptureTrimRange? = nil) async {
     stop()
     let token = generation
     errorMessage = nil
+    wantsPlayback = true
     let asset = AVURLAsset(url: url)
     do {
       let seconds = try await asset.load(.duration).seconds
@@ -77,15 +66,19 @@ final class CaptureReviewPlayback {
       let track = try await asset.loadTracks(withMediaType: .video).first
       let rate = try await track?.load(.nominalFrameRate) ?? 30
       guard !Task.isCancelled, token == generation else { return }
-      state.load(duration: seconds, frameRate: Double(rate), trim: trim)
+      duration = seconds
+      frameRate = rate.isFinite && rate >= 1 ? Double(rate) : 30
       self.asset = asset
+      trimSession = CaptureTrimSession(duration: seconds, frameRate: frameRate, trim: trim)
       configurePlayer()
+      isActive = true
       timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
         MainActor.assumeIsolated {
-          guard let self, token == self.generation else { return }
-          self.state.didUpdateTime(time.seconds)
+          guard let self, token == self.generation, !self.isScrubbing, !self.seeks.isSeeking, time.seconds.isFinite else { return }
+          self.time = max(0, min(time.seconds, self.duration))
         }
       }
+      seek(to: playbackRange.start)
       updatePlayback()
     } catch {
       guard !Task.isCancelled, token == generation else { return }
@@ -95,8 +88,11 @@ final class CaptureReviewPlayback {
 
   func stop() {
     generation = UUID()
-    state.stop()
+    seeks = CaptureSeekQueue()
+    isActive = false
+    isScrubbing = false
     player.pause()
+    trimSession = CaptureTrimSession()
     asset = nil
     if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
     endObserver = nil
@@ -105,34 +101,45 @@ final class CaptureReviewPlayback {
     looper?.disableLooping()
     looper = nil
     player.removeAllItems()
+    time = 0
+    duration = 0
   }
 
   func setWindowVisible(_ visible: Bool) {
-    state.setWindowVisible(visible)
+    isWindowVisible = visible
     updatePlayback()
   }
 
   func togglePlayback() {
-    state.togglePlayback()
+    if !wantsPlayback, isTrimming, time >= lastPreviewFrame - frameDuration / 2 {
+      seek(to: playbackRange.start)
+    }
+    wantsPlayback.toggle()
     updatePlayback()
   }
 
   func setSpeed(_ value: Float) {
-    state.setSpeed(value)
+    speed = value
     updatePlayback()
   }
 
   func setScrubbing(_ editing: Bool) {
-    state.setScrubbing(editing)
+    guard isScrubbing != editing else { return }
+    isScrubbing = editing
+    if !editing { seek(to: time) }
     updatePlayback()
   }
 
   func seek(to seconds: Double) {
-    state.seek(to: seconds)
-    updatePlayback()
+    guard seconds.isFinite else { return }
+    time = max(playbackRange.start, min(seconds, isTrimming ? lastPreviewFrame : playbackRange.end))
+    seeks.enqueue(time: time, tolerance: isScrubbing ? 1.0 / 15 : 0)
+    performPendingSeek()
   }
 
-  private func performSeek(_ request: CaptureSeekQueue.Request) {
+  private func performPendingSeek() {
+    guard let request = seeks.next() else { return }
+    updatePlayback()
     let tolerance = CMTime(seconds: request.tolerance, preferredTimescale: 60000)
     // Finish the current decode, then jump to the latest requested position.
     player
@@ -142,25 +149,26 @@ final class CaptureReviewPlayback {
         toleranceAfter: tolerance
       ) { [weak self] _ in
         Task { @MainActor in
-          guard let self, self.state.completeSeek(request) else { return }
+          guard let self, self.seeks.complete(request) else { return }
+          self.performPendingSeek()
           self.updatePlayback()
         }
       }
   }
 
   func stepFrame(_ direction: Int) {
-    state.stepFrame(direction)
+    wantsPlayback = false
     updatePlayback()
+    seek(to: time + Double(direction) * frameDuration)
   }
 
   private func updatePlayback() {
-    let request = state.nextSeek()
-    if isPlaying, !state.isSeeking {
-      if let seconds = state.playbackEnd, let item = player.currentItem {
-        let end = mediaTime(seconds)
+    if isPlaying, !seeks.isSeeking {
+      if isTrimming, let item = player.currentItem {
+        let end = mediaTime(trimSelection.end)
         if item.forwardPlaybackEndTime != end { item.forwardPlaybackEndTime = end }
       }
-      player.playImmediately(atRate: state.playbackRate)
+      player.playImmediately(atRate: isTrimming ? 1 : speed)
     } else {
       player.pause()
       // Changing the playback end during scrubbing stalls AVPlayer's pending seek.
@@ -168,38 +176,50 @@ final class CaptureReviewPlayback {
         item.forwardPlaybackEndTime = .invalid
       }
     }
-    if let request { performSeek(request) }
   }
 
   func beginTrimming() {
-    guard state.beginTrimming() else { return }
+    guard canTrim, trimSession.begin(time: time, playing: wantsPlayback) else { return }
+    wantsPlayback = false
     configurePlayer()
-    updatePlayback()
+    seek(to: trimSelection.start)
   }
 
   func cancelTrimming() {
-    guard state.cancelTrimming() else { return }
+    guard let playback = trimSession.cancel() else { return }
+    wantsPlayback = playback.playing
     configurePlayer()
-    updatePlayback()
+    seek(to: playback.time)
   }
 
   func confirmTrim() -> CaptureTrimRange? {
-    let wasTrimming = isTrimming
-    let trim = state.confirmTrim()
-    if wasTrimming {
-      configurePlayer()
-      updatePlayback()
-    }
+    guard isTrimming else { return trimSession.confirm() }
+    let trim = trimSession.confirm()
+    wantsPlayback = false
+    configurePlayer()
+    seek(to: playbackRange.start)
     return trim
   }
 
   func setTrimStart(_ seconds: Double) {
-    state.setTrimStart(seconds)
-    updatePlayback()
+    guard isTrimming, seconds.isFinite else { return }
+    trimSession.setStart(seconds)
+    previewTrimBoundary(trimSelection.start)
   }
 
   func setTrimEnd(_ seconds: Double) {
-    state.setTrimEnd(seconds)
+    guard isTrimming, seconds.isFinite else { return }
+    trimSession.setEnd(seconds)
+    previewTrimBoundary(lastPreviewFrame)
+  }
+
+  private var lastPreviewFrame: Double {
+    max(playbackRange.start, playbackRange.end - frameDuration)
+  }
+
+  private func previewTrimBoundary(_ seconds: Double) {
+    wantsPlayback = false
+    seek(to: seconds)
     updatePlayback()
   }
 
@@ -210,6 +230,7 @@ final class CaptureReviewPlayback {
   private func configurePlayer() {
     guard let asset else { return }
     player.pause()
+    seeks = CaptureSeekQueue()
     looper?.disableLooping()
     looper = nil
     if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
@@ -223,8 +244,9 @@ final class CaptureReviewPlayback {
         forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
       ) { [weak self] _ in
         MainActor.assumeIsolated {
-          guard let self else { return }
-          self.state.didReachEnd()
+          guard let self, self.isTrimming, self.wantsPlayback, !self.isScrubbing, !self.seeks.isSeeking else { return }
+          self.wantsPlayback = false
+          self.seek(to: self.lastPreviewFrame)
           self.updatePlayback()
         }
       }
@@ -243,5 +265,37 @@ final class CaptureReviewPlayback {
       return String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
     }
     return String(format: "%02d:%02d", total / 60, total % 60)
+  }
+}
+
+/// Coalesces pending scrubs while the player finishes its current seek.
+struct CaptureSeekQueue {
+  struct Request {
+    let id = UUID()
+    let time: Double
+    let tolerance: Double
+  }
+
+  private var active: UUID?
+  private var pending: Request?
+  var isSeeking: Bool {
+    active != nil
+  }
+
+  mutating func enqueue(time: Double, tolerance: Double) {
+    pending = Request(time: time, tolerance: tolerance)
+  }
+
+  mutating func next() -> Request? {
+    guard active == nil, let request = pending else { return nil }
+    pending = nil
+    active = request.id
+    return request
+  }
+
+  mutating func complete(_ request: Request) -> Bool {
+    guard active == request.id else { return false }
+    active = nil
+    return true
   }
 }

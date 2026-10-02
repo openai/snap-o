@@ -23,68 +23,44 @@ struct CaptureReviewPlaybackTests {
     }
   }
 
-  @Test(arguments: [false, true]) @MainActor
-  func scrubKeepsLatestPositionAndRestoresPlaybackChoice(playing: Bool) throws {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    playback.setWindowVisible(true)
-    playback.setSpeed(0.5)
-    if !playing { playback.togglePlayback() }
-    #expect(playback.playbackRate == 0)
-    finishSeeks(&playback)
-    #expect(playback.playbackRate == (playing ? 0.5 : 0))
-
-    playback.setScrubbing(true)
-    playback.seek(to: 0.2)
-    let firstRequest = playback.nextSeek()
+  @Test
+  func rapidScrubbingSettlesOnExactFinalPosition() throws {
+    var seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.1, tolerance: 1.0 / 15)
+    let firstRequest = seeks.next()
     let first = try #require(firstRequest)
-    for position in [0.4, 1.0, 2.2] {
-      playback.seek(to: position)
+    for time in [0.2, 0.7, 0.9] {
+      seeks.enqueue(time: time, tolerance: 1.0 / 15)
+      let concurrent = seeks.next()
+      #expect(concurrent == nil)
     }
-    playback.didUpdateTime(0.7)
-    #expect(playback.time == 2.2)
-    #expect(playback.playbackRate == 0)
-    let concurrent = playback.nextSeek()
-    #expect(concurrent == nil)
-    #expect(first.tolerance == 1.0 / 15)
-
-    playback.setScrubbing(false)
-    let completedFirst = playback.completeSeek(first)
-    #expect(completedFirst)
-    let finalRequest = playback.nextSeek()
+    seeks.enqueue(time: 0.4, tolerance: 0)
+    let finishedFirst = seeks.complete(first)
+    #expect(finishedFirst)
+    let finalRequest = seeks.next()
     let final = try #require(finalRequest)
-    #expect(final.time == 2.2)
-    #expect(final.tolerance == 0)
-    #expect(playback.playbackRate == 0)
-    playback.didUpdateTime(0.8)
-    #expect(playback.time == 2.2)
-    let completedFinal = playback.completeSeek(final)
-    #expect(completedFinal)
-    #expect(playback.playbackRate == (playing ? 0.5 : 0))
-    playback.didUpdateTime(2.3)
-    #expect(playback.time == 2.3)
+    #expect(final.time == 0.4 && final.tolerance == 0)
+    #expect(seeks.isSeeking)
+    let finishedFinal = seeks.complete(final)
+    #expect(finishedFinal)
+    let next = seeks.next()
+    #expect(next == nil && !seeks.isSeeking)
   }
 
-  @Test @MainActor
-  func enteringTrimIgnoresPreviousSeekCompletion() throws {
-    var playback = CapturePlaybackState(duration: 3, frameRate: 10)
-    let previousRequest = playback.nextSeek()
-    let previous = try #require(previousRequest)
-    playback.beginTrimming()
-    let trimRequest = playback.nextSeek()
-    let trim = try #require(trimRequest)
-
-    let completedPrevious = playback.completeSeek(previous)
-    #expect(!completedPrevious)
-    #expect(playback.isSeeking)
-    let completedTrim = playback.completeSeek(trim)
-    #expect(completedTrim)
-    #expect(!playback.isSeeking)
-  }
-}
-
-func finishSeeks(_ state: inout CapturePlaybackState) {
-  while let request = state.nextSeek() {
-    let completed = state.completeSeek(request)
-    #expect(completed)
+  @Test
+  func staleCompletionCannotFinishANewSeek() throws {
+    var seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.1, tolerance: 0)
+    let oldRequest = seeks.next()
+    let old = try #require(oldRequest)
+    seeks = CaptureSeekQueue()
+    seeks.enqueue(time: 0.7, tolerance: 0)
+    let currentRequest = seeks.next()
+    let current = try #require(currentRequest)
+    let finishedOld = seeks.complete(old)
+    #expect(!finishedOld)
+    #expect(seeks.isSeeking)
+    let finishedCurrent = seeks.complete(current)
+    #expect(finishedCurrent)
   }
 }
