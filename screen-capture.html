@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Screen capture</title>
-    <meta name="description" content="Use Live Preview, review and crop screenshots or recordings, and save captures in Snap-O.">
+    <meta name="description" content="Use Live Preview, crop screenshots, trim recordings, and save captures in Snap-O.">
 
 
     <link rel="icon" type="image/png" href="assets/icon-64.png">
@@ -32,7 +32,7 @@
 
         <h1 id="screen-capture">Screen capture</h1>
 
-<p class="lead">Capture screenshots or recordings from all connected Android devices, then review and crop them before sharing. Save the captures you want to keep in Capture History.</p>
+<p class="lead">Capture screenshots or recordings from all connected Android devices, then crop images or trim recordings before sharing. Save the captures you want to keep in Capture History.</p>
 
       </div>
     </div>
@@ -47,7 +47,8 @@
         </div>
         <div class="section-body">
 <p class="prose">Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use <code>⌘[</code> and <code>⌘]</code> to switch between connected devices.</p>
-<p class="prose">The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.</p>
+<p class="prose">Hover over the device count to choose a preview. The picker shows a live thumbnail for the selected device and cached screenshots for the others. It appears only when more than one device is available. Devices stay in the same order when you switch between them.</p>
+<p class="prose">You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.</p>
 <p class="prose">You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.</p>
 <p class="prose">Hold Option and drag to use two touch points for pinch or rotation gestures. Hold Option-Shift while dragging to move both points together. The touch markers show where the gesture will act.</p>
 <p class="prose">Command-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
@@ -63,7 +64,7 @@
         <div class="section-body">
 <p class="prose">Live Preview shows floating controls beside the Capture window. Use <strong>Back</strong>, <strong>Home</strong>, <strong>Recents</strong>, <strong>Volume Down</strong>, <strong>Volume Up</strong>, and <strong>Power/Wake</strong> to control the selected device.</p>
 <p class="prose">Physical devices and emulators offer <strong>Rotate Left</strong> and <strong>Rotate Right</strong>. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show <strong>Display Mode</strong> and <strong>Posture</strong> menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.</p>
-<p class="prose">Right-click the controls and choose <strong>Position → Left of Window</strong> or <strong>Position → Below Capture Pane</strong>. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.</p>
+<p class="prose">Right-click the controls and choose <strong>Position → Left of Window</strong> or <strong>Position → Below Capture Pane</strong>. Snap-O remembers this position. The controls stay anchored outside the window, even when that places them offscreen. They hide when Snap-O becomes inactive.</p>
 </div>
       </section>
 
@@ -114,7 +115,14 @@
 <p class="prose">Click <strong>Start</strong> beside a stopped emulator. The row shows startup progress until Android finishes booting. Click <strong>Open</strong> to select a running emulator or connected phone in Live Preview and focus Capture. Start and Cold Boot do not select a device or focus Capture. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.</p>
 <p class="prose">Use <strong>Stop</strong> to shut down an emulator, or <strong>Cold Boot</strong> in its actions menu to start without loading a saved snapshot. <strong>Reveal in Finder</strong> opens its files. <strong>Delete</strong> asks for confirmation before moving a stopped emulator and its data to Trash. Connected phones have no emulator lifecycle controls.</p>
 <p class="prose">Device Manager uses your installed Android SDK and existing AVDs. The default SDK location is <code>~/Library/Android/sdk</code>. It also checks <code>ANDROID_HOME</code> and <code>ANDROID_SDK_ROOT</code> when available to the app; apps opened from Finder do not inherit shell startup variables. This version does not install SDK packages, create or edit AVDs, or offer a custom SDK location picker.</p>
+<p class="prose">When the local ADB server is missing, Snap-O starts it using your Android SDK. Existing ADB connections, including remote tunnels, are left in place. If startup fails, the Capture pane shows the error and a <strong>Start ADB server</strong> button.</p>
 <p class="prose">Quitting Snap-O leaves running emulators available to other tools.</p>
+<h3 id="open-a-device-from-a-link">Open a device from a link</h3>
+<p class="prose">Use a <code>snapo://open</code> URL to open a connected device by its ADB serial:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">open 'snapo://open?serial=emulator-5554'</code></pre></div>
+<p class="prose">You can also open an emulator by its AVD name. Add <code>start=true</code> to start it if it is stopped:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">open 'snapo://open?avd=Pixel_8&amp;start=true'</code></pre></div>
+<p class="prose">Use either <code>serial</code> or <code>avd</code>, and percent-encode spaces or other special characters in its value.</p>
 </div>
       </section>
 
@@ -135,18 +143,21 @@
         </div>
         <div class="section-body">
 <p class="prose">Press <code>⇧⌘V</code> to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling <strong>Record Screen as Bug Report</strong> stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.</p>
+<p class="prose">During recording, the hover picker and <code>⌘[</code> / <code>⌘]</code> switch between devices in that recording. Newly connected devices join Live Preview, but do not join a recording already in progress.</p>
 </div>
       </section>
 
       <section class="guide-section" id="review-and-crop">
         <div class="section-heading">
 
-          <h2>Review and crop</h2>
+          <h2>Review, crop, and trim</h2>
         </div>
         <div class="section-body">
 <p class="prose">New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.</p>
-<p class="prose">Click the checkmark (<strong>Save to History</strong>) to keep all captures in the review with their crops. Enter an optional name, then click <strong>Save</strong>. Click the cross (<strong>Discard</strong>) to remove the unsaved captures and return to Live Preview.</p>
-<p class="prose">Starting another capture, returning to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.</p>
+<p class="prose">For a recording, click the scissors to trim it. Drag the timeline handles or edit <strong>Start</strong> and <strong>End</strong>, then click <strong>Apply Trim</strong>. Press <code>Esc</code> to cancel the trim edit. Saved and shared copies use the selected crop and trim.</p>
+<p class="prose">Click the checkmark (<strong>Save to History</strong>) to keep all captures in the review with their crops and trims. Enter an optional name, then click <strong>Save</strong>. Click the cross (<strong>Discard</strong>) to remove the unsaved captures and return to Live Preview.</p>
+<p class="prose">Press <code>Esc</code> to open a discard confirmation. Press <code>Enter</code> to discard, or <code>Esc</code> again to keep editing. During a crop drag or while trimming a recording, <code>Esc</code> cancels that edit first.</p>
+<p class="prose">Starting another capture, pressing <code>⇧⌘L</code> to return to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.</p>
 </div>
       </section>
 
@@ -158,7 +169,7 @@
         <div class="section-body">
 <p class="prose">Drag a screenshot or recording into any app that accepts images or video. During review, hold Command and drag inside a crop to share the cropped copy; an uncropped capture can be dragged normally. Sharing a copy does not add the capture to history. Click the checkmark if you also want to keep it there.</p>
 <p class="prose">You can also drag saved captures from Capture History. Their originals remain in history. Use <code>⌘C</code> to copy a screenshot to the clipboard.</p>
-<p class="prose">Choose <strong>Save As…</strong> (<code>⌘S</code>) to export the selected capture with its current crop. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.</p>
+<p class="prose">Choose <strong>Save As…</strong> (<code>⌘S</code>) to export the selected capture with its current crop and trim. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.</p>
 </div>
       </section>
 
@@ -207,6 +218,10 @@
 <tr>
 <td>Start live preview</td>
 <td><code>⇧⌘L</code></td>
+</tr>
+<tr>
+<td>Leave capture review</td>
+<td><code>Esc</code></td>
 </tr>
 <tr>
 <td>Open Capture History</td>
@@ -305,7 +320,7 @@ They also work when the control bar is hidden.</p>
 
           <li><a class="quick-jump-link" href="#record-the-screen">Record the screen</a></li>
 
-          <li><a class="quick-jump-link" href="#review-and-crop">Review and crop</a></li>
+          <li><a class="quick-jump-link" href="#review-and-crop">Review, crop, and trim</a></li>
 
           <li><a class="quick-jump-link" href="#drag-and-drop">Drag & drop, and sharing</a></li>
 

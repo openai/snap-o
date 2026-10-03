@@ -67,7 +67,7 @@
 <div aria-label="Tweaks dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="tweaks-catalog-panel" aria-selected="true" class="dependency-format-tab" id="tweaks-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="tweaks-direct-panel" aria-selected="false" class="dependency-format-tab" id="tweaks-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="tweaks-catalog-tab" class="dependency-format-panel" id="tweaks-catalog-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,5,6,8,9,10" data-language="toml">[versions]
-snapo = "13.0.2"
+snapo = "13.1.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -87,12 +87,12 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
 </div>
 <div aria-labelledby="tweaks-direct-tab" class="dependency-format-panel" hidden="" id="tweaks-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,3,5,6,7" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks:13.0.2")
-    releaseImplementation("com.openai.snapo:tweaks-noop:13.0.2")
+    debugImplementation("com.openai.snapo:tweaks:13.1.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:13.1.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:13.0.2")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.0.2")
+    debugImplementation("com.openai.snapo:tweaks-overlay:13.1.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.1.0")
 }</code></pre></div>
 </div>
 
@@ -121,10 +121,10 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
         <div class="section-body">
 <p class="prose">Use <code>tweaks-core</code> in Views, ViewModels, services, and ordinary Kotlin classes. It has no Compose dependency and shares the registry with the Compose API. Use matching versions for all Snap-O artifacts. Existing Compose apps keep using <code>tweaks</code> and <code>tweaks-noop</code>; these bring in <code>tweaks-core</code> and <code>tweaks-core-noop</code> transitively. Add the core dependencies directly only when using tweaks without Compose.</p>
 <div class="code-block"><div class="code-head"><span>build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:13.0.2")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.0.2")
+    debugImplementation("com.openai.snapo:tweaks-core:13.1.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.1.0")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:13.0.2")
+    implementation("com.openai.snapo:tweaks-views:13.1.0")
 }</code></pre></div>
 <p class="prose">A <code>TweakScope</code> registers values immediately and returns read-only <code>StateFlow</code> values. Read <code>.value</code> directly or collect changes. Close the scope when its owner is disposed. A ViewModel can own the scope across Activity recreation:</p>
 <div class="code-block"><div class="code-head"><span>ViewModel</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.lifecycle.ViewModel
