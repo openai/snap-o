@@ -38,7 +38,7 @@ Inspect HTTP and HTTPS requests, Server-Sent Events (SSE), and WebSocket message
 
 ## Screen capture {.product-title}
 
-Review and crop screenshots or recordings before sharing them. Save the captures you want to keep in Capture History, and inspect recordings frame by frame.
+Crop screenshots and trim recordings before sharing them. Save the captures you want to keep in Capture History, and inspect recordings frame by frame.
 {.product-copy}
 
 [Screen capture guide](screen-capture.md){.section-link}
