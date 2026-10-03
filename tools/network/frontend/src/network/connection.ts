@@ -1,3 +1,10 @@
+import {
+  BodySearchHttpError,
+  bodySearchLimits,
+  searchRemoteBodies,
+  type BodySearchQuery,
+  type BodySearchReply
+} from "./remote-body-search";
 import type { ToolConnection } from "@snap-o/tool-host";
 import { readText } from "../http";
 import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamClosed } from "./bridge-types";
@@ -15,6 +22,7 @@ export class NetworkConnection {
   private readonly abort = new AbortController();
   private stream: EventSource | undefined;
   private closed = false;
+  private bodySearchUnsupported = false;
   private rejectOpening: ((error: Error) => void) | undefined;
   private replaying = true;
   private lastSequence = -1;
@@ -84,6 +92,24 @@ export class NetworkConnection {
     ]);
     this.checkOpen();
     return result;
+  }
+
+  async searchBodies(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply> {
+    const activeSignal = AbortSignal.any([signal, this.abort.signal, this.connection.signal]);
+    activeSignal.throwIfAborted();
+    if (this.bodySearchUnsupported) throw new BodySearchHttpError(404);
+    return searchRemoteBodies(input, activeSignal, async (batch, signal) => {
+      const response = await this.transport.fetch(this.url("network/search"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(bodySearchLimits.timeoutMs)]),
+        cache: "no-store",
+        redirect: "error"
+      });
+      if (response.status === 404) this.bodySearchUnsupported = true;
+      return response;
+    });
   }
 
   private url(path: string): string {

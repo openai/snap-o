@@ -1,3 +1,4 @@
+import type { BodySearchMatches } from "../../../network/body-search";
 import {
   recordId,
   type ToolDataState,
@@ -13,15 +14,22 @@ export function filterRecords(
   records: ToolRecord[],
   searchText: string,
   newestFirst: boolean,
-  exclusionFilters: readonly string[] = []
+  exclusionFilters: readonly string[] = [],
+  bodies?: BodySearchMatches
 ): ToolRecord[] {
   // Parse separately so unfinished search syntax cannot consume saved exclusions.
   const searchQuery = parseNetworkSearchQuery(searchText);
   const exclusionQuery = parseNetworkSearchQuery(exclusionFilters.join(" "));
-  searchQuery.includes.push(...exclusionQuery.includes);
-  searchQuery.excludes.push(...exclusionQuery.excludes);
   const filteredRecords = records
-    .filter((record) => matchesNetworkSearch(record, searchQuery))
+    .filter(
+      (record) =>
+        (exclusionFilters.length === 0 || matchesNetworkSearch(record, exclusionQuery)) &&
+        matchesNetworkSearch(
+          record,
+          searchQuery,
+          bodies === undefined ? undefined : (bodies.get(recordId(record)) ?? null)
+        )
+    )
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;

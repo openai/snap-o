@@ -37,6 +37,7 @@ private fun RequestWillBeSent.toCdpRequestWillBeSent(): CdpMessage {
                     hasPostData = hasBody || (bodySize ?: 0L) > 0L || !body.isNullOrEmpty(),
                     postDataLength = bodySize,
                     postDataEncoding = bodyEncoding,
+                    postDataTruncatedBytes = bodyTruncatedBytes,
                 ),
             ),
         ),

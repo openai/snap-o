@@ -94,6 +94,7 @@ private class InterceptingHttpURLConnection(
     private var requestPublished: Boolean = false
     private var requestPublication: Job? = null
     private var publishedRequestBodyBytes: Long = 0L
+    private var publishedRequestTruncatedBytes: Long? = null
     private var responseMeta: ResponseMeta? = null
     private var responsePublished: Boolean = false
     private var responsePublication: Job? = null
@@ -312,6 +313,7 @@ private class InterceptingHttpURLConnection(
         val truncatedBytes = capture?.truncatedBytes
         val hasBody = delegate.doOutput || requestBodyCapture != null || (bodySize?.let { it > 0L } == true)
         publishedRequestBodyBytes = capture?.totalBytes ?: 0L
+        publishedRequestTruncatedBytes = truncatedBytes
 
         requestPublication = interceptor.publisher.publish {
             val bodyValues = resolveRequestBody(
@@ -340,8 +342,13 @@ private class InterceptingHttpURLConnection(
         if (!requestPublished) return
         val currentContext = context ?: return
         val capture = requestBodyCapture?.snapshot() ?: return
-        if (capture.totalBytes == publishedRequestBodyBytes) return
+        if (capture.totalBytes == publishedRequestBodyBytes &&
+            capture.truncatedBytes == publishedRequestTruncatedBytes
+        ) {
+            return
+        }
         publishedRequestBodyBytes = capture.totalBytes
+        publishedRequestTruncatedBytes = capture.truncatedBytes
         val mediaType = BodyContentType.parse(requestContentType())
         val contentEncoding = requestContentEncoding()
         requestPublication = interceptor.publisher.updateRequestBody(
@@ -557,7 +564,7 @@ private class InterceptingHttpURLConnection(
     }
 }
 
-private class BodyCaptureSink(private val maxBytes: Int) {
+internal class BodyCaptureSink(private val maxBytes: Int) {
     private val buffer = ByteArrayOutputStream(maxBytes.coerceAtLeast(0).coerceAtMost(1024))
     var totalBytes: Long = 0L
         private set
@@ -572,20 +579,22 @@ private class BodyCaptureSink(private val maxBytes: Int) {
         buffer.write(bytes, offset, toWrite)
     }
 
+    var complete: Boolean = false
+
     fun snapshot(): BodyCaptureSnapshot {
         val captured = buffer.toByteArray()
         val truncated = (totalBytes - captured.size.toLong()).coerceAtLeast(0L)
-        return BodyCaptureSnapshot(captured, totalBytes, truncated.takeIf { it > 0L })
+        return BodyCaptureSnapshot(captured, totalBytes, truncated.takeIf { it > 0L || complete })
     }
 }
 
-private data class BodyCaptureSnapshot(
+internal data class BodyCaptureSnapshot(
     val bytes: ByteArray,
     val totalBytes: Long,
     val truncatedBytes: Long?,
 )
 
-private class CapturingOutputStream(
+internal class CapturingOutputStream(
     delegate: OutputStream,
     private val capture: BodyCaptureSink,
     private val onClosed: () -> Unit,
@@ -606,6 +615,7 @@ private class CapturingOutputStream(
     override fun close() {
         try {
             super.close()
+            capture.complete = true
         } finally {
             if (closed.compareAndSet(false, true)) {
                 try {

@@ -11,6 +11,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
+| `POST /network/search` | Matching search terms and short text samples from stored request and response bodies. |
 | `POST /interception` | Register routes; return `201`, the runner URL in `Location`, and its owning SSE stream. |
 | `PUT /interception/{runnerId}/routes` | Replace a runner's routes. |
 | `POST /interception/{runnerId}/exchanges/{exchangeId}` | Decide a paused exchange. |
@@ -94,3 +95,35 @@ The [history](v2/history.jsonl) fixture remains valid for the current protocol; 
 ### HTTP routing defaults
 
 Unknown paths return `404` for every method. A known path with an unsupported method returns `405`. Expired interception runners still return `410` on matching interception routes.
+
+### Body search
+
+`POST /network/search` searches stored bodies for literal terms, ignoring letter case. Request IDs belong to the connected Android process.
+
+```json
+{"requestIds":["request-1"],"terms":["needle"]}
+```
+
+- Include 1–64 different request IDs, each 1–512 characters long.
+- Include 1–64 terms, each 1–256 characters long.
+- Invalid queries return `400`. At most two searches run at once; further searches return `429`.
+
+The response includes each requested ID, even when its bodies are missing:
+
+```json
+{"results":[{"requestId":"request-1","request":{"terms":[],"complete":true},"response":{"terms":["needle"],"complete":false,"snippet":"a needle in the captured response"}}]}
+```
+
+Each `request` and `response` has these fields:
+
+- `terms`: matching terms in lowercase.
+- `complete`: whether the whole body was searched, including a known empty body.
+- `snippet`: optional text around a match, at most 160 characters.
+
+Missing, partial, arriving, binary, and oversized bodies have `complete: false`. These results cannot prove that a term is absent. Stored bodies may be removed before a client reads a match.
+
+Search reads at most 8,388,608 UTF-16 code units of plain text. It also reads gzip and x-gzip request bodies, limited to 8 MiB after decompression.
+
+Request events add optional `request.postDataTruncatedBytes`: zero means fully captured; positive values count omitted bytes. Missing values mean unknown. Use this field, not decoded text length, to determine whether a request body is complete.
+
+Both additions are compatible with protocol **2**. Older servers return `404` for search; clients can still search locally cached bodies.

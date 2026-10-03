@@ -4,6 +4,7 @@ import { parseKeywordSearchQuery, searchHighlightRanges } from "../../../network
 
 const SearchHighlightName = "network-search-match";
 const SearchHighlightStyleId = "network-search-match-style";
+// WebKit can stall while placing highlights in large bodies. Use these highlights only for metadata.
 const HighlightScopes = [
   ".record-row",
   ".detail-method",
@@ -11,8 +12,6 @@ const HighlightScopes = [
   ".status-label",
   ".failure-message",
   ".headers-grid",
-  ".payload-scroll pre",
-  ".json-outline",
   ".event-name",
   ".stream-event-metadata",
   ".stream-close-message",
@@ -21,7 +20,6 @@ const HighlightScopes = [
   ".message-enqueue-state",
   ".message-opcode"
 ].join(", ");
-const HighlightIgnoreScopes = ".json-row-trailing";
 
 interface CustomHighlightRegistry {
   delete(name: string): void;
@@ -82,23 +80,29 @@ export function useSearchHighlights(rootRef: RefObject<HTMLElement>, searchText:
 
 function searchRanges(root: HTMLElement, query: ReturnType<typeof parseKeywordSearchQuery>): Range[] {
   const ranges: Range[] = [];
+  const visited = new Set<Node>();
   for (const scope of root.querySelectorAll(HighlightScopes)) {
     const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const text = node.textContent;
-        if (node.parentElement?.closest(HighlightIgnoreScopes) != null) return NodeFilter.FILTER_REJECT;
         return text == null || text.trim().length === 0 ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
       }
     });
 
     let node = walker.nextNode();
     while (node != null) {
+      if (visited.has(node) || (node.textContent?.length ?? 0) > 4096) {
+        node = walker.nextNode();
+        continue;
+      }
+      visited.add(node);
       const text = node.textContent ?? "";
       for (const match of searchHighlightRanges(text, query)) {
         const range = document.createRange();
         range.setStart(node, match.start);
         range.setEnd(node, match.end);
         ranges.push(range);
+        if (ranges.length === 300) return ranges;
       }
       node = walker.nextNode();
     }

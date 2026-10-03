@@ -1,3 +1,5 @@
+import type { BodySearchMatches } from "../../../network/body-search";
+import { useBodySearch } from "./useBodySearch";
 import { host } from "@snap-o/tool-host";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { type NetworkClient } from "../../../network/client";
@@ -37,6 +39,9 @@ export interface NetworkToolModel {
   allRecords: ToolRecord[];
   sidebarPlaceholder: string | null;
   searchText: string;
+  searchStatus: string | null;
+  searchStatusDetail?: string | null;
+  bodyMatches?: BodySearchMatches;
   exclusionFilters: string[];
   hiddenRequestCount: number;
   sortNewestFirst: boolean;
@@ -56,7 +61,7 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
   const [searchText, setSearchText] = useState("");
   const [exclusionFilters, setExclusionFilters] = useState<string[]>([]);
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
-  const [, setBodyCacheRevision] = useState(0);
+  const [bodyCacheRevision, setBodyCacheRevision] = useState(0);
   const [streamLifecycle, setStreamLifecycle] = useState<{
     connection: ToolConnection;
     state: StreamLifecycleState;
@@ -125,11 +130,17 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     return () => controller.dispose();
   }, [client, connection]);
 
-  const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
+  const allRecords = useMemo(
+    () => hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache),
+    // BodyCache changes in place. Rebuild records when its revision changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.requests, state.webSockets, bodyCache, bodyCacheRevision]
+  );
+  const bodySearch = useBodySearch(allRecords, searchText, client, connection);
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, searchText, sortNewestFirst, exclusionFilters),
-    [allRecords, exclusionFilters, searchText, sortNewestFirst]
+    () => filterRecords(allRecords, searchText, sortNewestFirst, exclusionFilters, bodySearch.matches),
+    [allRecords, exclusionFilters, searchText, sortNewestFirst, bodySearch.matches]
   );
 
   const hiddenRequestCount = useMemo(
@@ -277,6 +288,9 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     allRecords,
     sidebarPlaceholder,
     searchText,
+    searchStatus: bodySearch.status,
+    searchStatusDetail: bodySearch.detail,
+    bodyMatches: bodySearch.matches,
     exclusionFilters,
     hiddenRequestCount,
     sortNewestFirst,
