@@ -1,7 +1,7 @@
 ---
 layout: guide
 title: "Screen capture · Snap-O"
-description: Use Live Preview, review and crop screenshots or recordings, and save captures in Snap-O.
+description: Use Live Preview, crop screenshots, trim recordings, and save captures in Snap-O.
 styles:
 - guide.css
 - network-inspector.css
@@ -15,14 +15,16 @@ breadcrumbs:
 
 # Screen capture
 
-Capture screenshots or recordings from all connected Android devices, then review and crop them before sharing. Save the captures you want to keep in Capture History.
+Capture screenshots or recordings from all connected Android devices, then crop images or trim recordings before sharing. Save the captures you want to keep in Capture History.
 {.lead}
 
 ## Live Preview
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
 
-The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
+Hover over the device count to choose a preview. The picker shows a live thumbnail for the selected device and cached screenshots for the others. It appears only when more than one device is available. Devices stay in the same order when you switch between them.
+
+You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
 You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.
 
@@ -76,7 +78,25 @@ Use **Stop** to shut down an emulator, or **Cold Boot** in its actions menu to s
 
 Device Manager uses your installed Android SDK and existing AVDs. The default SDK location is `~/Library/Android/sdk`. It also checks `ANDROID_HOME` and `ANDROID_SDK_ROOT` when available to the app; apps opened from Finder do not inherit shell startup variables. This version does not install SDK packages, create or edit AVDs, or offer a custom SDK location picker.
 
+When the local ADB server is missing, Snap-O starts it using your Android SDK. Existing ADB connections, including remote tunnels, are left in place. If startup fails, the Capture pane shows the error and a **Start ADB server** button.
+
 Quitting Snap-O leaves running emulators available to other tools.
+
+### Open a device from a link
+
+Use a `snapo://open` URL to open a connected device by its ADB serial:
+
+```bash
+open 'snapo://open?serial=emulator-5554'
+```
+
+You can also open an emulator by its AVD name. Add `start=true` to start it if it is stopped:
+
+```bash
+open 'snapo://open?avd=Pixel_8&start=true'
+```
+
+Use either `serial` or `avd`, and percent-encode spaces or other special characters in its value.
 
 ## Take a screenshot
 
@@ -86,11 +106,15 @@ Press `⇧⌘S` to capture a screenshot from all connected Android devices. The 
 
 Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
 
-## Review and crop
+During recording, the hover picker and `⌘[` / `⌘]` switch between devices in that recording. Newly connected devices join Live Preview, but do not join a recording already in progress.
+
+## Review, crop, and trim {#review-and-crop}
 
 New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.
 
-Click the checkmark (**Save to History**) to keep all captures in the review with their crops. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
+For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Saved and shared copies use the selected crop and trim.
+
+Click the checkmark (**Save to History**) to keep all captures in the review with their crops and trims. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
 
 Press `Esc` to open a discard confirmation. Press `Enter` to discard, or `Esc` again to keep editing. During a crop drag or while trimming a recording, `Esc` cancels that edit first.
 
@@ -102,7 +126,7 @@ Drag a screenshot or recording into any app that accepts images or video. During
 
 You can also drag saved captures from Capture History. Their originals remain in history. Use `⌘C` to copy a screenshot to the clipboard.
 
-Choose **Save As…** (`⌘S`) to export the selected capture with its current crop. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.
+Choose **Save As…** (`⌘S`) to export the selected capture with its current crop and trim. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.
 
 ## Capture History {#capture-history}
 
