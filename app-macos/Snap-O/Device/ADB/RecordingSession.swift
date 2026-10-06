@@ -2,32 +2,43 @@ import Dependencies
 import Foundation
 
 public final class RecordingSession: @unchecked Sendable {
+  let target: DeviceTarget?
   public let deviceID: String
   public let remotePath: String
   public let startedAt: Date
   public let pid: Int32
 
   private let connection: ADBSocketConnection
-  private let completionTask: Task<Void, Error>
+  private let completionTask: Task<Duration, Error>
 
-  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, startedAt: Date) {
+  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, startedAt: Date, target: DeviceTarget? = nil) {
+    self.target = target
     self.deviceID = deviceID
     self.remotePath = remotePath
     self.pid = pid
     self.connection = connection
     self.startedAt = startedAt
 
-    completionTask = Task.detached(priority: .userInitiated) { [connection] in
-      try await withCheckedThrowingContinuation { continuation in
+    @Dependency(\.continuousClock)
+    var sourceClock
+    let clock = AnyClock(sourceClock)
+    let started = clock.now
+    completionTask = Task.detached(priority: .userInitiated) { [connection, clock] in
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
         DispatchQueue.global(qos: .userInitiated).async {
           continuation.resume(with: Result { try connection.drainToEnd() })
         }
       }
+      return started.duration(to: clock.now)
     }
   }
 
-  public func waitUntilStopped() async throws {
+  func recordedDuration() async throws -> Duration {
     try await completionTask.value
+  }
+
+  public func waitUntilStopped() async throws {
+    _ = try await completionTask.value
   }
 
   func waitUntilStopped(

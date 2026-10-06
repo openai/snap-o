@@ -5,17 +5,20 @@ import Observation
 @MainActor
 final class DeviceManager {
   private(set) var emulators: [ManagedEmulator] = []
-  private(set) var connectedDevices: [Device] = []
-  private(set) var latestDevices: [Device] = []
+  private(set) var inventory = DeviceInventory()
+  var connectedDevices: [Device] { inventory.connected ?? [] }
+  var latestDevices: [Device] { inventory.ready ?? [] }
   private(set) var adbServerState: ADBServerState = .connecting
   @ObservationIgnored private var adbRecoveryTask: Task<Void, Never>?
 
   @ObservationIgnored private var trackedDevices: [Device]?
   @ObservationIgnored private var readyDevices: [Device]?
-  @ObservationIgnored private var observers: [UUID: (preview: Bool, continuation: AsyncStream<[Device]>.Continuation)] = [:]
   @ObservationIgnored private var observationTask: Task<Void, Never>?
   private(set) var matchingSerials: Set<String> = []
-  @ObservationIgnored private var matchingTask: Task<Void, Never>?
+  @ObservationIgnored private var matchingTasks: [Int: Task<Void, Never>] = [:]
+  @ObservationIgnored private var refreshTask: Task<Void, Never>?
+  private var shutdownTask: Task<Void, Never>?
+  var isShuttingDown: Bool { shutdownTask != nil }
   private var trackedConnections: [EmulatorConnection] = []
   private(set) var isRefreshing = false
   private(set) var hasLoaded = false
@@ -53,6 +56,24 @@ final class DeviceManager {
     self.client = client
   }
 
+  func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
+    let resolver = DeviceOpenResolver {
+      DeviceOpenSnapshot(
+        connectedSerials: Set(self.connectedDevices.map(\.id)),
+        emulators: self.entries.compactMap {
+          guard case .emulator(let device) = $0 else { return nil }
+          return device
+        },
+        hasLoaded: self.hasLoaded,
+        isRefreshing: self.isRefreshing || !self.matchingSerials.isEmpty,
+        loadError: self.loadError,
+        actions: self.actions,
+        launchErrors: self.launchErrors
+      )
+    } start: { self.start($0) }
+    return try await resolver.resolve(request, progress: progress)
+  }
+
   func startupStatus(for device: ManagedEmulator) -> String? {
     if let action = actions[device.id] { return action }
     switch device.state {
@@ -63,27 +84,28 @@ final class DeviceManager {
     }
   }
 
-  func screenshot(for serial: String) async throws -> Data {
-    let exec = await adb.exec()
-    return try await exec.screencapPNG(deviceID: serial)
+  func screenshot(for target: DeviceTarget) async throws -> Data {
+    guard shutdownTask == nil, connectedDevices.contains(where: { $0.connection == target }) else {
+      throw ADBError.protocolFailure("The device connection is no longer available.")
+    }
+    _ = try target.requireTransport(for: target.serial)
+    let exec = await adb.exec().bound(to: target)
+    guard shutdownTask == nil else { throw CancellationError() }
+    return try await exec.screencapPNG(deviceID: target.serial)
   }
 
   func delete(_ device: ManagedEmulator) {
-    guard actions[device.id] == nil, device.canDelete else { return }
-    inventoryGeneration += 1
-    matchingTask?.cancel()
-    trackedConnections = []
-    actions[device.id] = "Deleting"
+    guard shutdownTask == nil, actions[device.id] == nil, device.canDelete else { return }
+    beginAction(for: device.id, status: "Deleting")
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
-      defer {
-        actions.removeValue(forKey: device.id)
-        actionTasks.removeValue(forKey: device.id)
-        matchEmulators(in: trackedDevices ?? [])
-      }
+      defer { finishAction(for: device.id) }
+      guard !Task.isCancelled else { return }
       do {
         let connections = try await emulatorConnections()
+        try Task.checkCancellation()
         let inventory = try await client.delete(device.id, serials: connections.map(\.serial))
+        try Task.checkCancellation()
         applyAction(inventory, id: device.id)
       } catch is CancellationError {
         return
@@ -94,9 +116,12 @@ final class DeviceManager {
   }
 
   func start() {
-    guard observationTask == nil else { return }
-    observationTask = Task {
+    guard shutdownTask == nil, observationTask == nil else { return }
+    // Begin device discovery before window setup can delay it.
+    observationTask = Task.immediate {
+      guard !Task.isCancelled else { return }
       await deviceTracker.startTracking()
+      guard !Task.isCancelled else { return }
       async let serverState: Void = observeServerState()
       async let connections: Void = observeConnections(preview: true)
       async let properties: Void = observeConnections(preview: false)
@@ -108,9 +133,10 @@ final class DeviceManager {
   }
 
   func retryADBServer() {
-    guard adbRecoveryTask == nil else { return }
+    guard shutdownTask == nil, adbRecoveryTask == nil else { return }
     adbRecoveryTask = Task {
       defer { adbRecoveryTask = nil }
+      guard !Task.isCancelled else { return }
       await deviceTracker.retryADBServer()
     }
   }
@@ -122,26 +148,14 @@ final class DeviceManager {
     }
   }
 
-  func previewDeviceStream() -> AsyncStream<[Device]> {
-    stream(preview: true)
-  }
-
-  func deviceStream() -> AsyncStream<[Device]> {
-    stream(preview: false)
-  }
-
-  private func stream(preview: Bool) -> AsyncStream<[Device]> {
+  func waitForReadyDevices() async -> [Device]? {
+    guard !Task.isCancelled, !isShuttingDown else { return nil }
     start()
-    let id = UUID()
-    return AsyncStream { continuation in
-      observers[id] = (preview, continuation)
-      if preview ? trackedDevices != nil : readyDevices != nil {
-        continuation.yield(preview ? connectedDevices : latestDevices)
-      }
-      continuation.onTermination = { [weak self] _ in
-        Task { @MainActor in self?.observers.removeValue(forKey: id) }
-      }
+    for await (isShuttingDown, devices) in Observations({ (self.isShuttingDown, self.inventory.ready) }) {
+      guard !Task.isCancelled, !isShuttingDown else { return nil }
+      if let devices { return devices }
     }
+    return nil
   }
 
   private func observeConnections(preview: Bool) async {
@@ -171,15 +185,13 @@ final class DeviceManager {
     matchingSerials = Set(connections.filter { cachedEmulator(for: $0) == nil }.map(\.serial))
     guard actions.isEmpty else { return }
     trackedConnections = connections
-    matchingTask?.cancel()
+    cancelMatching()
     inventoryGeneration += 1
     let generation = inventoryGeneration
-    matchingTask = Task {
+    matchingTasks[generation] = Task {
       defer {
-        if generation == inventoryGeneration {
-          matchingSerials = []
-          matchingTask = nil
-        }
+        matchingTasks[generation] = nil
+        if generation == inventoryGeneration { matchingSerials = [] }
       }
       do {
         let inventory = try await loadInventory(connections: connections)
@@ -208,6 +220,7 @@ final class DeviceManager {
   private func loadInventory(connections: [EmulatorConnection]) async throws -> EmulatorInventory {
     let known = connections.compactMap { cachedEmulator(for: $0) }
     let unmatched = connections.filter { connection in !known.contains { $0.serial == connection.serial } }
+    try Task.checkCancellation()
     let inventory = try await client.snapshot(serials: unmatched.map(\.serial))
     return EmulatorInventory(devices: inventory.devices.map { device in
       guard let match = known.first(where: { $0.id == device.id }) else { return device }
@@ -224,19 +237,12 @@ final class DeviceManager {
   private func publishDevices() {
     let connected = (trackedDevices ?? []).map(resolveName)
     let ready = (readyDevices ?? []).filter { device in
-      connected.contains { $0.id == device.id && $0.transportID == device.transportID }
+      connected.contains { $0.id == device.id && $0.connection == device.connection && $0.transportID == device.transportID }
     }.map(resolveName)
-    let changedPreview = connected != connectedDevices
-    let changedReady = ready != latestDevices
-    connectedDevices = connected
-    latestDevices = ready
-    for observer in observers.values {
-      if observer.preview, trackedDevices != nil, changedPreview || connected.isEmpty {
-        observer.continuation.yield(connected)
-      } else if !observer.preview, readyDevices != nil, changedReady || ready.isEmpty {
-        observer.continuation.yield(ready)
-      }
-    }
+    inventory = DeviceInventory(
+      connected: trackedDevices == nil ? nil : connected,
+      ready: readyDevices == nil ? nil : ready
+    )
   }
 
   private func resolveName(_ device: Device) -> Device {
@@ -245,11 +251,11 @@ final class DeviceManager {
     let emulator = emulators.first { $0.avdName.replacingOccurrences(of: "_", with: " ") == device.avdName }
       ?? emulators.first { connection != nil && $0.serial == device.id }
     // Keep a resolved name through temporary console failures, but never across transports.
-    let previous = connectedDevices.first { $0.id == device.id && $0.transportID == device.transportID }
+    let previous = connectedDevices.first { $0.id == device.id && $0.connection == device.connection && $0.transportID == device.transportID }
     return Device(
       id: device.id, model: device.model, androidVersion: device.androidVersion,
       vendorModel: device.vendorModel, manufacturer: device.manufacturer, avdName: device.avdName,
-      displayName: emulator?.title ?? previous?.displayName, transportID: device.transportID
+      displayName: emulator?.title ?? previous?.displayName, transportID: device.transportID, connection: device.connection
     )
   }
 
@@ -261,10 +267,24 @@ final class DeviceManager {
   }
 
   func refresh() async {
-    guard !isRefreshing, actions.isEmpty else { return }
-    let generation = inventoryGeneration
+    guard shutdownTask == nil, !isRefreshing, actions.isEmpty else { return }
     isRefreshing = true
-    defer { isRefreshing = false }
+    let task = Task {
+      defer {
+        isRefreshing = false
+        refreshTask = nil
+      }
+      guard !Task.isCancelled else { return }
+      await refreshInventory()
+    }
+    refreshTask = task
+    await withTaskCancellationHandler {
+      await task.value
+    } onCancel: { task.cancel() }
+  }
+
+  private func refreshInventory() async {
+    let generation = inventoryGeneration
     do {
       // Local AVDs do not depend on Android responding to shell requests.
       if !hasLoaded {
@@ -299,22 +319,18 @@ final class DeviceManager {
   }
 
   func start(_ device: ManagedEmulator, coldBoot: Bool = false) {
-    guard actions[device.id] == nil else { return }
-    inventoryGeneration += 1
-    matchingTask?.cancel()
-    trackedConnections = []
+    guard shutdownTask == nil, actions[device.id] == nil else { return }
+    beginAction(for: device.id, status: "Starting")
     launchErrors.removeValue(forKey: device.id)
-    actions[device.id] = "Starting"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
-      defer {
-        actions.removeValue(forKey: device.id)
-        actionTasks.removeValue(forKey: device.id)
-        matchEmulators(in: trackedDevices ?? [])
-      }
+      defer { finishAction(for: device.id) }
+      guard !Task.isCancelled else { return }
       do {
         let connections = try await emulatorConnections()
+        try Task.checkCancellation()
         let inventory = try await client.start(device.id, coldBoot: coldBoot, serials: connections.map(\.serial))
+        try Task.checkCancellation()
         // A cold boot invalidates the old transport and its boot-completion result.
         applyAction(inventory, id: device.id)
       } catch is CancellationError {
@@ -327,20 +343,15 @@ final class DeviceManager {
   }
 
   func stop(_ device: ManagedEmulator) {
-    guard actions[device.id] == nil, let serial = device.serial else { return }
-    inventoryGeneration += 1
-    matchingTask?.cancel()
-    trackedConnections = []
-    actions[device.id] = "Stopping"
+    guard shutdownTask == nil, actions[device.id] == nil, let serial = device.serial else { return }
+    beginAction(for: device.id, status: "Stopping")
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
-      defer {
-        actions.removeValue(forKey: device.id)
-        actionTasks.removeValue(forKey: device.id)
-        matchEmulators(in: trackedDevices ?? [])
-      }
+      defer { finishAction(for: device.id) }
+      guard !Task.isCancelled else { return }
       do {
         let inventory = try await client.stop(device.id, serial: serial)
+        try Task.checkCancellation()
         applyAction(inventory, id: device.id)
       } catch is CancellationError {
         return
@@ -350,24 +361,42 @@ final class DeviceManager {
     }
   }
 
-  func shutdown() {
-    adbRecoveryTask?.cancel()
-    adbRecoveryTask = nil
+  private func beginAction(for id: String, status: String) {
     inventoryGeneration += 1
-    matchingTask?.cancel()
-    matchingTask = nil
-    matchingSerials = []
-    observationTask?.cancel()
+    cancelMatching()
+    trackedConnections = []
+    actions[id] = status
+  }
+
+  private func finishAction(for id: String) {
+    actions.removeValue(forKey: id)
+    actionTasks.removeValue(forKey: id)
+    matchEmulators(in: trackedDevices ?? [])
+  }
+
+  private func cancelMatching() {
+    for task in matchingTasks.values { task.cancel() }
+  }
+
+  @discardableResult
+  func shutdown() -> Task<Void, Never> {
+    if let shutdownTask { return shutdownTask }
+    let pending = [adbRecoveryTask, observationTask, refreshTask].compactMap { $0 }
+      + Array(matchingTasks.values) + Array(actionTasks.values)
+    for task in pending { task.cancel() }
+    adbRecoveryTask = nil
     observationTask = nil
-    for observer in observers.values {
-      observer.continuation.finish()
-    }
-    observers.removeAll()
-    for task in actionTasks.values {
-      task.cancel()
-    }
+    refreshTask = nil
+    inventoryGeneration += 1
+    matchingTasks.removeAll()
+    matchingSerials = []
     actionTasks.removeAll()
     client.close()
+    let task = Task {
+      for task in pending { await task.value }
+    }
+    shutdownTask = task
+    return task
   }
 
   private func apply(_ inventory: EmulatorInventory, connections: [EmulatorConnection]) {
@@ -377,6 +406,7 @@ final class DeviceManager {
   }
 
   private func applyAction(_ inventory: EmulatorInventory, id: String) {
+    guard shutdownTask == nil else { return }
     if let serial = emulators.first(where: { $0.id == id })?.serial {
       bootConnections.removeAll { $0.serial == serial }
     }
@@ -388,7 +418,9 @@ final class DeviceManager {
   }
 
   private func emulatorConnections(checkBoot: Bool = true) async throws -> [EmulatorConnection] {
+    try Task.checkCancellation()
     let exec = await adb.exec()
+    try Task.checkCancellation()
     return try await exec.emulatorConnections(checkBoot: checkBoot)
   }
 }

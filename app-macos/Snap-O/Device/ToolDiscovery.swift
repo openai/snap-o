@@ -147,14 +147,16 @@ public enum ToolDiscovery {
   }
 
   public static func discover(
-    on deviceIDs: [String],
+    on devices: [Device],
     using adb: ADBClient
   ) async throws -> [DiscoveredPluginSocket] {
     try await withThrowingTaskGroup(of: Result<[DiscoveredPluginSocket], Error>.self) { group in
-      for deviceID in deviceIDs {
+      for device in devices {
+        let deviceID = device.id
         group.addTask {
           do {
-            let output = try await adb.runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand)
+            let target = try device.requireConnection()
+            let output = try await adb.bound(to: target).runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand)
             return .success(Self.sockets(inProcNetUnix: output, deviceID: deviceID))
           } catch {
             return .failure(error)

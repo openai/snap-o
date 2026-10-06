@@ -1,6 +1,18 @@
 import Foundation
 
 public enum DeviceDiscovery {
+  static func firstTransportID(inDevicesList output: String) -> String? {
+    for line in output.split(separator: "\n") {
+      let fields = line.split(whereSeparator: \.isWhitespace)
+      guard fields.count >= 2, fields[1] == "device" || fields[1] == "emulator" else { continue }
+      for field in fields.dropFirst(2) where field.hasPrefix("transport_id:") {
+        let value = String(field.dropFirst("transport_id:".count))
+        if let number = UInt64(value), number > 0 { return value }
+      }
+    }
+    return nil
+  }
+
   public static func processNames(inProcessList output: String) -> [Int: String] {
     let lines = output.split(whereSeparator: \.isNewline)
     guard let header = lines.first?.split(whereSeparator: \.isWhitespace),

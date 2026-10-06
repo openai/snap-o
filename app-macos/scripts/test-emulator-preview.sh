@@ -11,5 +11,5 @@ swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Device/AndroidHostServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   AndroidHostService/EmulatorCommand.swift AndroidHostService/EmulatorGRPCDiscovery.swift \
-  Tests/EmulatorPreview/EmulatorPreviewTests.swift -o "$TEST_DIR/tests"
+  StandaloneTests/EmulatorPreview/EmulatorPreviewTests.swift -o "$TEST_DIR/tests"
 run_test "$TEST_DIR/tests"

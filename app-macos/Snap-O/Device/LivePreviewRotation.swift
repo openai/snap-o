@@ -12,15 +12,15 @@ final class LivePreviewRotation {
   private var stopped = false
   private var stopTask: Task<Void, Never>?
 
-  convenience init(deviceID: String) {
-    let client = ADBClient().withTimeout(.seconds(5))
+  convenience init(target: DeviceTarget) {
+    let client = ADBClient().bound(to: target).withTimeout(.seconds(5))
     self.init(runShell: { command in
-      try await client.runShellString(deviceID: deviceID, command: command)
+      try await client.runShellString(deviceID: target.serial, command: command)
     }, readRotation: {
-      try await client.displayRotation(deviceID: deviceID).rawValue
+      try await client.displayRotation(deviceID: target.serial).rawValue
     })
-    if EmulatorGRPCEndpoint.isEmulator(deviceID) {
-      rotateEmulator = { left in try await EmulatorRotationClient.rotate(deviceID: deviceID, left: left) }
+    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+      rotateEmulator = { left in try await EmulatorRotationClient.rotate(target: target, left: left) }
     }
   }
 

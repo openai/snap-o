@@ -10,14 +10,14 @@ cd "$APP_DIR"
 
 swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift \
-  Snap-O/Models/Media.swift Snap-O/Capture/CaptureMedia.swift \
+  Snap-O/Models/Media.swift Snap-O/Capture/Export/CaptureExportRequest.swift Snap-O/Capture/CaptureMedia.swift \
   Snap-O/Storage/StagedFileExport.swift \
-  Snap-O/CaptureWindow/CaptureTrimRange.swift \
-  Snap-O/CaptureWindow/CaptureCropGeometry.swift Snap-O/CaptureWindow/CaptureCropExporter.swift \
-  Tests/CaptureExport/CaptureExportSandboxTests.swift \
+  Snap-O/Capture/Review/CaptureTrimRange.swift \
+  Snap-O/Capture/Review/CaptureCropGeometry.swift Snap-O/Capture/Export/CaptureCropExporter.swift \
+  StandaloneTests/CaptureExport/CaptureExportSandboxTests.swift \
   -o "$TEST_DIR/export-tests"
 mkdir "$TEST_DIR/destination"
 run_test /usr/bin/sandbox-exec \
   -D "EXPORT_DIRECTORY=$TEST_DIR/destination" \
-  -f Tests/CaptureExport/selected-files.sb \
+  -f StandaloneTests/CaptureExport/selected-files.sb \
   "$TEST_DIR/export-tests" "$TEST_DIR/destination"

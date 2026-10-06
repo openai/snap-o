@@ -72,6 +72,13 @@ actor CaptureHistoryRepository {
     }
   }
 
+  func recordFrame(_ capture: CaptureMedia) {
+    let id = begin(kind: .image, devices: [capture.device], at: capture.media.capturedAt)
+    // The drag session still owns the temporary export file.
+    _ = record(capture, in: id, moveOriginal: false)
+    finish(id)
+  }
+
   func begin(kind: CaptureHistoryEntry.Kind, devices: [Device], at date: Date = Date()) -> UUID? {
     loadIfNeeded()
     guard !devices.isEmpty else { return nil }

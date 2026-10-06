@@ -8,9 +8,9 @@ final class EmulatorGRPCDiscovery {
 
     var methods: [String] {
       switch self {
-      case .screenshot: ["streamScreenshot"]
-      case .clipboard: ["getClipboard", "setClipboard", "streamClipboard"]
-      case .rotation: ["getScreenshot", "setPhysicalModel"]
+      case .screenshot: ["streamScreenshot", "streamLogcat"]
+      case .clipboard: ["getClipboard", "setClipboard", "streamClipboard", "streamLogcat"]
+      case .rotation: ["getScreenshot", "setPhysicalModel", "streamLogcat"]
       }
     }
   }
@@ -53,7 +53,7 @@ final class EmulatorGRPCDiscovery {
         throw AndroidHostServiceError(message: "This emulator requires gRPC TLS. Start it from Snap-O to use Live Preview.")
       }
       if let token = properties["grpc.token"], !token.isEmpty {
-        return EmulatorGRPCEndpoint(port: grpcPort, token: token)
+        return EmulatorGRPCEndpoint(port: grpcPort, token: token, processID: pid)
       }
       if let jwks = properties["grpc.jwks"], let active = properties["grpc.jwk_active"] {
         guard let credentials = try jwtToken(
@@ -62,10 +62,10 @@ final class EmulatorGRPCDiscovery {
           access: access
         )
         else { return try pendingEndpoint(access: access) }
-        return EmulatorGRPCEndpoint(port: grpcPort, token: credentials.token, expiresAt: credentials.expiresAt)
+        return EmulatorGRPCEndpoint(port: grpcPort, token: credentials.token, expiresAt: credentials.expiresAt, processID: pid)
       }
       guard access != .clipboard else { throw unavailable() }
-      return EmulatorGRPCEndpoint(port: grpcPort, token: nil)
+      return EmulatorGRPCEndpoint(port: grpcPort, token: nil, processID: pid)
     }
     return try pendingEndpoint(access: access)
   }

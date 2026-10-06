@@ -6,6 +6,7 @@ public final class ADBSocketConnection {
     case trackDevices
     case devicesList
     case transport(deviceID: String)
+    case transportID(String)
     case shell(command: String)
     case exec(command: String)
     case localAbstract(name: String)
@@ -17,6 +18,8 @@ public final class ADBSocketConnection {
         "host:track-devices-l"
       case .devicesList:
         "host:devices-l"
+      case .transportID(let id):
+        "host:transport-id:\(id)"
       case .transport(let deviceID):
         "host:transport:\(deviceID)"
       case .shell(let command):
@@ -40,6 +43,8 @@ public final class ADBSocketConnection {
   private let socketDescriptor: Int32
   private let closeLock = NSLock()
   private var isClosed = false
+  private var boundTarget: DeviceTarget?
+  private var invalidationHandler: UUID?
   private var ioTimeout: Duration?
   private var lineBuffer = Data()
   private var isSkippingOversizedLine = false
@@ -60,20 +65,30 @@ public final class ADBSocketConnection {
     closeLock.lock()
     let shouldClose = !isClosed
     isClosed = true
+    let target = boundTarget
+    let handler = invalidationHandler
+    invalidationHandler = nil
     closeLock.unlock()
+    if let handler { target?.removeInvalidationHandler(handler) }
 
     guard shouldClose else { return }
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
   }
 
+  var connectionTarget: DeviceTarget? { closeLock.withLock { boundTarget } }
+
   /// Transfers socket ownership after the ADB handshake, before concurrent I/O starts.
   func takeSocketDescriptor() throws -> Int32 {
-    try closeLock.withLock {
+    let handler = try closeLock.withLock {
       guard !isClosed, lineBuffer.isEmpty else { throw ADBError.protocolFailure("ADB socket is not transferable") }
       isClosed = true
-      return socketDescriptor
+      let handler = invalidationHandler
+      invalidationHandler = nil
+      return handler
     }
+    if let handler { boundTarget?.removeInvalidationHandler(handler) }
+    return socketDescriptor
   }
 
   /// Use only before handing the connection to concurrent readers or writers.
@@ -112,8 +127,31 @@ public final class ADBSocketConnection {
     try send(.devicesList)
   }
 
+  /// Bind before handing a connection to concurrent readers or writers.
+  func bind(to target: DeviceTarget) throws {
+    _ = try target.requireTransport(for: target.serial)
+    boundTarget = target
+    let handler = try target.onInvalidation { [weak self] in self?.close() }
+    closeLock.withLock {
+      if isClosed {
+        target.removeInvalidationHandler(handler)
+      } else {
+        invalidationHandler = handler
+      }
+    }
+    try checkOpen()
+  }
+
   public func sendTransport(to deviceID: String) throws {
-    try send(.transport(deviceID: deviceID))
+    if let target = boundTarget {
+      try target.selectTransport(for: deviceID) { try sendTransportID($0) }
+    } else {
+      try send(.transport(deviceID: deviceID))
+    }
+  }
+
+  func sendTransportID(_ transportID: String) throws {
+    try send(.transportID(transportID))
   }
 
   public func sendShell(_ command: String) throws {

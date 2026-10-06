@@ -5,7 +5,7 @@ import SwiftUI
 protocol SnapOCommandTarget: AnyObject {
   func perform(_ command: SnapOCommand)
   func openDevice(_ request: DeviceOpenRequest)
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail?
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail?
 }
 
 @MainActor
@@ -50,9 +50,10 @@ final class SnapOCommandCoordinator {
     }
   }
 
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
+    guard connection.isValid else { return nil }
     for case let target as any SnapOCommandTarget in targets.allObjects {
-      if let thumbnail = target.liveThumbnail(deviceID: deviceID), thumbnail.videoRenderer != nil {
+      if let thumbnail = target.liveThumbnail(for: connection), thumbnail.videoRenderer != nil {
         return thumbnail
       }
     }
@@ -110,7 +111,7 @@ struct WindowCommandRegistration: NSViewRepresentable {
   let perform: @MainActor (SnapOCommand) -> Void
   let openDevice: @MainActor (DeviceOpenRequest) -> Void
   var attached: @MainActor (NSWindow) -> Void = { _ in }
-  let thumbnail: @MainActor (String) -> LivePreviewThumbnail?
+  let thumbnail: @MainActor (DeviceTarget) -> LivePreviewThumbnail?
 
   func makeNSView(context: Context) -> WindowCommandTargetView {
     WindowCommandTargetView(perform: perform, openDevice: openDevice, attached: attached, thumbnail: thumbnail)
@@ -134,7 +135,7 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   var performCommand: @MainActor (SnapOCommand) -> Void
   var openDeviceRequest: @MainActor (DeviceOpenRequest) -> Void
   var onAttached: @MainActor (NSWindow) -> Void
-  var thumbnailForDevice: @MainActor (String) -> LivePreviewThumbnail?
+  var thumbnailForDevice: @MainActor (DeviceTarget) -> LivePreviewThumbnail?
 
   private weak var observedWindow: NSWindow?
   private var notificationTokens: [NSObjectProtocol] = []
@@ -143,7 +144,7 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     perform: @escaping @MainActor (SnapOCommand) -> Void,
     openDevice: @escaping @MainActor (DeviceOpenRequest) -> Void,
     attached: @escaping @MainActor (NSWindow) -> Void = { _ in },
-    thumbnail: @escaping @MainActor (String) -> LivePreviewThumbnail?
+    thumbnail: @escaping @MainActor (DeviceTarget) -> LivePreviewThumbnail?
   ) {
     performCommand = perform
     openDeviceRequest = openDevice
@@ -176,8 +177,8 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     openDeviceRequest(request)
   }
 
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
-    thumbnailForDevice(deviceID)
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
+    thumbnailForDevice(connection)
   }
 
   func attach(to window: NSWindow?) {

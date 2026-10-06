@@ -96,6 +96,7 @@ struct ToolHTTPRequestOperation {
     let connection = try await openConnection()
     defer { connection.close() }
     try Task.checkCancellation()
+    let target = connection.connectionTarget
     let descriptor = try connection.takeSocketDescriptor()
     let stream = try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
       .withConnectedSocket(descriptor) { channel in
@@ -108,6 +109,16 @@ struct ToolHTTPRequestOperation {
         }
       }
     let channel = stream.channel
+    let invalidation: UUID?
+    do {
+      invalidation = try target?.onInvalidation { channel.close(promise: nil) }
+    } catch {
+      try? await channel.close()
+      throw error
+    }
+    defer {
+      if let invalidation { target?.removeInvalidationHandler(invalidation) }
+    }
     let cancelTimeout = requestTimeout.map { scheduleTimeout(channel, $0) }
     defer { cancelTimeout?() }
 

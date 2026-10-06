@@ -109,6 +109,8 @@ final class ToolHostModel {
   @ObservationIgnored private let service: ToolService
   @ObservationIgnored private var pageTransitions: [ToolID: Task<Void, Never>] = [:]
   @ObservationIgnored private var bindings: [ToolID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var pendingWork: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var stopTask: Task<Void, Never>?
   @ObservationIgnored private var isStopped = false
   @ObservationIgnored private let appTool: AppToolModel
   @ObservationIgnored private let preferences: UserDefaults
@@ -129,21 +131,35 @@ final class ToolHostModel {
     appTool.start()
   }
 
-  func stop() {
-    guard !isStopped else { return }
+  @discardableResult
+  func stop() -> Task<Void, Never> {
+    if let stopTask { return stopTask }
     isStopped = true
-    appTool.stop()
-    for task in pageTransitions.values {
-      task.cancel()
-    }
-    for task in bindings.values {
-      task.cancel()
-    }
+    let modelCleanup = appTool.stop()
+    for task in pendingWork.values { task.cancel() }
     bindings.removeAll()
     for kind in Array(pages.keys) {
       removePage(kind: kind)
     }
     activePageIdentity = nil
+    let pending = Array(pendingWork.values)
+    pageTransitions.removeAll()
+    let task = Task {
+      await modelCleanup.value
+      for task in pending { await task.value }
+    }
+    stopTask = task
+    return task
+  }
+
+  private func startWork(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    let id = UUID()
+    let task = Task {
+      await operation()
+      pendingWork[id] = nil
+    }
+    pendingWork[id] = task
+    return task
   }
 
   func selectApp(_ app: InspectableApp) {
@@ -233,7 +249,7 @@ final class ToolHostModel {
       setEndpoint(nil, kind: kind)
       return
     }
-    bindings[kind] = Task { [weak self, weak container = page.container] in
+    bindings[kind] = startWork { [weak self, weak container = page.container] in
       guard let self, let container else { return }
       do {
         let target = try await service.pluginEndpoint(for: selection.server)
@@ -269,7 +285,7 @@ final class ToolHostModel {
     bindings.removeValue(forKey: kind)?.cancel()
     let transition = pageTransitions[kind]
     transition?.cancel()
-    pageTransitions[kind] = Task {
+    pageTransitions[kind] = startWork {
       await transition?.value
       await page.container.finishStopping()
     }
@@ -318,7 +334,7 @@ final class ToolHostModel {
     pages[kind] = Page(identity: identity, container: container)
     let transition = pageTransitions[kind]
     transition?.cancel()
-    pageTransitions[kind] = Task { [weak self] in
+    pageTransitions[kind] = startWork { [weak self] in
       await transition?.value
       guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
       defer {

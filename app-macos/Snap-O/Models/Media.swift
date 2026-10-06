@@ -6,7 +6,6 @@ import ImageIO
 enum Media: Equatable {
   case image(url: URL, data: MediaCommon)
   case video(url: URL, data: MediaCommon)
-  case livePreview(data: MediaCommon)
 }
 
 struct MediaCommon: Equatable {
@@ -27,14 +26,13 @@ struct DisplayInfo: Equatable {
 extension Media {
   var common: MediaCommon {
     switch self {
-    case .image(_, let data), .video(_, let data), .livePreview(let data): data
+    case .image(_, let data), .video(_, let data): data
     }
   }
 
   var url: URL? {
     switch self {
     case .image(let urlValue, _), .video(let urlValue, _): urlValue
-    case .livePreview: nil
     }
   }
 
@@ -44,10 +42,6 @@ extension Media {
 
   var isVideo: Bool {
     if case .video = self { true } else { false }
-  }
-
-  var isLivePreview: Bool {
-    if case .livePreview = self { true } else { false }
   }
 
   var aspectRatio: CGFloat {
@@ -70,7 +64,6 @@ extension Media {
     switch self {
     case .image: .image
     case .video: .video
-    case .livePreview: nil
     }
   }
 }
@@ -110,15 +103,6 @@ extension Media {
   ) -> Media {
     .video(
       url: url,
-      data: MediaCommon(capturedAt: capturedAt, display: display)
-    )
-  }
-
-  static func livePreview(
-    capturedAt: Date,
-    display: DisplayInfo
-  ) -> Media {
-    .livePreview(
       data: MediaCommon(capturedAt: capturedAt, display: display)
     )
   }

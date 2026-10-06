@@ -12,11 +12,12 @@ swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Capture/CaptureMedia.swift Snap-O/History/CaptureHistoryEntry.swift \
   Snap-O/History/CaptureHistoryRepository.swift Snap-O/History/CaptureHistoryItemDrag.swift \
   Snap-O/History/CaptureHistoryDropTarget.swift \
-  Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift \
-  Snap-O/Capture/CaptureCoordinator.swift \
-  Snap-O/Capture/ScreenshotService.swift Snap-O/Capture/CaptureTimestampSource.swift \
+  Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \
+  Snap-O/Capture/Operations/CaptureCoordinator.swift Snap-O/Utilities/Perf.swift \
+  Snap-O/Capture/Operations/CaptureBatch.swift Snap-O/Capture/Operations/ScreenshotCapture.swift \
+  Snap-O/Capture/Operations/ScreenshotService.swift Snap-O/Capture/Operations/CaptureTimestampSource.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Utilities/Logging.swift \
-  Tests/CaptureHistory/ScreenshotTestADB.swift \
-  Tests/CaptureHistory/CaptureHistoryTests.swift \
+  StandaloneTests/CaptureHistory/ScreenshotTestADB.swift \
+  StandaloneTests/CaptureHistory/CaptureHistoryTests.swift \
   -o "$TEST_DIR/history-tests"
 run_test "$TEST_DIR/history-tests"

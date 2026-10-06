@@ -39,7 +39,7 @@ final class EmulatorHost {
     return androidHome.appendingPathComponent("avd")
   }
 
-  private func sdk(requiring executable: String = "emulator/emulator") throws -> URL {
+  private func sdk() throws -> URL {
     let candidates: [String?] = [
       environment["ANDROID_HOME"],
       environment["ANDROID_SDK_ROOT"],
@@ -47,37 +47,31 @@ final class EmulatorHost {
     ]
     for path in candidates.compactMap(\.self) where !path.isEmpty {
       let directory = URL(fileURLWithPath: path)
-      if FileManager.default.isExecutableFile(atPath: directory.appendingPathComponent(executable).path) {
+      if FileManager.default.isExecutableFile(atPath: directory.appendingPathComponent("emulator/emulator").path) {
         return directory
       }
     }
-    let message = executable == "platform-tools/adb"
-      ? "Install Android SDK Platform Tools to start the ADB server."
-      : "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk."
-    throw AndroidHostServiceError(message: message)
+    throw AndroidHostServiceError(message: "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk.")
   }
 
-  func controls(serial: String) throws -> EmulatorControls {
-    try EmulatorConsole(home: home).controls(serial: serial) { try self.displaySize(serial: serial) }
+  func controls(serial: String, native: EmulatorNativeConnection, display: any EmulatorDisplayProvider) throws -> EmulatorControls {
+    let reader = EmulatorDisplayReader(provider: display)
+    return try EmulatorConsole(home: home).controls(serial: serial, displaySize: reader.read) {
+      try EmulatorSocketOwner.verify($0, native: native)
+    }
   }
 
-  private func displaySize(serial: String) throws -> String {
-    let adb = try sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
-    let timeoutMessage = "The emulator did not respond while Snap-O was reading its display. Check that it is running, then try again."
-    let size = try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell", "wm", "size"]).run(timeoutMessage: timeoutMessage)
-    let display = try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell", "dumpsys", "display"])
-      .run(timeoutMessage: timeoutMessage)
-    return size + "\n" + display
-  }
-
-  func control(serial: String, avdPath: String, action: String) throws {
+  func control(
+    serial: String, avdPath: String, action: String, native: EmulatorNativeConnection, display: any EmulatorDisplayProvider
+  ) throws {
     guard let action = EmulatorControlAction(rawValue: action) else {
       throw AndroidHostServiceError(message: "Unknown emulator control.")
     }
+    let reader = EmulatorDisplayReader(provider: display)
     try EmulatorConsole(home: home).control(
       serial: serial, expectedPath: avdPath, action: action,
-      displaySize: { try self.displaySize(serial: serial) }
-    )
+      displaySize: reader.read
+    ) { try EmulatorSocketOwner.verify($0, native: native) }
   }
 
   func snapshot(serials: [String]) throws -> EmulatorInventory {

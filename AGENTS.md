@@ -23,7 +23,7 @@ Snap-O is a public, open-source Android inspection tool.
 
 ## Test clocks
 
-- macOS timing tests use the existing `continuousClock` dependency and `TestClock` for both time reads and sleeps. See [Native test synchronization](app-macos/Tests/README.md).
+- macOS timing tests use the existing `continuousClock` dependency and `TestClock` for both time reads and sleeps. See [Native test synchronization](app-macos/StandaloneTests/README.md).
 - Do not add helper framework dependencies or change packaging just to introduce test clocks.
 - Preserve regression coverage when removing sleeps. Do not replace them with deleted tests or extra test time limits; CI already bounds hangs.
 

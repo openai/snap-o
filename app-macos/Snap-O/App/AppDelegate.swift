@@ -3,13 +3,10 @@ import Foundation
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-  private static let terminationCleanupTimeoutSeconds = 5
-
   var prepareForTermination: (@Sendable () async -> Void)?
 
-  private var terminationCleanupTask: Task<Void, Never>?
-  private var terminationTimeoutTask: Task<Void, Never>?
-  private var hasRepliedToTermination = false
+  var unfinishedTerminationWork: (@MainActor () -> [String])?
+  private let termination = AppTermination()
 
   func applicationWillFinishLaunching(_ notification: Notification) {
     CommandDiagnostics.shared.start()
@@ -40,43 +37,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     CommandDiagnostics.shared.record(
-      "application-should-terminate replied=\(hasRepliedToTermination) cleanupPending=\(terminationCleanupTask != nil)"
+      "application-should-terminate replied=\(termination.outcome != nil) cleanupPending=\(termination.isRunning)"
     )
-    if hasRepliedToTermination { return .terminateNow }
-    if terminationCleanupTask != nil { return .terminateLater }
+    if termination.outcome != nil { return .terminateNow }
+    if termination.isRunning { return .terminateLater }
     guard CaptureReviewCloseGuard.prepareToClose() else { return .terminateCancel }
 
     AppSettings.shared.isAppTerminating = true
     let prepareForTermination = prepareForTermination
-    terminationCleanupTask = Task { [weak self] in
+    let unfinishedWork = unfinishedTerminationWork
+    termination.begin {
       await prepareForTermination?()
-      self?.completeTermination(for: sender)
-    }
-    terminationTimeoutTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(Self.terminationCleanupTimeoutSeconds))
-      guard !Task.isCancelled else { return }
-      CommandDiagnostics.shared.record("termination-cleanup-timeout")
-      Perf.end(.appShutdown, finalLabel: "cleanup timeout")
-      self?.completeTermination(for: sender)
+    } unfinishedWork: {
+      unfinishedWork?() ?? []
+    } reply: { result in
+      if case .timedOut(let unfinished) = result {
+        let pending = unfinished.isEmpty ? "none reported" : unfinished.joined(separator: ", ")
+        CommandDiagnostics.shared.record("termination-cleanup-timeout unfinished=\(pending)")
+        Perf.end(.appShutdown, finalLabel: "cleanup timeout: \(pending)")
+      }
+      CommandDiagnostics.shared.record("termination-reply allow=true")
+      sender.reply(toApplicationShouldTerminate: true)
     }
     return .terminateLater
-  }
-
-  func application(_ application: NSApplication, open urls: [URL]) {
-    for url in urls {
-      if UpdateCoordinator.shared.handle(url: url) { continue }
-      if SnapOCommandCoordinator.shared.handle(url: url) { continue }
-    }
-  }
-
-  private func completeTermination(for application: NSApplication) {
-    guard !hasRepliedToTermination else { return }
-    hasRepliedToTermination = true
-    terminationCleanupTask?.cancel()
-    terminationCleanupTask = nil
-    terminationTimeoutTask?.cancel()
-    terminationTimeoutTask = nil
-    CommandDiagnostics.shared.record("termination-reply allow=true")
-    application.reply(toApplicationShouldTerminate: true)
   }
 }

@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Dependencies
 import Foundation
 import GRPCCore
 import GRPCNIOTransportHTTP2TransportServices
@@ -7,51 +8,82 @@ import SwiftProtobuf
 @MainActor
 final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   let hasIndependentFrames = true
-  private let deviceID: String
+  private let target: DeviceTarget
+  private let clock: AnyClock<Duration>
+  private var hasStarted = false
+  private var hasStopped = false
+  private var invalidationHandler: UUID?
   private var task: Task<Void, Never>?
   private var startupTimeout: Task<Void, Never>?
 
-  init(deviceID: String) {
-    self.deviceID = deviceID
+  init(target: DeviceTarget) {
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
+    self.target = target
   }
 
-  private static func endpoint(for deviceID: String) async throws -> EmulatorGRPCEndpoint {
+  private static func endpoint(for deviceID: String, clock: AnyClock<Duration>) async throws -> EmulatorGRPCEndpoint {
     let client = AndroidHostClient()
     defer { client.close() }
     while true {
       try Task.checkCancellation()
       if let endpoint = try await client.previewEndpoint(deviceID) { return endpoint }
       // Registration and authentication can lag behind ADB discovery.
-      try await Task.sleep(for: .milliseconds(250))
+      try await clock.sleep(for: .milliseconds(250))
     }
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-    let deviceID = deviceID
+    guard !hasStarted, !hasStopped else { return }
+    hasStarted = true
+    let clock = clock
+    let target = target
+    let deviceID = target.serial
+    do {
+      invalidationHandler = try target.onInvalidation { [weak self] in
+        Task { @MainActor in
+          guard let self, !self.hasStopped else { return }
+          self.stop()
+          deliver(.stopped(ADBError.protocolFailure("The device connection is no longer available.")))
+        }
+      }
+    } catch {
+      deliver(.stopped(error))
+      return
+    }
     // Bound startup without limiting a healthy stream’s lifetime.
     startupTimeout = Task { [weak self] in
-      do { try await Task.sleep(for: .seconds(15)) } catch { return }
+      do { try await clock.sleep(for: .seconds(15)) } catch { return }
       self?.stop()
       deliver(.stopped(EmulatorPreviewError(message: "The emulator did not provide a preview frame in time.")))
     }
     let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void = { [weak self] event in
+      guard self?.hasStopped == false else { return }
       switch event {
       case .sample, .stopped: self?.startupTimeout?.cancel()
       case .format, .density: break
       }
-      deliver(event)
+      if target.isValid {
+        deliver(event)
+      } else {
+        deliver(.stopped(ADBError.protocolFailure("The device connection is no longer available.")))
+      }
     }
     task = Task.detached(priority: .userInitiated) {
       do {
         #if PERF_TRACING
         Perf.startupEvent("emulator endpoint lookup begin", deviceID: deviceID)
         #endif
-        let endpoint = try await Self.endpoint(for: deviceID)
+        _ = try target.requireTransport(for: deviceID)
+        let endpoint = try await Self.endpoint(for: deviceID, clock: clock)
+        try Task.checkCancellation()
+        _ = try target.requireTransport(for: deviceID)
         #if PERF_TRACING
         Perf.startupEvent("emulator endpoint lookup end", deviceID: deviceID)
         #endif
 
-        try await Self.stream(endpoint: endpoint, deliver: receive)
+        try await Self.stream(target: target, endpoint: endpoint, deliver: receive)
         if !Task.isCancelled {
           await receive(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
         }
@@ -62,28 +94,28 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   }
 
   func stop() {
+    hasStopped = true
+    if let invalidationHandler { target.removeInvalidationHandler(invalidationHandler) }
+    invalidationHandler = nil
     startupTimeout?.cancel()
-    startupTimeout = nil
     task?.cancel()
-    task = nil
+  }
+
+  func waitUntilStopped() async {
+    await task?.value
+    await startupTimeout?.value
   }
 
   private nonisolated static func stream(
+    target: DeviceTarget,
     endpoint: EmulatorGRPCEndpoint,
     deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
   ) async throws {
-    let transport = try HTTP2ClientTransport.TransportServices(
-      target: .ipv4(address: "127.0.0.1", port: endpoint.port),
-      transportSecurity: .plaintext
-    )
-    try await withGRPCClient(transport: transport) { client in
+    try await EmulatorGRPCConnection.withDevice(target: target, endpoint: endpoint) { client, metadata in
       var format = EmulatorPreview_ImageFormat()
       format.format = .rgba8888
       // Zero dimensions request full emulator frames without preview-size scaling.
-      var request = ClientRequest(message: format)
-      if let token = endpoint.token {
-        request.metadata.addString("Bearer " + token, forKey: "authorization")
-      }
+      let request = ClientRequest(message: format, metadata: metadata)
       var options = CallOptions.defaults
       options.waitForReady = true
       options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
@@ -95,8 +127,8 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
           fullyQualifiedService: "android.emulation.control.EmulatorController",
           method: "streamScreenshot"
         ),
-        serializer: PreviewProtobufCodec<EmulatorPreview_ImageFormat>(),
-        deserializer: PreviewProtobufCodec<EmulatorPreview_Image>(),
+        serializer: EmulatorProtobufCodec<EmulatorPreview_ImageFormat>(),
+        deserializer: EmulatorProtobufCodec<EmulatorPreview_Image>(),
         options: options
       ) { response in
         let frames = EmulatorPreviewFrameBuilder()
@@ -121,21 +153,6 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
           await deliver(.sample(sample, isKeyFrame: true))
         }
       }
-    }
-  }
-}
-
-private struct PreviewProtobufCodec<Message: SwiftProtobuf.Message>: MessageSerializer, MessageDeserializer {
-  func serialize<Bytes: GRPCContiguousBytes>(_ message: Message) throws -> Bytes {
-    try Bytes(message.serializedData())
-  }
-
-  func deserialize(_ bytes: some GRPCContiguousBytes) throws -> Message {
-    try bytes.withUnsafeBytes { buffer in
-      guard let baseAddress = buffer.baseAddress else { return try Message(serializedBytes: Data()) }
-      // Borrow transport storage only for synchronous decoding; protobuf owns the decoded fields.
-      let data = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: baseAddress), count: buffer.count, deallocator: .none)
-      return try Message(serializedBytes: data)
     }
   }
 }

@@ -123,10 +123,34 @@ jobs:
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-capture-export.sh
+      - name: Test media lifetime
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-media-lifetime.sh
+      - name: Test device connection identity
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+        run: sh scripts/test-device-connection.sh
+      - name: Test preview input
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-preview-input.sh
+      - name: Test preview lifetime
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-preview-lifetime.sh
       - name: Test capture integration
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-startup-capture.sh
+      - name: Test app shutdown ordering
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-app-runtime.sh
       - name: Test recording failures
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
@@ -143,7 +167,7 @@ jobs:
       - name: Device Manager tests
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
-        run: bash Tests/DeviceManager/test.sh
+        run: bash StandaloneTests/DeviceManager/test.sh
 
       - name: Compact compiler cache
         id: compact-swift-cache

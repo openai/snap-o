@@ -33,6 +33,47 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 
 Open the repository root in Android Studio. Gradle downloads Node.js and uses its bundled npm to build the tool frontends. No local Node installation is needed for Android builds. Run `./gradlew` from the repository root; published Android artifact names are independent of folder names.
 
+### macOS source layout
+
+The app stays in one Xcode target. Folders group code by responsibility; they do
+not add modules or change which objects own resources.
+
+| Folder under `app-macos/Snap-O/` | What belongs here |
+| --- | --- |
+| `App/` | Startup, app lifetime, commands, and window creation |
+| `Workspace/` | Window composition, toolbar, pane layout, and sizing |
+| `Capture/` | Capture-pane navigation and service assembly |
+| `Capture/Operations/` | Capture batches, screenshots, and recordings |
+| `Capture/Review/` | Review selection, playback, cropping, and trimming |
+| `Capture/Export/` | Export requests and edited-media output |
+| `LivePreview/` | Shared preview ownership and window attachments |
+| `LivePreview/Input/` | Keyboard, pointer, clipboard, file drops, and device controls |
+| `LivePreview/Rendering/` | Frame delivery, rendering, and thumbnails |
+| `LivePreview/Views/` | Preview presentation and controls |
+| `Device/` | Connections, ADB, emulator transport, and temporary device settings |
+| `DeviceManager/` | Device inventory, open requests, and management UI |
+| `History/` | Saved capture collection and its window |
+| `Tools/` | Tool sessions, web content, and plugin presentation |
+| `Storage/` | File storage and staged-file ownership |
+| `Models/`, `UI/`, `Utilities/` | Data, UI, and small helpers shared across features |
+
+Keep feature-specific views beside their feature. Use `UI/` for shared views,
+not as a second home for capture or preview code. Name files after their main
+type. Keep private helpers with their owner when splitting them would expose
+internal APIs.
+
+Test folders describe how tests run:
+
+- `Snap-OUnitTests/`: headless Xcode tests, grouped by feature.
+- `Snap-OIntegrationTests/`: tests hosted by the app, grouped by feature.
+- `StandaloneTests/`: separate harnesses compiled by scripts. Each harness keeps
+  its own entry point and fakes; some require an app or real device.
+
+See [native test selection](app-macos/StandaloneTests/README.md#local-test-selection)
+before running tests that may open windows.
+
+### macOS build configurations
+
 The shared macOS scheme uses the `Local` configuration for Run, Test, and Analyze.
 It keeps app, helper, and test code unoptimized, with `DEBUG`, debug symbols,
 and testability enabled. Swift package dependencies use Release optimization,
@@ -52,11 +93,11 @@ Release builds require the app and helper to be signed by the same Apple develop
 team. Copy `app-macos/Config/Signing.xcconfig.sample` to `Signing.xcconfig` in the
 same folder and set your team and signing identity. The file is ignored by Git.
 
-The macOS app owns its device code under `Snap-O/Device/`. Run its unit tests with:
+Run headless unit tests with:
 
 ```sh
 cd app-macos
-xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -destination 'platform=macOS' \
+xcodebuild -project Snap-O.xcodeproj -scheme Snap-OUnitTests -destination 'platform=macOS' \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
 ```
 

@@ -10,8 +10,31 @@ protocol AndroidHostServiceProtocol {
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func delete(_ avdID: String, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func stop(_ avdID: String, serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
-  func controls(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
-  func control(_ serial: String, avdPath: String, action: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func controls(_ serial: String, native: Data, display: any EmulatorDisplayProvider, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func control(
+    _ serial: String, request: Data, display: any EmulatorDisplayProvider,
+    reply: @escaping @Sendable (Data?, String?) -> Void
+  )
+}
+
+/// The helper requests readings from the app's already selected device connection.
+@objc(EmulatorDisplayProvider)
+protocol EmulatorDisplayProvider: Sendable {
+  func readDisplay(reply: @escaping @Sendable (String?, String?) -> Void)
+}
+
+enum AndroidHostInterface {
+  static func make() -> NSXPCInterface {
+    let interface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
+    let display = NSXPCInterface(with: EmulatorDisplayProvider.self)
+    interface.setInterface(
+      display, for: #selector(AndroidHostServiceProtocol.controls(_:native:display:reply:)), argumentIndex: 2, ofReply: false
+    )
+    interface.setInterface(
+      display, for: #selector(AndroidHostServiceProtocol.control(_:request:display:reply:)), argumentIndex: 2, ofReply: false
+    )
+    return interface
+  }
 }
 
 enum EmulatorControlAction: String, Codable, CaseIterable {
@@ -206,11 +229,25 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
   }
 }
 
+struct EmulatorControlRequest: Codable {
+  let native: EmulatorNativeConnection
+  let avdPath: String
+  let action: EmulatorControlAction
+}
+
+/// Identifies the verified gRPC peer kept alive during a native console operation.
+struct EmulatorNativeConnection: Codable, Sendable {
+  let processID: Int32
+  let grpcPort: Int
+  let clientPort: Int
+}
+
 /// Credentials stay in memory and are used only for the local emulator connection.
 struct EmulatorGRPCEndpoint: Codable {
   let port: Int
   let token: String?
   var expiresAt: Date?
+  var processID: Int32?
 
   static func isEmulator(_ deviceID: String) -> Bool {
     guard deviceID.hasPrefix("emulator-"),

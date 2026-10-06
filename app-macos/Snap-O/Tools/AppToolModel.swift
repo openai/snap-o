@@ -65,6 +65,7 @@ final class AppToolModel {
   private var launchOpening = false
   private var launchWaiting = false
   private var launchError: String?
+  private var pendingWork: [UUID: Task<Void, Never>] = [:]
 
   init(
     preferences: UserDefaults = .standard,
@@ -97,7 +98,7 @@ final class AppToolModel {
     running = true
     let initialScan = refresh()
     if let changes, let currentDiscovery {
-      updatesTask = Task { [weak self] in
+      updatesTask = startWork { [weak self] in
         for await _ in await changes() {
           guard !Task.isCancelled else { return }
           let discovery = await currentDiscovery()
@@ -107,7 +108,7 @@ final class AppToolModel {
       }
     }
     let clock = clock
-    pollingTask = Task { [weak self] in
+    pollingTask = startWork { [weak self] in
       while !Task.isCancelled {
         do { try await clock.sleep(for: .milliseconds(2500)) } catch { return }
         guard !Task.isCancelled, let self else { return }
@@ -119,13 +120,11 @@ final class AppToolModel {
 
   @discardableResult
   func stop() -> Task<Void, Never> {
-    let pending = [pollingTask, refreshTask, updatesTask, launchTask, launchPollingTask].compactMap(\.self)
+    let pending = Array(pendingWork.values)
+    for task in pending { task.cancel() }
     running = false
-    pollingTask?.cancel()
     pollingTask = nil
-    refreshTask?.cancel()
     refreshTask = nil
-    updatesTask?.cancel()
     updatesTask = nil
     cancelLaunch()
     return Task {
@@ -142,7 +141,7 @@ final class AppToolModel {
       discovery = .searching
       publish()
     }
-    refreshTask = Task { [weak self] in
+    refreshTask = startWork { [weak self] in
       guard let self, running, !Task.isCancelled else { return }
       defer { if !Task.isCancelled { refreshTask = nil } }
       do {
@@ -160,6 +159,16 @@ final class AppToolModel {
       }
     }
     return refreshTask
+  }
+
+  private func startWork(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    let id = UUID()
+    let task = Task {
+      await operation()
+      pendingWork[id] = nil
+    }
+    pendingWork[id] = task
+    return task
   }
 
   private func applyDiscovery(_ discovery: ToolDiscoverySnapshot) {
@@ -204,7 +213,7 @@ final class AppToolModel {
     launchError = nil
     publish()
     let clock = clock
-    launchPollingTask = Task { [weak self] in
+    launchPollingTask = startWork { [weak self] in
       for _ in 0 ..< 10 {
         do { try await clock.sleep(for: .milliseconds(500)) } catch { return }
         guard !Task.isCancelled, self?.launchID == id else { return }
@@ -215,7 +224,7 @@ final class AppToolModel {
       if !launchOpening { launchID = nil }
       publish()
     }
-    launchTask = Task { [weak self] in
+    launchTask = startWork { [weak self] in
       guard let self else { return }
       do {
         try await openApp(input)

@@ -1,6 +1,15 @@
 #!/bin/sh
 set -eu
 
+case "${1:-}" in
+  ""|--build-only|--keyboard-only|--ownership-only) ;;
+  *) echo "Unknown test option: $1" >&2; exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "Expected at most one test option" >&2
+  exit 2
+fi
+
 APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-frame-export-tests.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -11,13 +20,16 @@ swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift \
   Snap-O/Models/Media.swift Snap-O/Capture/CaptureMedia.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Storage/SaveLocation.swift \
-  Snap-O/LivePreview/LivePreviewFrameExporter.swift \
-  Snap-O/LivePreview/LivePreviewThumbnail.swift \
+  Snap-O/LivePreview/Rendering/LivePreviewFrameExporter.swift Snap-O/LivePreview/Rendering/LivePreviewRenderer.swift \
+  Snap-O/LivePreview/Rendering/LivePreviewThumbnail.swift \
+  Snap-O/LivePreview/Rendering/LivePreviewFrameBuffer.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
-  Snap-O/CaptureWindow/CaptureCopyConfirmation.swift \
-  Snap-O/LivePreview/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
-  Snap-O/LivePreview/LivePreviewKeyboardInput.swift Snap-O/LivePreview/LivePreviewKeyboardEvent.swift \
-  Tests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
+  Snap-O/Capture/Review/CaptureCopyConfirmation.swift \
+  Snap-O/LivePreview/Rendering/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
+  Snap-O/LivePreview/Input/LivePreviewKeyboardInput.swift Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift \
+  StandaloneTests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
   -o "$TEST_DIR/frame-export-tests"
-# Export assertions run in Snap-OTests; this checks rendering in a test window.
+# Compile without launching the test window when only build validation is authorized.
+if [ "${1:-}" = "--build-only" ]; then exit 0; fi
+# Export assertions run in Snap-OIntegrationTests; this checks rendering in a test window.
 run_test "$TEST_DIR/frame-export-tests" "$@"

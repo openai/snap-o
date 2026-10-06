@@ -1,23 +1,35 @@
+import Darwin
 import Foundation
+import Synchronization
 
 private let log = SnapOLog.storage
 
 final class FileStore: Sendable {
+  private struct ExportState {
+    var isShuttingDown = false
+    var activeCount = 0
+    var waiters: [CheckedContinuation<Void, Never>] = []
+  }
+
+  private let exports = Mutex(ExportState())
   private let baseDir: URL
-  private let frameExportHandler: (@MainActor @Sendable (URL, String, CGSize) -> Void)?
+  private let linkFile: @Sendable (URL, URL) throws -> Void
+  private let frameExportHandler: (@MainActor @Sendable (CaptureMedia) -> Void)?
 
   init(
     baseDir: URL = FileManager.default.temporaryDirectory.appendingPathComponent("Snap-O", isDirectory: true),
-    frameExportHandler: (@MainActor @Sendable (URL, String, CGSize) -> Void)? = nil
+    linkFile: @escaping @Sendable (URL, URL) throws -> Void = { try FileManager.default.linkItem(at: $0, to: $1) },
+    frameExportHandler: (@MainActor @Sendable (CaptureMedia) -> Void)? = nil
   ) {
     self.baseDir = baseDir
+    self.linkFile = linkFile
     self.frameExportHandler = frameExportHandler
     purgeExistingFiles()
   }
 
   @MainActor
-  func recordExportedFrame(url: URL, deviceID: String, size: CGSize) {
-    frameExportHandler?(url, deviceID, size)
+  func recordExportedFrame(_ capture: CaptureMedia) {
+    frameExportHandler?(capture)
   }
 
   func purgeExistingFiles() {
@@ -42,19 +54,111 @@ final class FileStore: Sendable {
   }
 
   func discardPreviews(_ captures: [CaptureMedia]) {
-    let root = baseDir.resolvingSymlinksInPath().standardizedFileURL.path + "/"
     for capture in captures {
-      guard let url = capture.media.url else { continue }
-      let path = url.resolvingSymlinksInPath().standardizedFileURL.path
-      // Never remove history entries or externally supplied files through draft cleanup.
-      guard path.hasPrefix(root) else { continue }
-      if FileManager.default.fileExists(atPath: path) {
-        do {
-          try FileManager.default.removeItem(at: url)
-        } catch {
-          log.error("Failed to delete temporary capture: \(error.localizedDescription)")
-        }
+      if let url = capture.media.url { discardTemporaryFile(at: url) }
+    }
+  }
+
+  func discardTemporaryFile(at url: URL) {
+    let root = baseDir.resolvingSymlinksInPath().standardizedFileURL.path + "/"
+    let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+    // Never remove history entries or externally supplied files through draft cleanup.
+    guard path.hasPrefix(root), FileManager.default.fileExists(atPath: path) else { return }
+    do {
+      try FileManager.default.removeItem(at: url)
+    } catch {
+      log.error("Failed to delete temporary capture: \(error.localizedDescription)")
+    }
+  }
+
+  func beginShutdown() {
+    exports.withLock { $0.isShuttingDown = true }
+  }
+
+  func shutdown() async {
+    beginShutdown()
+    await withCheckedContinuation { continuation in
+      let isIdle = exports.withLock { state in
+        if state.activeCount == 0 { return true }
+        state.waiters.append(continuation)
+        return false
       }
+      if isIdle { continuation.resume() }
+    }
+  }
+
+  func withExport<Result>(_ operation: () throws -> Result) throws -> Result {
+    try beginExport()
+    defer { finishExport() }
+    return try operation()
+  }
+
+  @MainActor
+  func withExport<Result>(_ operation: @MainActor () async throws -> Result) async throws -> Result {
+    try Task.checkCancellation()
+    try beginExport()
+    defer { finishExport() }
+    return try await operation()
+  }
+
+  private func beginExport() throws {
+    try exports.withLock { state in
+      guard !state.isShuttingDown else { throw CancellationError() }
+      state.activeCount += 1
+    }
+  }
+
+  private func finishExport() {
+    let waiters = exports.withLock { state in
+      state.activeCount -= 1
+      guard state.activeCount == 0 else { return [CheckedContinuation<Void, Never>]() }
+      let waiters = state.waiters
+      state.waiters.removeAll()
+      return waiters
+    }
+    for waiter in waiters { waiter.resume() }
+  }
+
+  func withRetainedFiles<Result>(_ sources: [URL], operation: ([URL]) throws -> Result) throws -> Result {
+    try withExport {
+      let retained = try retainFiles(sources)
+      defer { try? FileManager.default.removeItem(at: retained.directory) }
+      return try operation(retained.urls)
+    }
+  }
+
+  @MainActor
+  func withRetainedFiles<Result>(
+    _ sources: [URL], operation: @MainActor ([URL]) async throws -> Result
+  ) async throws -> Result {
+    try await withExport {
+      let retained = try retainFiles(sources)
+      defer { try? FileManager.default.removeItem(at: retained.directory) }
+      return try await operation(retained.urls)
+    }
+  }
+
+  private func retainFiles(_ sources: [URL]) throws -> (directory: URL, urls: [URL]) {
+    let manager = FileManager.default
+    let directory = baseDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    do {
+      try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+      let urls = try sources.enumerated().map { index, source in
+        let destination = directory.appendingPathComponent("\(index).\(source.pathExtension)")
+        // Resolve symlinks so removing the original path cannot break a retained source.
+        let source = source.resolvingSymlinksInPath()
+        do {
+          try linkFile(source, destination)
+        } catch {
+          try? manager.removeItem(at: destination)
+          try manager.copyItem(at: source, to: destination)
+        }
+        return destination
+      }
+      return (directory, urls)
+    } catch {
+      try? manager.removeItem(at: directory)
+      throw error
     }
   }
 
@@ -87,9 +191,19 @@ final class FileStore: Sendable {
   }
 
   func makeDragCopy(of source: URL, capturedAt: Date, kind: MediaSaveKind, name: String? = nil) throws -> URL {
-    let destination = try makeUniqueDragDestination(capturedAt: capturedAt, kind: kind, name: name)
-    try FileManager.default.copyItem(at: source, to: destination)
-    return destination
+    try withRetainedFiles([source]) { sources in
+      let destination = try makeUniqueDragDestination(capturedAt: capturedAt, kind: kind, name: name)
+      do {
+        // Copy-on-write keeps large recording drags inexpensive without sharing a mutable output.
+        if clonefile(sources[0].path, destination.path, 0) != 0 {
+          try FileManager.default.copyItem(at: sources[0], to: destination)
+        }
+        return destination
+      } catch {
+        discardTemporaryFile(at: destination)
+        throw error
+      }
+    }
   }
 
   private func makeDestination(prefix: String, date: Date, kind: MediaSaveKind) -> URL {
