@@ -14,7 +14,7 @@ struct CaptureReviewEscapeTests {
     let fixture = try await makeReview()
     defer { fixture.close() }
     try fixture.window.sendEvent(key(53, in: fixture.window))
-    try await waitForUI(until: { fixture.window.attachedSheet != nil })
+    try await waitForUI { fixture.window.attachedSheet != nil }
     let sheet = try #require(fixture.window.attachedSheet)
     #expect(FileManager.default.fileExists(atPath: fixture.captureURL.path))
 
@@ -25,14 +25,14 @@ struct CaptureReviewEscapeTests {
       let actionButton = try #require(button(in: sheet, named: response))
       _ = actionButton.accessibilityPerformPress?()
     }
-    try await waitForUI(until: { fixture.window.attachedSheet == nil })
+    try await waitForUI { fixture.window.attachedSheet == nil }
     #expect(fixture.window.attachedSheet == nil)
     let keepsCapture = response == "Keep Editing" || response == "Escape"
-    if !keepsCapture { await fixture.controller.cleanup?.value }
+    if !keepsCapture { try await fixture.controller.waitForDismissal() }
     #expect(FileManager.default.fileExists(atPath: fixture.captureURL.path) == keepsCapture)
     if keepsCapture {
       try fixture.window.sendEvent(key(53, in: fixture.window))
-      try await waitForUI(until: { fixture.window.attachedSheet != nil })
+      try await waitForUI { fixture.window.attachedSheet != nil }
       #expect(fixture.window.attachedSheet != nil)
     }
   }
@@ -49,27 +49,27 @@ struct CaptureReviewEscapeTests {
           CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8),
           for: #require(fixture.controller.review.selectedItemID)
         )
-        try await Task.sleep(for: .milliseconds(50))
       }
+      let previousResponder = fixture.window.firstResponder
       try fixture.window.sendEvent(key(53, in: fixture.window))
-      try await waitForUI(until: { fixture.window.attachedSheet != nil })
+      try await waitForUI { fixture.window.attachedSheet != nil }
       let sheet = try #require(fixture.window.attachedSheet, "Escape must open the alert for capture \(captureNumber)")
       try sheet.sendEvent(key(36, in: sheet))
-      await fixture.controller.cleanup?.value
+      try await fixture.controller.waitForDismissal()
       #expect(!FileManager.default.fileExists(atPath: fixture.captureURL.path))
 
       guard captureNumber < 3 else { break }
-      fixture.showsReview.value = false
-      fixture.window.contentView?.layoutSubtreeIfNeeded()
-      try await waitForUI(until: { fixture.window.attachedSheet == nil })
-      try await Task.sleep(for: .milliseconds(50))
+      try await waitForUI { fixture.window.attachedSheet == nil }
 
       try image.write(to: fixture.captureURL)
       let next = CaptureMedia(device: fixture.capture.device, media: fixture.capture.media)
       fixture.controller.show(next)
       fixture.showsReview.value = true
       fixture.window.contentView?.layoutSubtreeIfNeeded()
-      try await Task.sleep(for: .milliseconds(50))
+      try await waitForUI {
+        fixture.window.firstResponder is CaptureReviewFocus.FocusView
+          && fixture.window.firstResponder !== previousResponder
+      }
     }
   }
 
@@ -90,10 +90,10 @@ struct CaptureReviewEscapeTests {
     try await Task.sleep(for: .milliseconds(50))
     try #require(fixture.window.attachedSheet == nil)
     if isTrimming {
-      try await waitForUI(until: { button(in: fixture.window, named: "Trim Recording")?.isAccessibilityEnabled?() == true })
+      try await waitForUI { button(in: fixture.window, named: "Trim Recording")?.isAccessibilityEnabled?() == true }
       let trim = try #require(button(in: fixture.window, named: "Trim Recording"))
       #expect(trim.accessibilityPerformPress?() == true)
-      try await waitForUI(until: { button(in: fixture.window, named: "Cancel Trim") != nil })
+      try await waitForUI { button(in: fixture.window, named: "Cancel Trim") != nil }
       try #require(button(in: fixture.window, named: "Cancel Trim") != nil)
     }
     let player = try #require(videoPlayer(in: fixture.window.contentView))
@@ -104,13 +104,13 @@ struct CaptureReviewEscapeTests {
     try fixture.window.sendEvent(key(53, in: fixture.window))
 
     if isTrimming {
-      try await waitForUI(until: { button(in: fixture.window, named: "Trim Recording") != nil })
+      try await waitForUI { button(in: fixture.window, named: "Trim Recording") != nil }
       try #require(button(in: fixture.window, named: "Trim Recording") != nil)
       #expect(fixture.window.attachedSheet == nil)
       #expect(FileManager.default.fileExists(atPath: url.path))
       try fixture.window.sendEvent(key(53, in: fixture.window))
     }
-    try await waitForUI(until: { fixture.window.attachedSheet != nil })
+    try await waitForUI { fixture.window.attachedSheet != nil }
     let sheet = try #require(fixture.window.attachedSheet)
     #expect(button(in: sheet, named: "Discard") != nil)
     #expect(button(in: sheet, named: "Keep Editing") != nil)
@@ -122,12 +122,12 @@ struct CaptureReviewEscapeTests {
     defer { fixture.close() }
     let save = try #require(button(in: fixture.window, named: "Save Screenshot to History"))
     #expect(save.accessibilityPerformPress?() == true)
-    try await waitForUI(until: { fixture.window.attachedSheet != nil })
+    try await waitForUI { fixture.window.attachedSheet != nil }
     let sheet = try #require(fixture.window.attachedSheet)
 
     try sheet.sendEvent(key(53, in: sheet))
 
-    try await waitForUI(until: { fixture.window.attachedSheet == nil })
+    try await waitForUI { fixture.window.attachedSheet == nil }
     try await Task.sleep(for: .milliseconds(50))
     #expect(fixture.window.attachedSheet == nil)
     #expect(FileManager.default.fileExists(atPath: fixture.captureURL.path))
@@ -140,7 +140,7 @@ struct CaptureReviewEscapeTests {
     let close = try #require(button(in: fixture.window, named: "Discard Screenshot"))
     #expect(close.accessibilityPerformPress?() == true)
     #expect(fixture.window.attachedSheet == nil)
-    await fixture.controller.cleanup?.value
+    try await fixture.controller.waitForDismissal()
     #expect(!FileManager.default.fileExists(atPath: fixture.captureURL.path))
   }
 
@@ -191,7 +191,7 @@ struct CaptureReviewEscapeTests {
     window.contentView = view
     view.layoutSubtreeIfNeeded()
     window.makeKeyAndOrderFront(nil)
-    try await Task.sleep(for: .milliseconds(50))
+    try await waitForUI { window.firstResponder is CaptureReviewFocus.FocusView }
     return ReviewFixture(
       window: window, captureURL: url, root: root, controller: controller, capture: capture, showsReview: showsReview
     )
@@ -229,6 +229,13 @@ struct CaptureReviewEscapeTests {
       showsReview.value = false
       let previous = review
       cleanup = Task { await previous.close() }
+    }
+
+    func waitForDismissal() async throws {
+      // The alert may close before its action replaces the previous cleanup task.
+      try await waitForState { !self.showsReview.value }
+      let task = try #require(cleanup)
+      await task.value
     }
   }
 
