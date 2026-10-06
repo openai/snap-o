@@ -71,10 +71,9 @@ struct CaptureHistoryTests {
     )
     batch.start()
     await batch.waitForCompletion()
-    let result = batch.result
-    precondition(result.media.map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
-    precondition(result.failures.count == 1 && result.failures[0].device.id == secondDevice.id)
-    precondition(result.failures[0].error.localizedDescription.contains("2 seconds"))
+    precondition(batch.items.compactMap(\.media).map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
+    guard case .failed = batch.items[1].state else { preconditionFailure("The timed-out device must report failure") }
+    await batch.close()
   }
 
   @MainActor
@@ -89,26 +88,27 @@ struct CaptureHistoryTests {
       let devices = keepsCompletedScreenshot ? [firstDevice, secondDevice] : [secondDevice]
       let batch = ScreenshotCapture(
         devices: devices, screenshots: ScreenshotService(adb: adb, fileStore: fileStore),
-        fileStore: fileStore, history: repository
+        fileStore: fileStore
       )
       batch.start()
       await waitForActorTestState { await adb.waitingForCancellation }
       if keepsCompletedScreenshot {
-        for await snapshot in await repository.updates() {
-          if snapshot.entries.first?.availableItems.count == 1 { break }
-        }
+        await waitForObservedTestState { batch.items[0].media != nil }
       }
       await batch.beginFinalization(discarding: true).value
-      let result = batch.result
+      let media = batch.items.compactMap(\.media)
+      let drafts = media.compactMap(\.media.url)
       let snapshot = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
       if keepsCompletedScreenshot {
-        precondition(result.media.count == 1 && snapshot.entries.count == 1)
-        precondition(snapshot.entries[0].availableItems.count == 1)
-        precondition(snapshot.entries[0].completedAt != nil)
-        precondition(FileManager.default.fileExists(atPath: result.media[0].media.url!.path))
-        precondition(snapshot.entries[0].items.count == 1, "Canceled devices leave no history placeholder")
+        precondition(media.count == 1)
+        precondition(drafts.count == 1 && FileManager.default.fileExists(atPath: drafts[0].path))
       } else {
-        precondition(result.media.isEmpty && snapshot.entries.isEmpty, "Canceled empty captures leave no history entry")
+        precondition(media.isEmpty, "Cancelled requests produce no draft")
+      }
+      precondition(snapshot.entries.isEmpty, "Completed screenshots remain drafts until Save")
+      await batch.close()
+      for draft in drafts {
+        precondition(!FileManager.default.fileExists(atPath: draft.path), "Discard removes completed drafts")
       }
     }
 
@@ -124,15 +124,16 @@ struct CaptureHistoryTests {
     )
     let batch = ScreenshotCapture(
       devices: [device], screenshots: ScreenshotService(adb: ADBService(), fileStore: fileStore),
-      fileStore: fileStore, history: repository
+      fileStore: fileStore
     )
     batch.start()
     await batch.waitForCompletion()
-    let result = batch.result
+    guard case .failed = batch.items[0].state else { preconditionFailure("An unavailable device must report failure") }
     let snapshot = await repository.currentSnapshot()
-    precondition(result.failures.count == 1 && snapshot.entries.isEmpty, "Failures reach the caller without entering history")
+    precondition(snapshot.entries.isEmpty, "Failures reach the caller without entering history")
     let reopened = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
     precondition(reopened.entries.isEmpty, "Failed captures are not saved")
+    await batch.close()
   }
 
   static func persistenceAndSelection() async throws {

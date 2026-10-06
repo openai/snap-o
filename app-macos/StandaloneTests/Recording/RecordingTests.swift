@@ -198,7 +198,7 @@ struct RecordingTests {
       let adb = adb
       return RecordingCapture(
         devices: devices, options: options, adb: adb, fileStore: fileStore,
-        coordinator: coordinator, history: history,
+        coordinator: coordinator,
         startRecording: start ?? { device, bugReport in
           let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
           return ADBScreenRecording(session: session, adb: adb)
@@ -223,7 +223,7 @@ struct RecordingTests {
     func screenshots(for devices: [Device]) -> ScreenshotCapture {
       ScreenshotCapture(
         devices: devices, screenshots: ScreenshotService(adb: adb, fileStore: fileStore), fileStore: fileStore,
-        history: history, coordinator: coordinator
+        coordinator: coordinator
       )
     }
 
@@ -242,11 +242,11 @@ struct RecordingTests {
       } catch CaptureCoordinationError.deviceBusy {}
     }
 
-    func waitForFailure() async {
-      for await snapshot in await history.updates() where snapshot.entries.first?.items.first?.failure != nil {
-        return
+    func waitForFailure(in batch: RecordingCapture) async {
+      await waitForObservedTestState {
+        if case .failed = batch.items[0].state { return true }
+        return false
       }
-      preconditionFailure("History ended before the recording failure was published")
     }
   }
 
@@ -509,7 +509,7 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let batch = await fixture.startRecording(for: devices, options: options)
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure()
+    await fixture.waitForFailure(in: batch)
     let stops = await fixture.adb.stops
     precondition(stops.isEmpty, "A device failure must not stop healthy recordings")
     await batch.close()
@@ -533,7 +533,7 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let batch = await fixture.startRecording(for: devices, options: options)
     devices[0].connection?.invalidate()
-    await fixture.waitForFailure()
+    await fixture.waitForFailure(in: batch)
     let stops = await fixture.adb.stops
     precondition(stops.isEmpty, "Disconnect must leave the other recording active")
     await batch.close()
@@ -548,7 +548,7 @@ struct RecordingTests {
       manufacturer: nil, avdName: nil, connection: DeviceTarget(serial: devices[0].id, transportID: "2")
     )
     devices[0].connection?.invalidate()
-    await fixture.waitForFailure()
+    await fixture.waitForFailure(in: batch)
     await batch.close()
     let stops = await fixture.adb.stops
     precondition(stops == [devices[1].id], "Replacement must end only its original recording and never rejoin")
@@ -560,7 +560,7 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let batch = await fixture.startRecording(for: devices, options: options)
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure()
+    await fixture.waitForFailure(in: batch)
 
     await batch.close()
     let stops = await fixture.adb.stops
@@ -573,8 +573,9 @@ struct RecordingTests {
       for: devices, options: RecordingOptions(recordsBugReport: false, showsTouches: true)
     )
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure()
+    await fixture.waitForFailure(in: batch)
 
+    await waitForActorTestState { await fixture.adb.touchSettings[devices[0].id] == false }
     let settings = await fixture.adb.touchSettings
     precondition(settings == [devices[0].id: false, devices[1].id: true], "Restore only the ended device's setting")
     await batch.close()

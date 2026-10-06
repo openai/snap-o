@@ -3,6 +3,9 @@ import Foundation
 @MainActor
 struct CaptureBatchTests {
   static func run(root: URL, video: URL) async throws {
+    try await runTestCase("captureDraftsStayTemporaryUntilSave") {
+      try await captureDraftsStayTemporaryUntilSave(root: root, video: video)
+    }
     try await runTestCase("stopDoesNotWaitForAnotherDeviceStartup") {
       try await stopDoesNotWaitForAnotherDeviceStartup(root: root, video: video)
     }
@@ -11,6 +14,43 @@ struct CaptureBatchTests {
     }
     try await runTestCase("screenshotFailureKeepsItsSlot") {
       try await screenshotFailureKeepsItsSlot(root: root, video: video)
+    }
+  }
+
+  private static func captureDraftsStayTemporaryUntilSave(root: URL, video: URL) async throws {
+    for recording in [false, true] {
+      for save in [false, true] {
+        let fixture = RecordingTests.Fixture(root: root, video: video)
+        let batch: any CaptureBatch
+        if recording {
+          let capture = await fixture.startRecording(for: RecordingTests.makeDevices())
+          await capture.beginFinalization(discarding: false).value
+          batch = capture
+        } else {
+          batch = await fixture.captureScreenshots(for: RecordingTests.makeDevices())
+        }
+        let media = batch.items.compactMap(\.media)
+        precondition(media.count == 2)
+        let beforeSave = await fixture.history.currentSnapshot()
+        precondition(beforeSave.entries.isEmpty, "Completed captures must not enter history before Save")
+        let drafts = media.compactMap(\.media.url)
+        precondition(drafts.count == media.count)
+        precondition(drafts.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        if save {
+          try await fixture.history.saveReviewedCaptures(media, name: "Reviewed", selectedID: media[1].id)
+        }
+        await batch.close()
+        precondition(drafts.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) }, "Closing removes draft files")
+        let reopened = CaptureHistoryRepository(root: fixture.history.root)
+        let saved = await reopened.currentSnapshot()
+        precondition(saved.entries.count == (save ? 1 : 0), "Only Save creates a history entry")
+        if let entry = saved.entries.first {
+          precondition(entry.availableItems.count == media.count)
+          for item in entry.availableItems {
+            precondition(FileManager.default.fileExists(atPath: entry.fileURL(for: item, in: reopened.root).path))
+          }
+        }
+      }
     }
   }
 

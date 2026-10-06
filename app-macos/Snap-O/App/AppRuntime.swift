@@ -75,13 +75,13 @@ final class AppRuntime {
       screenshots: { devices in
         ScreenshotCapture(
           devices: devices, screenshots: screenshots, fileStore: fileStore,
-          history: captureHistory.repository, coordinator: captureCoordinator
+          coordinator: captureCoordinator
         )
       },
       recording: { devices, options in
         RecordingCapture(
           devices: devices, options: options, adb: adbService, fileStore: fileStore,
-          coordinator: captureCoordinator, history: captureHistory.repository,
+          coordinator: captureCoordinator,
           startRecording: startRecording, loadRecording: nil, timestampSource: timestamps
         )
       },

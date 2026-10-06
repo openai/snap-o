@@ -13,7 +13,6 @@ final class ScreenshotCapture: CaptureBatch {
   private(set) var phase: Phase = .starting
   private let screenshots: ScreenshotService
   private let fileStore: FileStore
-  private let history: CaptureHistoryRepository?
   private let coordinator: CaptureCoordinator?
   @ObservationIgnored private var work: Task<Void, Never>?
   @ObservationIgnored private var finalization: Task<Void, Never>?
@@ -21,13 +20,11 @@ final class ScreenshotCapture: CaptureBatch {
 
   init(
     devices: [Device], screenshots: ScreenshotService, fileStore: FileStore,
-    history: CaptureHistoryRepository? = nil,
     coordinator: CaptureCoordinator? = nil
   ) {
     items = devices.map(CaptureItem.init)
     self.fileStore = fileStore
     self.screenshots = screenshots
-    self.history = history
     self.coordinator = coordinator
   }
 
@@ -96,7 +93,6 @@ final class ScreenshotCapture: CaptureBatch {
       return
     }
 
-    let historyID = await history?.begin(kind: .image, devices: missing.map(\.device))
     let screenshots = screenshots
     let coordinator = coordinator
     await withTaskGroup(of: (UUID, Result<CaptureMedia, Error>).self) { group in
@@ -121,17 +117,11 @@ final class ScreenshotCapture: CaptureBatch {
         guard let item = items.first(where: { $0.id == id }) else { continue }
         switch outcome {
         case .success(let capture):
-          let stored = await history?.record(capture, in: historyID) ?? capture
-          item.update(.ready(stored))
+          item.update(.ready(capture))
         case .failure(let error):
           item.update(error is CancellationError ? .cancelled : .failed(error.localizedDescription))
-          if !(error is CancellationError) {
-            await history?.recordFailure(deviceID: item.device.id, message: error.localizedDescription, in: historyID)
-          }
         }
       }
     }
-    if Task.isCancelled { await history?.discardEmpty(historyID) }
-    await history?.finish(historyID)
   }
 }

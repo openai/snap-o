@@ -198,6 +198,7 @@ struct MediaLifetimeTests {
     #expect(fixture.files.isEmpty)
     let reopened = CaptureHistoryRepository(root: fixture.history.root)
     let snapshot = await reopened.currentSnapshot()
+    #expect(snapshot.entries.count == 1)
     let entry = try #require(snapshot.entries.first)
     #expect(entry.name == "Batch")
     #expect(entry.items.compactMap(\.captureID) == [first.id, second.id])
@@ -229,7 +230,7 @@ struct MediaLifetimeTests {
   }
 
   @Test
-  func croppedImageExportsHaveTheirOwnLifetime() throws {
+  func croppedImageExportsHaveTheirOwnLifetime() async throws {
     let fixture = Fixture()
     defer { fixture.cleanup() }
     let capture = try fixture.capture()
@@ -246,8 +247,14 @@ struct MediaLifetimeTests {
     let drag = try fixture.store.makeImageDrag(request)
     let save = fixture.root.appendingPathComponent("saved.png")
     try fixture.store.saveImage(at: source, crop: request.crop, to: save)
+    try await fixture.store.saveReview([request], name: "Cropped", selectedID: capture.id, history: fixture.history)
     fixture.store.discardPreviews([capture])
-    for url in [drag, save] {
+    let snapshot = await fixture.history.currentSnapshot()
+    #expect(snapshot.entries.count == 1)
+    let entry = try #require(snapshot.entries.first)
+    let item = try #require(entry.availableItems.first)
+    let savedReview = entry.fileURL(for: item, in: fixture.history.root)
+    for url in [drag, save, savedReview] {
       let exported = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
       let pixels = try #require(CGImageSourceCreateImageAtIndex(exported, 0, nil))
       #expect(pixels.width == 4 && pixels.height == 8)

@@ -49,21 +49,19 @@ final class RecordingCapture: CaptureBatch {
   private let adb: ADBService
   private let fileStore: FileStore
   private let coordinator: CaptureCoordinator
-  private let history: CaptureHistoryRepository?
   private let startRecording: StartRecording
   private let recordingLoader: LoadRecording?
   private let timestampSource: CaptureTimestampSource
   private var invalidationHandlers: [DeviceTarget: UUID] = [:]
   private var entries: [Entry] = []
   private var startupErrors: [UUID: Error] = [:]
-  private var historyID: UUID?
   @ObservationIgnored private(set) var startup: Task<Error?, Never>?
   @ObservationIgnored private var finalization: Task<Void, Never>?
   @ObservationIgnored private var closeTask: Task<Void, Never>?
 
   init(
     devices: [Device], options: RecordingOptions,
-    adb: ADBService, fileStore: FileStore, coordinator: CaptureCoordinator, history: CaptureHistoryRepository?,
+    adb: ADBService, fileStore: FileStore, coordinator: CaptureCoordinator,
     startRecording: @escaping StartRecording, loadRecording: LoadRecording?,
     timestampSource: CaptureTimestampSource
   ) {
@@ -72,7 +70,6 @@ final class RecordingCapture: CaptureBatch {
     self.adb = adb
     self.fileStore = fileStore
     self.coordinator = coordinator
-    self.history = history
     self.startRecording = startRecording
     recordingLoader = loadRecording
     self.timestampSource = timestampSource
@@ -92,7 +89,6 @@ final class RecordingCapture: CaptureBatch {
   }
 
   private func startReserved() async -> Error? {
-    historyID = await history?.begin(kind: .video, devices: items.map(\.device))
     let adb = adb
     let options = options
     let startRecording = startRecording
@@ -143,7 +139,6 @@ final class RecordingCapture: CaptureBatch {
           }
         case .failure(let error):
           failStartup(item, error: error)
-          await history?.recordFailure(deviceID: item.device.id, message: error.localizedDescription, in: historyID)
         }
       }
     }
@@ -180,8 +175,6 @@ final class RecordingCapture: CaptureBatch {
       for item in items {
         if case .pending = item.state { item.update(.cancelled) }
       }
-      if discarding { await history?.discardEmpty(historyID) }
-      await history?.finish(historyID)
       for (target, handler) in invalidationHandlers {
         target.removeInvalidationHandler(handler)
       }
@@ -237,7 +230,6 @@ final class RecordingCapture: CaptureBatch {
       async let restoration: Void = touches.restore(using: adb)
       await entry.session.close()
       await restoration
-      await history?.recordFailure(deviceID: entry.item.device.id, message: message, in: historyID)
     }
     // Pending devices must get their own chance to start.
     if !items.contains(where: { if case .pending = $0.state { return true }
@@ -286,17 +278,15 @@ final class RecordingCapture: CaptureBatch {
     do {
       try await entry.session.save(to: destination)
       let capture = try await loadRecording(at: destination, device: device, capturedAt: capturedAt)
-      let retained = await history?.record(capture, in: historyID) ?? capture
       // Preserve the remote copy unless stop was confirmed and the local copy is usable.
       if entry.stopStatus == .confirmed { await entry.session.remove() }
       await entry.session.close()
-      entry.item.update(.ready(retained, warning: entry.failure))
+      entry.item.update(.ready(capture, warning: entry.failure))
     } catch {
       fileStore.discardTemporaryFile(at: destination)
       let message = [entry.failure, error.localizedDescription].compactMap(\.self).joined(separator: "\n")
       entry.failure = message
       await entry.session.close()
-      await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
       entry.item.update(.failed(message))
     }
   }

@@ -168,7 +168,7 @@ final class RecordingCapture {
   typealias StartRecording = @Sendable (Device, Bool) async throws -> any ScreenRecording
   init(
     devices: [Device], options: RecordingOptions, adb: ADBService, fileStore: FileStore,
-    coordinator: CaptureCoordinator, history: Void, startRecording: @escaping StartRecording,
+    coordinator: CaptureCoordinator, startRecording: @escaping StartRecording,
     loadRecording: (@Sendable (URL, Device, Date) async throws -> CaptureMedia)?, timestampSource: CaptureTimestampSource
   ) {}
 }
@@ -181,7 +181,7 @@ struct ScreenshotService {
 final class ScreenshotCapture {
   init(
     devices: [Device], screenshots: ScreenshotService, fileStore: FileStore,
-    history: Void, coordinator: CaptureCoordinator
+    coordinator: CaptureCoordinator
   ) {}
 }
 

@@ -13,7 +13,9 @@ actor ADBService {
   private var failedStops: Set<String> = []
   private(set) var stops: [String] = []
   private(set) var removedRecordings: [String] = []
-  private(set) var touchSettings: [String: Bool] = [:]
+  private(set) var touchSettings: [String: Bool] = [:] {
+    didSet { testChanges.signal() }
+  }
 
   init(video: URL) {
     self.video = video
