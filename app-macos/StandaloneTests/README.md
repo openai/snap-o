@@ -101,12 +101,17 @@ Build the app separately when production code changes; unit tests compile only t
 selected production sources.
 
 The headless target covers settings, device links and resolution, clipboard state,
-history selection, crop geometry, trim decisions, playback visibility, and workspace
-persistence. It compiles the same production files as the app, with explicit membership
+history selection, crop geometry, trim decisions, playback seek state, visibility, and
+workspace persistence. It also covers preview startup, retry and cleanup, session readiness,
+density changes, screenshot deadlines, capture conflicts, and file-command and video-packet parsing.
+It compiles the same production files as the app, with explicit membership
 under **Unit test sources** in the Xcode project. No source copies or new libraries are
 needed. New independent tests belong in `Snap-OUnitTests/`; add any additional production
 files to that target's Sources phase. Keep app startup, window creation, and real
-transport operations out of this target. A regression test checks that the runner has
+transport operations out of this target. Async work alone does not require an app host.
+Use controlled sources and clocks to test retries, cancellation, and cleanup here.
+When changing an app-hosted test, first check whether its assertions need a running app.
+A regression test checks that the runner has
 no `NSApplication` instance and is not an application bundle.
 
 ### App integration tests
@@ -331,7 +336,8 @@ suites. Use the local selection guidance above instead of repeating all CI check
 
 ### File-transfer unit and integration tests
 
-`ADBFileTransferTests` covers file-command parsing, quoting, policy, and UI state.
+`DeviceFileCommandTests` covers file-command parsing, quoting, and policy in the unit target.
+`ADBFileTransferTests` retains the file-drop UI state check.
 
 `ADBFileTransferIntegrationTests` uses real socket pairs and temporary files to
 check upload bytes, protocol framing, and device error responses. It is opt-in:
@@ -346,3 +352,16 @@ TEST_RUNNER_SNAPO_FILE_TRANSFER_INTEGRATION=1 xcodebuild test-without-building \
 
 The device cases additionally require `SNAPO_RESTRICTED_DEVICE` or
 `SNAPO_FILE_TRANSFER_DEVICE` in the test process environment.
+
+### Remaining app-hosted test boundaries
+
+Moving a test must preserve its behavior checks. Do not replace the code under test with a stub,
+increase timeouts, or weaken assertions to make a migration pass.
+
+- Preview retry, session readiness, density, screenshot deadlines, capture conflicts, playback seeks,
+  file-command rules, and video-packet parsing now run in `Snap-OUnitTests` with the same production sources.
+- View mounting, native focus, menus, and window visibility still need app-hosted checks.
+- Socket framing and media export need focused I/O checks; they are not pure unit tests.
+- Some clipboard, pointer, tool policy, and file-drop state tests could also run headlessly.
+  Their source files still couple those rules to transport or view code. Separate those dependencies
+  before moving the tests; do not compile the whole app or add fake production types to the unit target.

@@ -1,7 +1,6 @@
 @preconcurrency import AVFoundation
 import Clocks
 import DependenciesTestSupport
-@testable import Snap_O
 import Testing
 
 @MainActor

@@ -2,7 +2,6 @@ import Clocks
 import Dependencies
 import DependenciesTestSupport
 import Foundation
-@testable import Snap_O
 import Testing
 
 @Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
