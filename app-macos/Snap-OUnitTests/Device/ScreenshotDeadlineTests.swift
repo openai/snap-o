@@ -30,9 +30,7 @@ struct ScreenshotDeadlineTests {
     do {
       try await task.value
       Issue.record("Expected screenshot timeout")
-    } catch ADBError.requestTimedOut(let message) {
-      #expect(message == "Screenshot capture timed out after 2 seconds")
-    }
+    } catch ADBError.requestTimedOut {}
     #expect(operation.wasCancelled)
   }
 

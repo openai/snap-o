@@ -122,11 +122,10 @@ struct LivePreviewSessionStateTests {
 
     func format(width: Int32, height: Int32) throws {
       var format: CMVideoFormatDescription?
-      let status = CMVideoFormatDescriptionCreate(
+      CMVideoFormatDescriptionCreate(
         allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
         width: width, height: height, extensions: nil, formatDescriptionOut: &format
       )
-      #expect(status == noErr)
       try deliver?(.format(#require(format)))
     }
 

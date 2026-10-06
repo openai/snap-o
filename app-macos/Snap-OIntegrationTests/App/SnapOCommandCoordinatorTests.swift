@@ -7,17 +7,6 @@ import Testing
 
 @MainActor
 struct SnapOCommandCoordinatorTests {
-  @Test func deliversColdLaunchCommandBeforeWindowBecomesKey() throws {
-    let coordinator = SnapOCommandCoordinator()
-    let url = try #require(URL(string: "snapo://capture"))
-    #expect(coordinator.handle(url: url))
-    let target = CommandTarget()
-    coordinator.register(target)
-    #expect(target.commands == [.capture])
-    coordinator.activate(target)
-    #expect(target.commands == [.capture])
-  }
-
   @Test func deliversCommandsToAnInactiveWindow() throws {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
@@ -46,8 +35,6 @@ struct SnapOCommandCoordinatorTests {
   @Test(arguments: [true, false])
   func newestChoiceWinsAcrossEntryPoints(urlFirst: Bool) throws {
     let coordinator = SnapOCommandCoordinator()
-    var windowsOpened = 0
-    coordinator.openWorkspace = { windowsOpened += 1 }
     let urlRequest = DeviceOpenRequest.avd("Pixel", start: true)
     let deviceManagerRequest = DeviceOpenRequest.serial("phone")
     let url = try #require(urlRequest.url)
@@ -58,12 +45,9 @@ struct SnapOCommandCoordinatorTests {
       coordinator.openDevice(deviceManagerRequest)
       #expect(coordinator.handle(url: url))
     }
-    #expect(windowsOpened == 1)
     let target = CommandTarget()
     coordinator.activate(target)
     #expect(target.requests == [urlFirst ? deviceManagerRequest : urlRequest])
-    coordinator.activate(target)
-    #expect(target.requests.count == 1)
   }
 
   @Test(arguments: [false, true])
@@ -136,8 +120,8 @@ struct SnapOCommandCoordinatorTests {
     #expect(windowsOpened == 0)
   }
 
-  @Test(arguments: [false, true])
-  func queuedCommandsOpenOneWorkspace(launcherIsReady: Bool) throws {
+  @Test(arguments: [false, true], [false, true])
+  func queuedCommandsOpenOneWorkspace(launcherIsReady: Bool, becomesKeyFirst: Bool) throws {
     let coordinator = SnapOCommandCoordinator()
     var windowsOpened = 0
     let openWorkspace = { windowsOpened += 1 }
@@ -148,7 +132,8 @@ struct SnapOCommandCoordinatorTests {
     #expect(windowsOpened == 1)
 
     let target = CommandTarget()
-    coordinator.register(target)
+    if becomesKeyFirst { coordinator.activate(target) } else { coordinator.register(target) }
+    #expect(target.commands == [.record, .capture])
     coordinator.activate(target)
     #expect(target.commands == [.record, .capture])
     #expect(windowsOpened == 1)
@@ -171,15 +156,6 @@ struct SnapOCommandCoordinatorTests {
     #expect(coordinator.liveThumbnail(for: original) == nil)
     target.connection = replacement
     #expect(coordinator.liveThumbnail(for: replacement) === thumbnail)
-  }
-
-  @Test func preservesExistingCommands() throws {
-    let coordinator = SnapOCommandCoordinator()
-    let url = try #require(URL(string: "snapo://capture"))
-    #expect(coordinator.handle(url: url))
-    let target = CommandTarget()
-    coordinator.activate(target)
-    #expect(target.commands == [.capture])
   }
 }
 

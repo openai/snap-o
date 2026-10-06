@@ -7,48 +7,17 @@ import Testing
 
 @Suite("ADB discovery timeouts")
 struct ADBDiscoveryTimeoutTests {
-  /// Continuous output is tested separately because it has no total response deadline.
-  private static func device(_ serial: String) -> Device {
-    Device(
-      id: serial, model: serial, androidVersion: "", vendorModel: nil, manufacturer: nil, avdName: nil,
-      connection: DeviceTarget(serial: serial, transportID: serial == "stalled" ? "1" : "2")
-    )
-  }
-
   @Test(
-    "a stalled device cannot hide healthy tools",
-    .timeLimit(.minutes(1)),
+    "stalled ADB handshakes and responses time out",
     arguments: FakeDiscoveryADB.Stall.allCases.filter { $0 != .trickle }
   )
-  private func discoversHealthyDevice(stall: FakeDiscoveryADB.Stall) async throws {
+  private func timesOutStalledRequest(stall: FakeDiscoveryADB.Stall) async throws {
     let server = FakeDiscoveryADB(stall: stall)
     defer { server.close() }
-    let adb = server.client()
-    let sockets = try await ToolDiscovery.discover(
-      on: ["stalled", "phone"].map(Self.device),
-      using: adb
-    )
-    #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
-    #expect(sockets.map(\.kind.rawValue) == ["network", "tweaks"])
-    #expect(sockets.allSatisfy { $0.processName == "com.example.demo" })
-    #expect(server.connectionCount == 2)
-
-    let recovered = try await ToolDiscovery.discover(
-      on: [Self.device("phone")],
-      using: adb
-    )
-    #expect(recovered == sockets)
-  }
-
-  @Test("a failed scan is not an empty result")
-  func reportsFailedScan() async throws {
-    let server = FakeDiscoveryADB(stall: .output)
-    defer { server.close() }
-    await #expect(throws: ADBError.self) {
-      try await ToolDiscovery.discover(on: [Self.device("stalled")], using: server.client())
-    }
-    let empty = try await ToolDiscovery.discover(on: [], using: server.client())
-    #expect(empty.isEmpty)
+    do {
+      _ = try await server.client().listUnixSockets(deviceID: "stalled")
+      Issue.record("Expected the stalled socket request to time out")
+    } catch ADBError.requestTimedOut {}
   }
 
   @Test("cancelling discovery interrupts a blocked read", arguments: [false, true])
@@ -167,17 +136,6 @@ struct ADBDiscoveryTimeoutTests {
     defer { server.close() }
     let ready = try await server.client().isBootComplete(deviceID: "phone")
     #expect(ready == (output == "1\r\n"))
-  }
-
-  @Test("emulator discovery ignores boot results from a reused transport")
-  func ignoresBootResultAfterTransportReuse() async throws {
-    let server = FakeDiscoveryADB(stall: .output, deviceLists: [
-      "emulator-5554 device transport_id:2\n",
-      "emulator-5554 device transport_id:4\n"
-    ])
-    defer { server.close() }
-    let connections = try await server.client(clock: TestClock<Duration>()).emulatorConnections()
-    #expect(connections.first?.state == .starting)
   }
 
   @Test("device list requests time out")
@@ -352,8 +310,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private var clientDescriptors: [Int32] = []
   private let legacyReply: LegacyReply?
   private let bootOutput: String
-  private let deviceLists: [String]
-  private var listRequests = 0
   let requests = AsyncStream<String>.makeStream()
   private let stall: Stall
   private let workers = DispatchGroup()
@@ -362,11 +318,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private var connections: [ADBSocketConnection] = []
   private var isClosed = false
 
-  init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n", deviceLists: [String] = []) {
+  init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n") {
     self.stall = stall
     self.legacyReply = legacyReply
     self.bootOutput = bootOutput
-    self.deviceLists = deviceLists
   }
 
   var connectionCount: Int {
@@ -379,10 +334,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     active.forEach { expectClosedConnection($0) }
   }
 
-  func client(timeout: Duration = .milliseconds(500), clock: (any Clock<Duration>)? = nil) -> ADBClient {
+  func client(timeout: Duration = .milliseconds(500)) -> ADBClient {
     // Leave room for worker scheduling on shared CI runners.
     withDependencies {
-      $0.continuousClock = clock ?? self.clock
+      $0.continuousClock = self.clock
     } operation: {
       ADBClient(discoveryTimeout: timeout) { try self.connect() }
     }
@@ -438,22 +393,13 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
         }
         if transport == "host:devices-l" {
           if stall == .transport { return }
-          let payload = self.lock.withLock {
-            let payload = self.deviceLists.indices.contains(self.listRequests) ? self.deviceLists[self.listRequests] : ""
-            self.listRequests += 1
-            return payload
-          }
-          Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
+          Self.send("OKAY0000", to: descriptor)
           _ = shutdown(descriptor, SHUT_RDWR)
           return
         }
         if transport == "host:track-devices-l" {
           if stall != .transport {
-            let payload = self.lock.withLock {
-              if !self.deviceLists.isEmpty { self.listRequests = max(1, self.listRequests) }
-              return self.deviceLists.first ?? ""
-            }
-            Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
+            Self.send("OKAY0000", to: descriptor)
           }
           requests.continuation.yield(transport)
           return

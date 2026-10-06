@@ -111,6 +111,9 @@ files to that target's Sources phase. Keep app startup, window creation, and rea
 transport operations out of this target. Async work alone does not require an app host.
 Use controlled sources and clocks to test retries, cancellation, and cleanup here.
 When changing an app-hosted test, first check whether its assertions need a running app.
+Use real sockets only to test transport behavior, such as framing, cancellation, and closure.
+Test state and result-handling rules with controlled inputs. A test clock does not control OS socket deadlines.
+Keep assertions tied to the behavior named by the test. Remove duplicate cases and unrelated metadata or exact-message checks.
 A regression test checks that the runner has
 no `NSApplication` instance and is not an application bundle.
 

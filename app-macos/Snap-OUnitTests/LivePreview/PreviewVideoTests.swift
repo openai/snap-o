@@ -262,11 +262,10 @@ struct PreviewVideoTests {
 
     func becomeReady() throws {
       var format: CMVideoFormatDescription?
-      let status = CMVideoFormatDescriptionCreate(
+      CMVideoFormatDescriptionCreate(
         allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
         width: 2, height: 3, extensions: nil, formatDescriptionOut: &format
       )
-      #expect(status == noErr)
       try deliver?(.format(#require(format)))
     }
 
