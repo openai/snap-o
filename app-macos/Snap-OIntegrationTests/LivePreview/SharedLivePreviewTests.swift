@@ -253,7 +253,7 @@ struct SharedLivePreviewTests {
     let old = fixture.service.attach(to: fixture.target("old"))
     try await fixture.focus(old)
     try await waitForState { fixture.clipboards.count == 1 }
-    await fixture.clipboards[0].waitUntilReceiving()
+    try await fixture.clipboards[0].waitUntilReceiving()
     fixture.clipboardCleanup = nil
     let current = fixture.service.attach(to: fixture.target("current"))
     current.setVisible(true)
@@ -265,7 +265,7 @@ struct SharedLivePreviewTests {
     #expect(fixture.pasteboard.text != "from old device")
     cleanup.resume()
     try await waitForState { current.acceptsInput && fixture.clipboards.count == 2 }
-    await fixture.clipboards[1].waitUntilReceiving()
+    try await fixture.clipboards[1].waitUntilReceiving()
     await fixture.clipboards[1].deliver("from current device")
     #expect(fixture.pasteboard.text == "from current device")
     #expect(fixture.clipboardConnections == 2)
@@ -482,7 +482,7 @@ struct SharedLivePreviewTests {
     old.sendPointer(.down, .touchscreen, [CGPoint(x: 1, y: 1)], size)
     current.sendPointer(.down, .touchscreen, [CGPoint(x: 2, y: 2)], size)
     current.sendPointer(.up, .touchscreen, [CGPoint(x: 2, y: 2)], size)
-    await fixture.pointers[0].waitForEvents(2)
+    try await fixture.pointers[0].waitForEvents(2)
     await fixture.close()
     let events = await fixture.pointers[0].events
     #expect(events.count == 2)

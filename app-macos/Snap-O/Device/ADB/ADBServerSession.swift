@@ -11,11 +11,11 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
   let id = UUID()
   private let stateLock = NSLock()
   private let verificationLock = NSLock()
-  private let connectionFactory: @Sendable () throws -> ADBSocketConnection
+  private let connectionFactory: @Sendable () throws -> any ADBConnection
   private let timeout: Duration
   private var closed = false
-  private var guardConnection: ADBSocketConnection?
-  private var connections: [ObjectIdentifier: ADBSocketConnection] = [:]
+  private var guardConnection: (any ADBConnection)?
+  private var connections: [ObjectIdentifier: any ADBConnection] = [:]
   private var targets: [WeakTarget] = []
 
   private struct WeakTarget {
@@ -23,9 +23,9 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
   }
 
   init(
-    tracking: ADBSocketConnection,
+    tracking: any ADBConnection,
     timeout: Duration,
-    connectionFactory: @escaping @Sendable () throws -> ADBSocketConnection
+    connectionFactory: @escaping @Sendable () throws -> any ADBConnection
   ) {
     self.timeout = timeout
     self.connectionFactory = connectionFactory
@@ -60,7 +60,7 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
   }
 
   /// The initial list only supplies a candidate. Publish the replacement stream instead.
-  func prepareTracking(transportID: String, replacing initial: ADBSocketConnection) throws -> ADBSocketConnection {
+  func prepareTracking(transportID: String, replacing initial: any ADBConnection) throws -> any ADBConnection {
     let seed = try openConnection()
     do {
       try seed.withRequestTimeout(timeout) { try seed.sendTransportID(transportID) }
@@ -122,7 +122,7 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
     guard !closed else { throw ADBError.protocolFailure("The ADB server connection is no longer available.") }
   }
 
-  private func openConnection() throws -> ADBSocketConnection {
+  private func openConnection() throws -> any ADBConnection {
     try stateLock.withLock { try requireOpen() }
     let connection = try connectionFactory()
     do {
@@ -137,7 +137,7 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
     }
   }
 
-  private func release(_ connection: ADBSocketConnection) {
+  private func release(_ connection: any ADBConnection) {
     _ = stateLock.withLock { connections.removeValue(forKey: ObjectIdentifier(connection)) }
     connection.close()
   }

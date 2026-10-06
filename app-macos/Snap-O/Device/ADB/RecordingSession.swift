@@ -15,7 +15,7 @@ public final class RecordingSession: @unchecked Sendable {
     deviceID: String,
     remotePath: String,
     pid: Int32,
-    connection: ADBSocketConnection,
+    connection: any ADBConnection,
     startedAt: Date,
     target: DeviceTarget? = nil
   ) {

@@ -29,6 +29,17 @@ fake frame encoders. Recording deadline tests use a controlled stream and `TestC
 they do not wait for a kernel socket timeout. Standalone scripts run their own suites,
 without repeating tests already run by an Xcode target.
 
+ADB client tests inject `ScriptedADBConnection` through the `ADBConnection` protocol.
+Script replies and failures directly. Use its entry signal and explicit close for
+cancellation tests; do not open a socket just to hold a request pending.
+A simulated transport timeout tests error handling. Advancing `TestClock` tests
+code that owns a timer. These are separate checks.
+
+Tool request tests inject `ToolHTTPExchange` for responses and pending requests.
+The production exchange owns NIO setup; tests of routing, headers, cancellation,
+and deadline handling do not need a live HTTP peer. Keyboard and clipboard tests
+also inject helper bytes, so they do not require a bundled Android JAR.
+
 Test one behavior at a time. Use controlled inputs for everything outside that
 behavior, including discovery, device operations, framework results, and time.
 Use a fresh fixture for each independent failure cause. Keep assertions together
@@ -75,6 +86,12 @@ Do not use a fixed number of `Task.yield()` calls or a short sleep to settle wor
 Do not add sleep-based watchdogs; bound failures with test or CI time limits.
 Do not send probe gestures or trigger repeated discovery to detect readiness.
 Do not mock the model whose behavior the test is checking.
+
+Review Escape decisions run in `CaptureReviewEscapeActionTests` without a window.
+`CaptureReviewOwnershipTests` and `CaptureReviewTests` cover save, discard, and file ownership;
+`CaptureReviewPlaybackTests` covers trim changes with a fake player. The two native
+`CaptureReviewEscapeTests` only check keyboard routing after remounting and from a
+focused video view. They load no media and wait for focus events, not elapsed time.
 
 ## Local test selection
 
@@ -353,7 +370,6 @@ The remaining integration checks have specific boundary requirements:
 | --- | --- |
 | ADB framing, socket transfer, cancellation, and socket deadlines | Verify the transport adapter against actual descriptor behavior. |
 | File retention, atomic replacement, sandbox access, and discard | Verify Snap-O preserves user files across failures. |
-| Generated Android shell commands | Verify the generated program cleans up on exit and isolates concurrent invocations. |
 | AppKit focus, Escape, menus, window mounting, and occlusion | Verify native event routing and view/window lifecycle. |
 | Frontend ZIP validation | Verify archive entry handling, traversal rejection, and expansion limits. |
 
@@ -396,7 +412,7 @@ increase timeouts, or weaken assertions to make a migration pass.
 - Preview retry, session readiness, density, screenshot deadlines, capture conflicts, playback seeks,
   file-command rules, and video-packet parsing now run in `Snap-OUnitTests` with the same production sources.
 - View mounting, native focus, menus, and window visibility still need app-hosted checks.
-- Socket framing and media export need focused I/O checks; they are not pure unit tests.
+- Socket descriptor ownership has focused native checks. Media export uses fake results.
 - Some clipboard, pointer, tool policy, and file-drop state tests could also run headlessly.
   Their source files still couple those rules to transport or view code. Separate those dependencies
   before moving the tests; do not compile the whole app or add fake production types to the unit target.

@@ -8,7 +8,7 @@ cd "$APP_DIR"
 . "$APP_DIR/scripts/test-swift.sh"
 
 swiftc_for_tests -swift-version 6 -parse-as-library \
-  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
+  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   StandaloneTests/DeviceConnection/DeviceConnectionTests.swift \
   -o "$TEST_DIR/connection-tests"
 run_test "$TEST_DIR/connection-tests"
@@ -26,14 +26,14 @@ for object in "$PRODUCTS/"*.o; do
   set -- "$@" "$object"
 done
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library "$@" \
-  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
+  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   Snap-O/Tools/ToolHTTPTransport.swift Snap-O/Tools/ToolURL.swift StandaloneTests/DeviceConnection/ToolConnectionTests.swift \
   -o "$TEST_DIR/tool-connection-tests"
 run_test "$TEST_DIR/tool-connection-tests"
 
-# Exercise the real discovery client against isolated, scripted sockets.
-swiftc_with_test_dependencies -swift-version 6 -parse-as-library "$@" \
-  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
+# Exercise the real discovery client with scripted ADB connections.
+swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDALONE_TESTS "$@" \
+  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   Snap-O/Device/ADB/ADBClient.swift Snap-O/Device/ADB/ADBServerSession.swift \
   Snap-O/Device/ADB/RecordingSession.swift \
   Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Device/Emulators/EmulatorConnection.swift \
@@ -46,6 +46,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library "$@" \
   StandaloneTests/DeviceConnection/AndroidHostControlTests.swift \
   Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \
   StandaloneTests/DeviceConnection/EmulatorDisplayProbeTests.swift \
+  Snap-OIntegrationTests/Device/ScriptedADBConnection.swift \
   StandaloneTests/DeviceConnection/ADBServerSessionTests.swift \
   StandaloneTests/DeviceConnection/EmulatorDiscoveryTests.swift \
   -o "$TEST_DIR/emulator-discovery-tests"

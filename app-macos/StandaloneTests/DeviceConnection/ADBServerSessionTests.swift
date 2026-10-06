@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 enum ADBServerSessionTests {
@@ -7,7 +6,7 @@ enum ADBServerSessionTests {
     try await restartBeforeTrackerEOFRejectsReusedTransport()
     try await failedSelectionKeepsHealthyServer()
     try await deviceSelectionDoesNotOwnServerProof()
-    try cancellationClosesPendingSetup()
+    try await cancellationClosesPendingSetup()
     print("ADB server lifetime tests passed")
   }
 
@@ -112,7 +111,7 @@ enum ADBServerSessionTests {
     server.finish()
   }
 
-  private static func cancellationClosesPendingSetup() throws {
+  private static func cancellationClosesPendingSetup() async throws {
     let entered = ScriptGate()
     let server = ScriptedADBServer([
       [.closed],
@@ -120,18 +119,15 @@ enum ADBServerSessionTests {
     ])
     let initial = try server.connect()
     let session = ADBServerSession(tracking: initial, timeout: .seconds(30), connectionFactory: server.connect)
-    let completed = DispatchGroup()
-    completed.enter()
-    DispatchQueue.global().async {
-      defer { completed.leave() }
+    let completed = Task.detached {
       do {
         _ = try session.prepareTracking(transportID: "42", replacing: initial)
         preconditionFailure("Cancelled bootstrap must fail")
       } catch {}
     }
-    entered.wait()
+    try await entered.wait()
     session.close()
-    completed.wait()
+    await completed.value
     let late = DeviceTarget(serial: "late", transportID: "42", server: session)
     precondition(!late.isValid)
     server.finish()
@@ -143,7 +139,7 @@ enum ADBServerSessionTests {
 }
 
 final class ScriptGate: @unchecked Sendable {
-  private let event = DispatchSemaphore(value: 0)
+  private let event = TestSignal()
   private let lock = NSLock()
   private var reached = false
   var wasReached: Bool {
@@ -155,8 +151,12 @@ final class ScriptGate: @unchecked Sendable {
     event.signal()
   }
 
-  func wait() {
-    event.wait()
+  func wait() async throws {
+    while true {
+      let revision = event.revision
+      if wasReached { return }
+      try await event.wait(after: revision)
+    }
   }
 }
 
@@ -169,9 +169,8 @@ final class ScriptedADBServer: @unchecked Sendable {
   }
 
   private let lock = NSLock()
-  private let workers = DispatchGroup()
   private var scripts: [[Step]]
-
+  private var connections: [ScriptedADBConnection] = []
   init(_ scripts: [[Step]]) {
     self.scripts = scripts
   }
@@ -180,71 +179,64 @@ final class ScriptedADBServer: @unchecked Sendable {
     ADBClient(discoveryTimeout: .seconds(2), connectionFactory: connect)
   }
 
-  func connect() throws -> ADBSocketConnection {
-    let steps = lock.withLock {
+  func connect() throws -> any ADBConnection {
+    let script = lock.withLock {
       precondition(!scripts.isEmpty, "Unexpected ADB connection")
-      return scripts.removeFirst()
+      return Script(scripts.removeFirst())
     }
-    var pair: [Int32] = [0, 0]
-    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { throw POSIXError(.EIO) }
-    let peer = pair[1]
-    workers.enter()
-    DispatchQueue.global().async { [workers] in
-      defer { Darwin.close(peer)
-        workers.leave()
-      }
-      for step in steps {
-        switch step {
-        case .reply(let expected, let response):
-          precondition(Self.request(peer) == expected, "Unexpected ADB request, expected \(expected)")
-          Self.write(response, to: peer)
-        case .disconnectOnRequest(let expected, let gate):
-          precondition(Self.request(peer) == expected)
-          gate.signal()
-          return
-        case .stall(let expected, let gate):
-          precondition(Self.request(peer) == expected)
-          gate.signal()
-        case .closed:
-          var byte: UInt8 = 0
-          precondition(Darwin.read(peer, &byte, 1) == 0, "Unexpected device request after failed proof")
-        }
-      }
-    }
-    return ADBSocketConnection(connectedSocket: pair[0])
+    let connection = ScriptedADBConnection(reads: [])
+    script.connection = connection
+    connection.respond = { try script.respond($0) }
+    lock.withLock { connections.append(connection) }
+    return connection
   }
 
   func finish() {
-    workers.wait()
+    let active = lock.withLock { connections }
+    precondition(active.allSatisfy(\.isClosed), "Every connection must be released")
     precondition(lock.withLock { scripts.isEmpty }, "Missing ADB connections")
   }
 
-  private static func request(_ socket: Int32) -> String {
-    let header = String(decoding: read(socket, count: 4), as: UTF8.self)
-    guard let count = Int(header, radix: 16) else { preconditionFailure("Invalid request header") }
-    return String(decoding: read(socket, count: count), as: UTF8.self)
-  }
-
-  private static func read(_ socket: Int32, count: Int) -> Data {
-    var bytes = Data(count: count)
-    bytes.withUnsafeMutableBytes { buffer in
-      var offset = 0
-      while offset < count {
-        let size = Darwin.read(socket, buffer.baseAddress!.advanced(by: offset), count - offset)
-        precondition(size > 0, "Missing request")
-        offset += size
-      }
+  private final class Script: @unchecked Sendable {
+    weak var connection: ScriptedADBConnection?
+    private var steps: [Step]
+    init(_ steps: [Step]) {
+      self.steps = steps
     }
-    return bytes
-  }
 
-  private static func write(_ response: String, to socket: Int32) {
-    Data(response.utf8).withUnsafeBytes { buffer in
-      var offset = 0
-      while offset < buffer.count {
-        let size = Darwin.write(socket, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
-        precondition(size > 0)
-        offset += size
+    func respond(_ command: String) throws -> String? {
+      precondition(!steps.isEmpty, "Unexpected command: \(command)")
+      switch steps.removeFirst() {
+      case .reply(let expected, let response):
+        precondition(command == expected, "Expected \(expected), got \(command)")
+        if response.hasPrefix("FAIL") { throw ADBError.protocolFailure(String(response.dropFirst(8))) }
+        precondition(response.hasPrefix("OKAY"))
+        let bytes = Data(response.dropFirst(4).utf8)
+        if command == "host:version" { return String(decoding: bytes.dropFirst(4), as: UTF8.self) }
+        if command == "host:track-devices-l" || command == "host:devices-l" {
+          var remaining = bytes
+          while !remaining.isEmpty {
+            let count = Int(String(decoding: remaining.prefix(4), as: UTF8.self), radix: 16)!
+            remaining = Data(remaining.dropFirst(4))
+            connection?.enqueue([.data(Data(remaining.prefix(count)))])
+            remaining = Data(remaining.dropFirst(count))
+          }
+          if command == "host:track-devices-l" { connection?.enqueue([.waitForClose]) }
+        } else if command.hasPrefix("shell:") {
+          connection?.enqueue([.data(bytes), .end])
+        }
+        return nil
+      case .disconnectOnRequest(let expected, let gate):
+        precondition(command == expected)
+        gate.signal()
+        throw ADBError.serverUnavailable("Synthetic disconnect")
+      case .stall(let expected, let gate):
+        precondition(command == expected)
+        gate.signal()
+        try connection?.blockUntilClosed()
+        return nil
+      case .closed:
+        preconditionFailure("Unexpected command after connection ended: \(command)")
       }
     }
   }

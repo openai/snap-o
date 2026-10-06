@@ -18,7 +18,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS/../PrivateFrameworks" \
   -Xlinker -rpath -Xlinker "$TEST_LIBRARIES" \
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS" "$PRODUCTS/DependenciesTestSupport.o" \
-  Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Models/Media.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
+  Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Models/Media.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   Snap-O/Device/ADB/ADBVirtualTouchscreen.swift Snap-O/Device/ADB/DeviceKeyboardTransport.swift \
   Snap-O/Device/Clipboard/ClipboardTransport.swift Snap-O/Device/Clipboard/ClipboardSyncState.swift \
   Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/Device/Clipboard/DeviceClipboardProtocol.swift Snap-O/App/AppSettings.swift \

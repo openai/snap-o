@@ -108,7 +108,7 @@ struct EmulatorDiscoveryTests {
     let server = ScriptedADBServer([[.reply("host:track-devices-l", "OKAY"), .closed]])
     let client = withDependencies { $0.continuousClock = timing } operation: { server.client }
     let discovery = Task { try await client.emulatorConnections() }
-    timing.sleepRequested.wait()
+    try await timing.sleepRequested.wait()
     await timing.base.advance(by: .seconds(2))
     do {
       _ = try await discovery.value

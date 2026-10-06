@@ -1,7 +1,7 @@
 import Foundation
 
 struct DeviceClipboardTransport: ClipboardTransport {
-  private let connection: ADBSocketConnection
+  private let connection: any ADBConnection
   private let initialText: String
   private let reader = DispatchQueue(label: "snapo.clipboard.read")
   private let writer = DispatchQueue(label: "snapo.clipboard.write")
@@ -9,13 +9,11 @@ struct DeviceClipboardTransport: ClipboardTransport {
   static func connect(
     serial: String,
     adb: ADBClient = ADBClient(),
+    helper: @Sendable () throws -> Data = DeviceClipboardProtocol.bundledHelper,
     isolation: isolated (any Actor)? = #isolation,
     body: (Self) async throws -> Void
   ) async throws {
-    guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
-      throw ADBError.protocolFailure("Missing device clipboard helper")
-    }
-    let command = try DeviceClipboardProtocol.launchCommand(helper: Data(contentsOf: url))
+    let command = try DeviceClipboardProtocol.launchCommand(helper: helper())
     let connection = try await adb.makeConnection()
     defer { connection.close() }
     try await withTaskCancellationHandler {

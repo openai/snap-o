@@ -1,6 +1,13 @@
 import Foundation
 
 enum DeviceClipboardProtocol {
+  static func bundledHelper() throws -> Data {
+    guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
+      throw ADBError.protocolFailure("Missing device input helper")
+    }
+    return try Data(contentsOf: url)
+  }
+
   static func launchCommand(helper: Data, keyboard: Bool = false) throws -> String {
     guard !helper.isEmpty, helper.count <= 32768 else {
       throw ADBError.protocolFailure("Invalid clipboard helper")
@@ -26,11 +33,11 @@ enum DeviceClipboardProtocol {
     return frame
   }
 
-  static func readNumber(_ connection: ADBSocketConnection) throws -> UInt32 {
+  static func readNumber(_ connection: any ADBConnection) throws -> UInt32 {
     try readExactly(4, read: connection.readChunk).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
   }
 
-  static func readText(_ connection: ADBSocketConnection) throws -> String {
+  static func readText(_ connection: any ADBConnection) throws -> String {
     try readText(read: connection.readChunk)
   }
 

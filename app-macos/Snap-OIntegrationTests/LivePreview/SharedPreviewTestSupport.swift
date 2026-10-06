@@ -168,10 +168,10 @@ enum SharedPreviewTestSupport {
       changes.signal()
     }
 
-    func waitForEvents(_ count: Int) async {
+    func waitForEvents(_ count: Int) async throws {
       while events.count < count {
         let revision = changes.revision
-        try? await changes.wait(after: revision)
+        try await changes.wait(after: revision)
       }
     }
   }
@@ -194,10 +194,10 @@ enum SharedPreviewTestSupport {
       await receiver?(text)
     }
 
-    func waitUntilReceiving() async {
+    func waitUntilReceiving() async throws {
       while receiver == nil {
         let revision = changes.revision
-        try? await changes.wait(after: revision)
+        try await changes.wait(after: revision)
       }
     }
   }

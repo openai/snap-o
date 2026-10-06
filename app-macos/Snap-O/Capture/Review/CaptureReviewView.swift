@@ -34,11 +34,7 @@ struct CaptureReviewView: View {
     }
     .overlay { CaptureCopyConfirmation(copyID: review.imageCopyID) }
     .background(CaptureSheetAnchor(isPresented: isNaming || isConfirmingDiscard))
-    .background(CaptureReviewFocus(onExit: handleEscape))
-    .onKeyPress(.escape) {
-      handleEscape()
-      return .handled
-    }
+    .captureReviewKeyboard(onExit: handleEscape)
     .alert("Discard \(mediaName)?", isPresented: $isConfirmingDiscard) {
       Button("Keep Editing", role: .cancel) {}
       Button("Discard", role: .destructive, action: returnToLive)
@@ -200,10 +196,15 @@ struct CaptureReviewView: View {
   }
 
   private func handleEscape() {
-    guard !isNaming, !review.isSaving, !review.isClosing, review.errorMessage == nil else { return }
-    if review.playback.isTrimming {
+    switch CaptureReviewEscapeAction(
+      isNaming: isNaming, isSaving: review.isSaving, isClosing: review.isClosing,
+      hasError: review.errorMessage != nil, isTrimming: review.playback.isTrimming
+    ) {
+    case .ignore:
+      break
+    case .cancelTrim:
       review.playback.cancelTrimming()
-    } else {
+    case .confirmDiscard:
       isConfirmingDiscard = true
     }
   }

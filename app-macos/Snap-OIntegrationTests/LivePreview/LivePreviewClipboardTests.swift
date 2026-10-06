@@ -17,7 +17,7 @@ struct LivePreviewClipboardTests {
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.focus(attachment)
     try await waitForState { fixture.clipboards.count == 1 }
-    await fixture.clipboards[0].waitUntilReceiving()
+    try await fixture.clipboards[0].waitUntilReceiving()
     switch reason {
     case .hidden: attachment.setVisible(false)
     case .inactive: attachment.setFocused(false)
@@ -37,7 +37,7 @@ struct LivePreviewClipboardTests {
     attachment.mount(old)
     attachment.updatePresentation(viewID: old, visible: true, focused: true, syncClipboard: true)
     try await waitForState { attachment.acceptsInput && fixture.clipboards.count == 1 }
-    await fixture.clipboards[0].waitUntilReceiving()
+    try await fixture.clipboards[0].waitUntilReceiving()
     let current = UUID()
     attachment.mount(current)
     attachment.updatePresentation(viewID: current, visible: true, focused: true, syncClipboard: true)
@@ -57,7 +57,7 @@ struct LivePreviewClipboardTests {
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.focus(attachment)
     try await waitForState { fixture.clipboards.count == 1 }
-    await fixture.clipboards[0].waitUntilReceiving()
+    try await fixture.clipboards[0].waitUntilReceiving()
     let finished = TestValue(false)
     let close = Task { await attachment.close()
       finished.value = true

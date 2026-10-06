@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+extension View {
+  func captureReviewKeyboard(onExit: @escaping () -> Void) -> some View {
+    background(CaptureReviewFocus(onExit: onExit))
+      .onKeyPress(.escape) {
+        onExit()
+        return .handled
+      }
+  }
+}
+
 struct CaptureReviewFocus: NSViewRepresentable {
   let onExit: () -> Void
 

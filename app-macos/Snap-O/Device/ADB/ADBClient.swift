@@ -4,7 +4,7 @@ import Foundation
 public struct ADBClient: Sendable {
   @Dependency(\.continuousClock)
   private var clock
-  private let connectionFactory: @Sendable () throws -> ADBSocketConnection
+  private let connectionFactory: @Sendable () throws -> any ADBConnection
   private let discoveryTimeout: Duration
   private var requestTimeout: Duration?
   private var target: DeviceTarget?
@@ -32,7 +32,7 @@ public struct ADBClient: Sendable {
 
   init(
     discoveryTimeout: Duration,
-    connectionFactory: @escaping @Sendable () throws -> ADBSocketConnection
+    connectionFactory: @escaping @Sendable () throws -> any ADBConnection
   ) {
     self.discoveryTimeout = discoveryTimeout
     self.connectionFactory = connectionFactory
@@ -480,7 +480,7 @@ public struct ADBClient: Sendable {
   public func openLocalAbstract(
     deviceID: String,
     abstractSocket: String
-  ) async throws -> ADBSocketConnection {
+  ) async throws -> any ADBConnection {
     try await runWithRetry(maxAttempts: 1) { connection in
       try await withCheckedThrowingContinuation { continuation in
         DispatchQueue.global(qos: .userInitiated).async {
@@ -497,7 +497,7 @@ public struct ADBClient: Sendable {
   }
 
   /// Opens a connection for transports that need direct control of the ADB protocol.
-  public func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
+  public func makeConnection(maxAttempts: Int = 3) async throws -> any ADBConnection {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in connection }
   }
 
@@ -535,7 +535,7 @@ public struct ADBClient: Sendable {
 
   func withConnection<T: Sendable>(
     maxAttempts: Int = 3,
-    _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
+    _ body: @escaping @Sendable (any ADBConnection) throws -> T
   ) async throws -> T {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in
       // Blocking ADB I/O must not occupy Swift's cooperative executor threads.
@@ -551,7 +551,7 @@ public struct ADBClient: Sendable {
 
   private func runWithRetry<T: Sendable>(
     maxAttempts: Int,
-    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
+    _ operation: @escaping @Sendable (any ADBConnection) async throws -> T
   ) async throws -> T {
     var lastError: Error?
 
@@ -590,8 +590,8 @@ public struct ADBClient: Sendable {
   }
 
   private func perform<T: Sendable>(
-    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T,
-    on connection: ADBSocketConnection
+    _ operation: @escaping @Sendable (any ADBConnection) async throws -> T,
+    on connection: any ADBConnection
   ) async throws -> T {
     guard let requestTimeout else { return try await operation(connection) }
     return try await withThrowingTaskGroup(of: T.self) { group in

@@ -55,14 +55,24 @@ struct ToolHTTPRequestInput {
   }
 }
 
+protocol ToolHTTPExchange: Sendable {
+  func close()
+  func scheduleTimeout(_ delay: TimeAmount) -> @Sendable () -> Void
+  func run(
+    isolation: isolated (any Actor)?, input: ToolHTTPRequestInput,
+    onResponse: (HTTPResponseHead) async throws -> Void, onData: (Data) async throws -> Void
+  ) async throws
+}
+
 struct ToolHTTPRequestOperation {
-  typealias OpenConnection = @Sendable () async throws -> ADBSocketConnection
+  typealias OpenConnection = @Sendable () async throws -> any ADBConnection
+  typealias MakeExchange = @Sendable (any ADBConnection) async throws -> any ToolHTTPExchange
 
   let input: ToolHTTPRequestInput
   var requestTimeout: TimeAmount?
-  var scheduleTimeout: @Sendable (any Channel, TimeAmount) -> (@Sendable () -> Void) = { channel, delay in
-    let timer = channel.eventLoop.scheduleTask(in: delay) { channel.close(promise: nil) }
-    return { timer.cancel() }
+  var makeExchange: MakeExchange = NIOToolHTTPExchange.connect
+  var scheduleTimeout: @Sendable (any ToolHTTPExchange, TimeAmount) -> (@Sendable () -> Void) = { exchange, delay in
+    exchange.scheduleTimeout(delay)
   }
 
   let openConnection: OpenConnection
@@ -76,8 +86,34 @@ struct ToolHTTPRequestOperation {
     let connection = try await openConnection()
     defer { connection.close() }
     try Task.checkCancellation()
+    let exchange = try await makeExchange(connection)
+    defer { exchange.close() }
     let target = connection.connectionTarget
-    let descriptor = try connection.takeSocketDescriptor()
+    let invalidation = try target?.onInvalidation { exchange.close() }
+    defer { if let invalidation { target?.removeInvalidationHandler(invalidation) } }
+    let cancelTimeout = requestTimeout.map { scheduleTimeout(exchange, $0) }
+    defer { cancelTimeout?() }
+
+    try await withTaskCancellationHandler {
+      try Task.checkCancellation()
+      try await exchange.run(isolation: isolation, input: input, onResponse: { response in
+        guard !(300 ..< 400).contains(response.status.code) else { throw ToolHTTPTransportError.redirectNotAllowed }
+        try await onResponse(response)
+      }, onData: onData)
+    } onCancel: {
+      exchange.close()
+    }
+  }
+}
+
+struct NIOToolHTTPExchange: ToolHTTPExchange {
+  let stream: NIOAsyncChannel<HTTPClientResponsePart, HTTPClientRequestPart>
+
+  static func connect(_ connection: any ADBConnection) async throws -> any ToolHTTPExchange {
+    guard let socket = connection as? any ADBSocketTransfer else {
+      throw ADBError.protocolFailure("This connection cannot transfer a socket.")
+    }
+    let descriptor = try socket.takeSocketDescriptor()
     let stream = try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
       .withConnectedSocket(descriptor) { channel in
         channel.eventLoop.makeCompletedFuture {
@@ -88,43 +124,37 @@ struct ToolHTTPRequestOperation {
           return try NIOAsyncChannel<HTTPClientResponsePart, HTTPClientRequestPart>(wrappingChannelSynchronously: channel)
         }
       }
-    let channel = stream.channel
-    let invalidation: UUID?
-    do {
-      invalidation = try target?.onInvalidation { channel.close(promise: nil) }
-    } catch {
-      try? await channel.close()
-      throw error
-    }
-    defer {
-      if let invalidation { target?.removeInvalidationHandler(invalidation) }
-    }
-    let cancelTimeout = requestTimeout.map { scheduleTimeout(channel, $0) }
-    defer { cancelTimeout?() }
+    return Self(stream: stream)
+  }
 
-    try await withTaskCancellationHandler {
-      try await stream.executeThenClose { inbound, outbound in
+  func close() {
+    stream.channel.close(promise: nil)
+  }
+
+  func scheduleTimeout(_ delay: TimeAmount) -> @Sendable () -> Void {
+    let timer = stream.channel.eventLoop.scheduleTask(in: delay) { close() }
+    return { timer.cancel() }
+  }
+
+  func run(
+    isolation: isolated (any Actor)?, input: ToolHTTPRequestInput,
+    onResponse: (HTTPResponseHead) async throws -> Void, onData: (Data) async throws -> Void
+  ) async throws {
+    try await stream.executeThenClose { inbound, outbound in
+      try Task.checkCancellation()
+      var request: [HTTPClientRequestPart] = [.head(input.head)]
+      if !input.body.isEmpty { request.append(.body(.byteBuffer(ByteBuffer(bytes: input.body)))) }
+      request.append(.end(nil))
+      try await outbound.write(contentsOf: request)
+      for try await part in inbound {
         try Task.checkCancellation()
-        var request: [HTTPClientRequestPart] = [.head(input.head)]
-        if !input.body.isEmpty { request.append(.body(.byteBuffer(ByteBuffer(bytes: input.body)))) }
-        request.append(.end(nil))
-        try await outbound.write(contentsOf: request)
-        for try await part in inbound {
-          try Task.checkCancellation()
-          switch part {
-          case .head(let head):
-            guard !(300 ..< 400).contains(head.status.code) else { throw ToolHTTPTransportError.redirectNotAllowed }
-            try await onResponse(head)
-          case .body(let bytes):
-            try await onData(Data(bytes.readableBytesView))
-          case .end:
-            return
-          }
+        switch part {
+        case .head(let head): try await onResponse(head)
+        case .body(let bytes): try await onData(Data(bytes.readableBytesView))
+        case .end: return
         }
-        throw ToolHTTPTransportError.invalidResponse
       }
-    } onCancel: {
-      channel.close(promise: nil)
+      throw ToolHTTPTransportError.invalidResponse
     }
   }
 }

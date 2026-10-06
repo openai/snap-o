@@ -388,38 +388,26 @@ usb-phone device product:oriole
 
 
 class ADBTests(unittest.TestCase):
-    def test_repeated_shutdown_signals_allow_forward_cleanup(self):
-        script = f'''
-import runpy, signal, sys
-snapo = runpy.run_path({str(SCRIPT)!r})
-signal.signal(signal.SIGINT, snapo["interrupted"])
-signal.signal(signal.SIGTERM, snapo["interrupted"])
-class Adb:
-    def command(self, *args, **kwargs):
-        if args[1] == "--remove":
-            print("removing", flush=True)
-            assert sys.stdin.readline().strip() == "continue"
-            print("removed", flush=True)
-        return "27185"
-try:
-    with snapo["Forward"](Adb(), snapo["Server"]("emulator-5554", "snapo_network_42")):
-        print("ready", flush=True)
-        signal.pause()
-except KeyboardInterrupt:
-    pass
-'''
-        process = subprocess.Popen([sys.executable, "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        try:
-            self.assertEqual(process.stdout.readline().strip(), "ready")
-            process.send_signal(signal.SIGINT)
-            self.assertEqual(process.stdout.readline().strip(), "removing")
-            process.send_signal(signal.SIGTERM)
-            output, _ = process.communicate("continue\n", timeout=5)
-            self.assertIn("removed", output)
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
+    def test_shutdown_disables_further_signals_before_forward_cleanup(self):
+        adb = mock.Mock()
+        adb.command.return_value = "27185"
+        server = snapo.Server("emulator-5554", "snapo_network_42")
+        with mock.patch.object(snapo.signal, "signal") as install:
+            def verify_cleanup(*args, **kwargs):
+                if args[:2] == ("forward", "--remove"):
+                    self.assertEqual(install.call_args_list, [
+                        mock.call(signal.SIGINT, signal.SIG_IGN),
+                        mock.call(signal.SIGTERM, signal.SIG_IGN),
+                    ])
+                return "27185"
+
+            adb.command.side_effect = verify_cleanup
+            with self.assertRaises(KeyboardInterrupt):
+                with snapo.Forward(adb, server):
+                    snapo.interrupted(signal.SIGINT, None)
+        adb.command.assert_called_with(
+            "forward", "--remove", "tcp:27185", serial="emulator-5554",
+        )
 
     def test_parser_leaves_default_adb_endpoint_to_configured_adb(self):
         options = snapo.parser().parse_args(["list"])

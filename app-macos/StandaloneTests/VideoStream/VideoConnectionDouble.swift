@@ -1,7 +1,16 @@
 import Foundation
 
+protocol ADBConnection: AnyObject, Sendable {
+  func close()
+  func withRequestTimeout<Value>(_ timeout: Duration, _ body: () throws -> Value) rethrows -> Value
+  func sendTransport(to deviceID: String) throws
+  func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String?
+  func writeFully(_ bytes: Data) throws
+  func readChunk(maxLength: Int) throws -> Data?
+}
+
 /// Simulates blocking device I/O; no real ADB server or helper is used.
-final class ADBSocketConnection: @unchecked Sendable {
+final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
   private let condition = NSCondition()
   private var bytes = Data([0x53, 0x4E, 0x56, 0x31])
   private var closed = false

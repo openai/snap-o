@@ -9,7 +9,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
   private let target: DeviceTarget
   private let clock: AnyClock<Duration>
   private var hasStopped = false
-  private var connection: ADBSocketConnection?
+  private var connection: (any ADBConnection)?
   private var isReady = false
   private var task: Task<Void, Never>?
   private var timeout: Task<Void, Never>?
@@ -59,7 +59,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     }
     task = Task.detached(priority: .userInitiated) { [weak self] in
       guard !Task.isCancelled else { return }
-      var socket: ADBSocketConnection?
+      var socket: (any ADBConnection)?
       do {
         guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
           throw ADBError.protocolFailure("Missing device video helper")
@@ -112,7 +112,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     isReady = true
   }
 
-  private func install(_ connection: ADBSocketConnection) -> Bool {
+  private func install(_ connection: any ADBConnection) -> Bool {
     guard !hasStopped else { return false }
     self.connection = connection
     return true
@@ -126,7 +126,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     receiver?(event)
   }
 
-  private nonisolated static func readExactly(_ count: Int, from connection: ADBSocketConnection) throws -> Data {
+  private nonisolated static func readExactly(_ count: Int, from connection: any ADBConnection) throws -> Data {
     var bytes = Data()
     while bytes.count < count {
       guard let chunk = try connection.readChunk(maxLength: count - bytes.count), !chunk.isEmpty else {
