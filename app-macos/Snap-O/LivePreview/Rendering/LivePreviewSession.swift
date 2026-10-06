@@ -116,7 +116,9 @@ final class LivePreviewSession {
       Perf.startupEvent("session format received", deviceID: deviceID)
       #endif
 
-      for id in renderers.keys { renderers[id]?.needsKeyFrame = true }
+      for id in renderers.keys {
+        renderers[id]?.needsKeyFrame = true
+      }
       discardPendingSamples()
       needsKeyFrame = true
       let dims = CMVideoFormatDescriptionGetDimensions(format)
@@ -149,7 +151,9 @@ final class LivePreviewSession {
     #endif
     if isKeyFrame {
       needsKeyFrame = false
-      for id in renderers.keys { renderers[id]?.needsKeyFrame = false }
+      for id in renderers.keys {
+        renderers[id]?.needsKeyFrame = false
+      }
       if renderers.isEmpty { discardPendingSamples() }
     }
     guard !needsKeyFrame else { return }
@@ -195,7 +199,9 @@ final class LivePreviewSession {
     stopError = error
     let continuations = stopContinuations
     stopContinuations.removeAll()
-    for continuation in continuations { continuation.resume() }
+    for continuation in continuations {
+      continuation.resume()
+    }
 
     if displayInfo == nil {
       let continuations = readyContinuations

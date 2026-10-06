@@ -57,7 +57,9 @@ final class ScreenshotCapture: CaptureBatch {
         // Keep completed screenshots when the remaining requests are cancelled.
         await work.value
       } else {
-        for item in items { item.update(.cancelled) }
+        for item in items {
+          item.update(.cancelled)
+        }
         isComplete = true
       }
     }
@@ -66,7 +68,9 @@ final class ScreenshotCapture: CaptureBatch {
   }
 
   func close() async {
-    if let closeTask { await closeTask.value; return }
+    if let closeTask { await closeTask.value
+      return
+    }
     let completion = beginFinalization(discarding: true)
     let task = Task {
       await completion.value

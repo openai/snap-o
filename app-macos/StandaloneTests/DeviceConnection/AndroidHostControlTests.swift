@@ -17,7 +17,9 @@ struct AndroidHostControlTests {
     let delegate = ControlTestListener(host: host)
     listener.delegate = delegate
     listener.resume()
-    defer { listener.invalidate(); withExtendedLifetime(delegate) {} }
+    defer { listener.invalidate()
+      withExtendedLifetime(delegate) {}
+    }
     let target = DeviceTarget(serial: "emulator-5554", transportID: "42")
     let read = TestSuspension()
     let cancelled = TestSignal()
@@ -47,7 +49,9 @@ struct AndroidHostControlTests {
     let revision = cancelled.revision
     let shutdown = owner.beginShutdown()
     let completed = TestValue(false)
-    let waiter = Task { await shutdown.value; completed.value = true }
+    let waiter = Task { await shutdown.value
+      completed.value = true
+    }
     try await cancelled.wait(after: revision)
     precondition(closes.value == 0 && !completed.value)
     read.resume()
@@ -66,7 +70,9 @@ struct AndroidHostControlTests {
     let delegate = ControlTestListener(host: host)
     listener.delegate = delegate
     listener.resume()
-    defer { listener.invalidate(); withExtendedLifetime(delegate) {} }
+    defer { listener.invalidate()
+      withExtendedLifetime(delegate) {}
+    }
     let target = DeviceTarget(serial: "emulator-5554", transportID: "42")
     let read = TestSuspension()
     let cancelled = TestSignal()
@@ -104,7 +110,10 @@ struct AndroidHostControlTests {
 
 private final class ControlTestListener: NSObject, NSXPCListenerDelegate {
   let host: ControlTestHost
-  init(host: ControlTestHost) { self.host = host }
+  init(host: ControlTestHost) {
+    self.host = host
+  }
+
   func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
     connection.exportedInterface = AndroidHostInterface.make()
     connection.exportedObject = host
@@ -119,7 +128,9 @@ private final class ControlTestHost: NSObject, @unchecked Sendable {
   private var reply: (@Sendable (Data?, String?) -> Void)?
   private var received = false
   private var failed = false
-  var displayFailed: Bool { lock.withLock { failed } }
+  var displayFailed: Bool {
+    lock.withLock { failed }
+  }
 
   @objc
   func control(
@@ -128,7 +139,9 @@ private final class ControlTestHost: NSObject, @unchecked Sendable {
   ) {
     lock.withLock { self.reply = reply }
     display.readDisplay { [self] value, error in
-      lock.withLock { received = true; failed = value == nil && error != nil }
+      lock.withLock { received = true
+        failed = value == nil && error != nil
+      }
       replied.signal()
     }
   }
@@ -142,7 +155,10 @@ private final class ControlTestHost: NSObject, @unchecked Sendable {
   }
 
   func finish() {
-    let callback = lock.withLock { let callback = reply; reply = nil; return callback }
+    let callback = lock.withLock { let callback = reply
+      reply = nil
+      return callback
+    }
     callback?(Data(), nil)
   }
 }

@@ -36,7 +36,9 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
 
   func prepare() {
     guard !isStopped else { return }
-    guard target?.isValid != false else { stop(); return }
+    guard target?.isValid != false else { stop()
+      return
+    }
     guard task == nil, transport == nil || !pending.isEmpty else { return }
     task = Task { await flush() }
   }
@@ -87,7 +89,9 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
 
   private func flush() async {
     guard !Task.isCancelled else { return }
-    guard target?.isValid != false else { stop(); return }
+    guard target?.isValid != false else { stop()
+      return
+    }
     defer {
       if !Task.isCancelled {
         task = nil
@@ -110,7 +114,9 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
         let (event, changeCount) = pending.removeFirst()
         let response = try await transport.send(event)
         guard !Task.isCancelled else { return }
-        guard target?.isValid != false else { stop(); return }
+        guard target?.isValid != false else { stop()
+          return
+        }
         // Finish the wire response, but ignore results from a previous keyboard focus.
         guard revision == inputRevision else { continue }
         switch response {
@@ -129,7 +135,9 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
       }
     } catch {
       guard !Task.isCancelled else { return }
-      guard target?.isValid != false else { stop(); return }
+      guard target?.isValid != false else { stop()
+        return
+      }
       if revision != inputRevision {
         // Retry only unsent input from the new focus, never the failed event.
         transport?.close()

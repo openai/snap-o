@@ -8,7 +8,10 @@ final class DeviceManager {
   func retryADBServer() {}
 
   private(set) var inventory: DeviceInventory
-  var latestDevices: [Device] { inventory.ready ?? [] }
+  var latestDevices: [Device] {
+    inventory.ready ?? []
+  }
+
   private let source: (@Sendable () async -> AsyncStream<[Device]>)?
 
   init(devices: [Device] = [], deviceStream: (@Sendable () async -> AsyncStream<[Device]>)? = nil) {

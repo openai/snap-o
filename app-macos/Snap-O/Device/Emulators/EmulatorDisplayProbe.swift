@@ -43,7 +43,9 @@ final class EmulatorDisplayProbe: NSObject, EmulatorDisplayProvider {
 
   func cancel() {
     active = false
-    for task in tasks.values { task.cancel() }
+    for task in tasks.values {
+      task.cancel()
+    }
   }
 
   func shutdown() async {
@@ -53,6 +55,8 @@ final class EmulatorDisplayProbe: NSObject, EmulatorDisplayProvider {
       self.invalidationHandler = nil
     }
     let pending = Array(tasks.values)
-    for task in pending { await task.value }
+    for task in pending {
+      await task.value
+    }
   }
 }

@@ -125,8 +125,14 @@ struct EmulatorDiscoveryTests {
 private struct SnapshotClock: Clock {
   let base = TestClock<Duration>()
   let sleepRequested = ScriptGate()
-  var now: TestClock<Duration>.Instant { base.now }
-  var minimumResolution: Duration { base.minimumResolution }
+  var now: TestClock<Duration>.Instant {
+    base.now
+  }
+
+  var minimumResolution: Duration {
+    base.minimumResolution
+  }
+
   func sleep(until deadline: TestClock<Duration>.Instant, tolerance: Duration?) async throws {
     sleepRequested.signal()
     try await base.sleep(until: deadline, tolerance: tolerance)

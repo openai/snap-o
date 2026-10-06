@@ -306,7 +306,7 @@ public struct ADBClient: Sendable {
     guard checkBoot else { return try await EmulatorConnection.parse(devicesList()) }
     let (handle, stream) = try await trackDevices()
     defer { handle.cancel() }
-    let connections = EmulatorConnection.parse(try await firstDeviceSnapshot(from: stream))
+    let connections = try await EmulatorConnection.parse(firstDeviceSnapshot(from: stream))
     try Task.checkCancellation()
     guard let server = handle.server,
           connections.contains(where: {

@@ -236,7 +236,7 @@ struct EmulatorControlRequest: Codable {
 }
 
 /// Identifies the verified gRPC peer kept alive during a native console operation.
-struct EmulatorNativeConnection: Codable, Sendable {
+struct EmulatorNativeConnection: Codable {
   let processID: Int32
   let grpcPort: Int
   let clientPort: Int

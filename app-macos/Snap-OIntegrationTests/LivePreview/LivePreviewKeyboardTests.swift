@@ -211,7 +211,10 @@ struct LivePreviewKeyboardTests {
     let shutdown = keyboard.beginShutdown()
     let entered = TestValue(false)
     let completed = TestValue(false)
-    let waiter = Task { entered.value = true; await shutdown.value; completed.value = true }
+    let waiter = Task { entered.value = true
+      await shutdown.value
+      completed.value = true
+    }
     try await waitForState { entered.value }
     #expect(transport.isClosed && !completed.value)
     keyboard.prepare()
@@ -236,7 +239,10 @@ struct LivePreviewKeyboardTests {
     let release = keyboard.releaseInput()
     let completed = TestValue(false)
     let entered = TestValue(false)
-    let wait = Task { entered.value = true; await release.value; completed.value = true }
+    let wait = Task { entered.value = true
+      await release.value
+      completed.value = true
+    }
     try await waitForState { entered.value }
     #expect(!completed.value)
     transport.finish(.copied("Old window copy"))

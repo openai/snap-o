@@ -51,8 +51,12 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
       guardConnection = nil
       return owned
     }
-    for connection in owned.0 { connection.close() }
-    for target in owned.1 { target.invalidate() }
+    for connection in owned.0 {
+      connection.close()
+    }
+    for target in owned.1 {
+      target.invalidate()
+    }
   }
 
   /// The initial list only supplies a candidate. Publish the replacement stream instead.

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-// The pane owns navigation. These controllable dependencies supply device and capture events.
+/// The pane owns navigation. These controllable dependencies supply device and capture events.
 @Observable
 @MainActor
 final class DeviceManager {
@@ -13,6 +13,7 @@ final class DeviceManager {
     screenshotTargets.append(target)
     return Data("thumbnail".utf8)
   }
+
   func start() {}
   func retryADBServer() {}
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
@@ -49,11 +50,23 @@ final class LivePreviewAttachment {
   let preview: PreviewStatus? = PreviewStatus()
   var isClosed = false
   var isPaneVisible = true
-  init(_ target: DeviceTarget) { self.target = target }
+  init(_ target: DeviceTarget) {
+    self.target = target
+  }
+
   func setVisible(_ visible: Bool) {}
-  func setPaneVisible(_ visible: Bool) { isPaneVisible = visible }
-  func close() async { isClosed = true }
-  func screenshot() async throws -> Data { throw CancellationError() }
+  func setPaneVisible(_ visible: Bool) {
+    isPaneVisible = visible
+  }
+
+  func close() async {
+    isClosed = true
+  }
+
+  func screenshot() async throws -> Data {
+    throw CancellationError()
+  }
+
   func sendKey(_ key: String) async throws {}
 }
 
@@ -77,8 +90,14 @@ final class StartupCapturePreparation {
     livePreview: LivePreviewService,
     makeEmulatorControls: @escaping @MainActor (DeviceTarget) -> EmulatorControlsController?
   ) {}
-  func claimLivePreview(for device: Device) -> LivePreviewAttachment? { nil }
-  func claimScreenshots(for devices: [Device]) -> ScreenshotCapture? { nil }
+  func claimLivePreview(for device: Device) -> LivePreviewAttachment? {
+    nil
+  }
+
+  func claimScreenshots(for devices: [Device]) -> ScreenshotCapture? {
+    nil
+  }
+
   func discard() async {}
 }
 
@@ -90,9 +109,15 @@ final class ScreenshotCapture: CaptureBatch {
   let items: [CaptureItem]
   var isComplete = false
   var closeCount = 0
-  init(_ devices: [Device]) { items = devices.map(CaptureItem.init) }
+  init(_ devices: [Device]) {
+    items = devices.map(CaptureItem.init)
+  }
+
   func start() {}
-  func close() async { closeCount += 1; isComplete = true }
+  func close() async {
+    closeCount += 1
+    isComplete = true
+  }
 }
 
 @Observable
@@ -111,8 +136,15 @@ final class RecordingCapture: CaptureBatch {
     items = devices.map(CaptureItem.init)
     self.options = options
   }
-  func start() { phase = .recording }
-  func requestFinish() { phase = .finishing }
+
+  func start() {
+    phase = .recording
+  }
+
+  func requestFinish() {
+    phase = .finishing
+  }
+
   func close() async {
     closeCount += 1
     if let closeGate { try? await closeGate.wait() }
@@ -132,5 +164,8 @@ final class ToolSession {
     isVisible = visible
     if visible, starts == 0 { starts += 1 }
   }
-  func stop() async { isClosed = true }
+
+  func stop() async {
+    isClosed = true
+  }
 }

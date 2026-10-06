@@ -44,7 +44,7 @@ public struct Device: Identifiable, Hashable, Sendable {
 }
 
 /// Each list stays nil until discovery has reported its first result.
-struct DeviceInventory: Equatable, Sendable {
+struct DeviceInventory: Equatable {
   var connected: [Device]?
   var ready: [Device]?
 }
@@ -118,7 +118,9 @@ public final class DeviceTarget: Hashable, @unchecked Sendable {
     hasher.combine(id)
   }
 
-  var isValid: Bool { lock.withLock { valid } }
+  var isValid: Bool {
+    lock.withLock { valid }
+  }
 
   func requireTransport(for serial: String) throws -> String {
     try lock.withLock {
@@ -152,6 +154,8 @@ public final class DeviceTarget: Hashable, @unchecked Sendable {
       invalidationHandlers.removeAll()
       return handlers
     }
-    for handler in handlers { handler() }
+    for handler in handlers {
+      handler()
+    }
   }
 }

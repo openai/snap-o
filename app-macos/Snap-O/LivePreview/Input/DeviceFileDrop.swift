@@ -88,7 +88,9 @@ final class DeviceFileDrop {
   }
 
   func shutdown() async {
-    if let shutdownTask { await shutdownTask.value; return }
+    if let shutdownTask { await shutdownTask.value
+      return
+    }
     if let handler = invalidationHandler {
       device.connection?.removeInvalidationHandler(handler)
       invalidationHandler = nil

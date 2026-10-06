@@ -30,18 +30,28 @@ private struct SocketPair {
         connect(client, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
       }
     }
-    guard connected == 0 else { close(client); throw socketTestError() }
+    guard connected == 0 else { close(client)
+      throw socketTestError()
+    }
     let server = accept(listener, nil, nil)
-    guard server >= 0 else { close(client); throw socketTestError() }
-    self.clientPort = try Self.port(client)
+    guard server >= 0 else { close(client)
+      throw socketTestError()
+    }
+    clientPort = try Self.port(client)
     self.serverPort = serverPort
     self.client = client
     self.server = server
   }
 
-  mutating func closeServer() { close(server); server = -1 }
+  mutating func closeServer() {
+    close(server)
+    server = -1
+  }
 
-  func closeBoth() { close(client); close(server) }
+  func closeBoth() {
+    close(client)
+    close(server)
+  }
 
   private static func port(_ socket: Int32) throws -> Int {
     var address = sockaddr_in()

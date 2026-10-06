@@ -1,6 +1,6 @@
 import Foundation
 
-// Console tests inject their input backends. Any accidental device access fails.
+/// Console tests inject their input backends. Any accidental device access fails.
 public struct ADBClient: Sendable {
   let setup: PreviewSetupProbe?
   let requests: PreviewRequestProbe?
@@ -12,21 +12,25 @@ public struct ADBClient: Sendable {
     self.requests = requests
     files = nil
   }
+
   init(probe: FileTransferProbe) {
     setup = nil
     requests = nil
     files = probe
   }
+
   func bound(to target: DeviceTarget) -> Self {
     var client = self
     client.target = target
     return client
   }
+
   func withTimeout(_ timeout: Duration) -> Self {
     var client = self
     client.timeout = timeout
     return client
   }
+
   func makeConnection() async throws -> ADBSocketConnection {
     throw ADBError.protocolFailure("Unexpected device connection in input tests")
   }
@@ -35,18 +39,22 @@ public struct ADBClient: Sendable {
     guard let setup else { throw unexpected() }
     return try await setup.readBoot()
   }
+
   func displayDensity(deviceID: String) async throws -> Double {
     guard let setup else { throw unexpected() }
     return try await setup.readDensity()
   }
+
   func getShowTouches(deviceID: String) async throws -> Bool {
     guard let setup else { throw unexpected() }
     return try await setup.readTouches(timeout: timeout)
   }
+
   func setShowTouches(deviceID: String, enabled: Bool) async throws {
     guard let setup else { throw unexpected() }
     try await setup.writeTouches(enabled, timeout: timeout)
   }
+
   func keyEvent(deviceID: String, keyCode: String) async throws -> String {
     if let requests {
       try await requests.run(target: target)
@@ -56,26 +64,33 @@ public struct ADBClient: Sendable {
     try await setup.wake(keyCode)
     return ""
   }
+
   func screencapPNG(deviceID: String) async throws -> Data {
     guard let requests else { throw unexpected() }
     try await requests.run(target: target)
     return Data("screenshot".utf8)
   }
-  private func unexpected() -> ADBError { ADBError.protocolFailure("Unexpected device access in input tests") }
+
+  private func unexpected() -> ADBError {
+    ADBError.protocolFailure("Unexpected device access in input tests")
+  }
 
   private func fileTransfer(for serial: String) throws -> (DeviceTarget, FileTransferProbe) {
     guard let target, let files else { throw unexpected() }
     _ = try target.requireTransport(for: serial)
     return (target, files)
   }
+
   func downloadsDirectory(deviceID: String) async throws -> String {
     _ = try fileTransfer(for: deviceID)
     return "/storage/emulated/0/Download"
   }
+
   func fileExists(deviceID: String, path: String) async throws -> Bool {
     let (_, files) = try fileTransfer(for: deviceID)
     return await files.exists
   }
+
   func copyFile(
     deviceID: String, localURL: URL, destination: String, replace: Bool,
     progress: @escaping @Sendable (Int64) -> Void
@@ -84,6 +99,7 @@ public struct ADBClient: Sendable {
     try await files.transfer(target: target, progress: progress)
     return nil
   }
+
   func installAPK(deviceID: String, localURL: URL, progress: @escaping @Sendable (Int64) -> Void) async throws {
     let (target, files) = try fileTransfer(for: deviceID)
     try await files.transfer(target: target, progress: progress)
@@ -101,7 +117,10 @@ actor ADBService {
     self.setup = setup
     self.requests = requests
   }
-  func exec() -> ADBClient { ADBClient(setup: setup, requests: requests) }
+
+  func exec() -> ADBClient {
+    ADBClient(setup: setup, requests: requests)
+  }
 }
 
 enum EmulatorRotationClient {
@@ -125,9 +144,18 @@ final class DeviceVideoSource: LivePreviewFrameSource {
     }
     self.source = source
   }
-  func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) { source.start(deliver: deliver) }
-  func stop() { source.stop() }
-  func waitUntilStopped() async { await source.waitUntilStopped() }
+
+  func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
+    source.start(deliver: deliver)
+  }
+
+  func stop() {
+    source.stop()
+  }
+
+  func waitUntilStopped() async {
+    await source.waitUntilStopped()
+  }
 }
 
 extension ClipboardSync {
@@ -140,7 +168,13 @@ extension ClipboardSync {
 
 @MainActor
 final class ScreenshotCapture {
-  var isComplete: Bool { false }
-  func start() { preconditionFailure("Unexpected screenshot in input tests") }
+  var isComplete: Bool {
+    false
+  }
+
+  func start() {
+    preconditionFailure("Unexpected screenshot in input tests")
+  }
+
   func close() async {}
 }

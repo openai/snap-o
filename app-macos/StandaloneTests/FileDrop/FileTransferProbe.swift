@@ -7,6 +7,7 @@ actor FileTransferProbe {
   private(set) var wasCancelled = false {
     didSet { testChanges.signal() }
   }
+
   private var progress: [@Sendable (Int64) -> Void] = []
 
   func configure(exists: Bool = false, gate: TestGate? = nil) {
@@ -24,6 +25,11 @@ actor FileTransferProbe {
     _ = try target.requireTransport(for: target.serial)
   }
 
-  private func recordCancellation() { wasCancelled = true }
-  func report(_ sent: Int64, for index: Int) { progress[index](sent) }
+  private func recordCancellation() {
+    wasCancelled = true
+  }
+
+  func report(_ sent: Int64, for index: Int) {
+    progress[index](sent)
+  }
 }

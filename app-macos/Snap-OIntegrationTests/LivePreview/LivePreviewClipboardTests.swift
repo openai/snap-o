@@ -59,7 +59,9 @@ struct LivePreviewClipboardTests {
     try await waitForState { fixture.clipboards.count == 1 }
     await fixture.clipboards[0].waitUntilReceiving()
     let finished = TestValue(false)
-    let close = Task { await attachment.close(); finished.value = true }
+    let close = Task { await attachment.close()
+      finished.value = true
+    }
     await cleanup.waitUntilStarted()
     await fixture.clipboards[0].deliver("late device")
     #expect(fixture.pasteboard.string(forType: .string) != "late device")

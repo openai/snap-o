@@ -14,7 +14,7 @@ protocol LivePreviewFrameSource: AnyObject {
 }
 
 extension LivePreviewFrameSource {
-  // Independent-frame sources do not need a new keyframe for a joining renderer.
+  /// Independent-frame sources do not need a new keyframe for a joining renderer.
   func requestKeyFrame() {}
 }
 

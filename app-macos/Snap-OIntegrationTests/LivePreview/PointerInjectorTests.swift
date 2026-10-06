@@ -67,7 +67,9 @@ private actor RecordingBackend: LivePreviewPointerBackend {
   }
 
   func waitForCancellation() async throws {
-    while !wasCancelled { try await changed.wait(after: changed.revision) }
+    while !wasCancelled {
+      try await changed.wait(after: changed.revision)
+    }
   }
 
   func release() {
@@ -90,7 +92,9 @@ private actor BackendSequence {
 
 private actor StopCompletions {
   private(set) var count = 0
-  func record() { count += 1 }
+  func record() {
+    count += 1
+  }
 }
 
 @Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
@@ -223,7 +227,9 @@ struct LivePreviewPointerTests {
     await sender.prepare(target: target)
     try await preparation.waitForEvents(1)
     let finished = StopCompletions()
-    let first = Task { await sender.stopDevice(target); await finished.record() }
+    let first = Task { await sender.stopDevice(target)
+      await finished.record()
+    }
     try await preparation.waitForCancellation()
     let second = Task {
       if shutsDown { await sender.stopAll() } else { await sender.stopDevice(target) }
@@ -244,7 +250,9 @@ struct LivePreviewPointerTests {
     await sender.enqueue(event(.down))
     try await backend.waitForEvents(1)
     let finished = StopCompletions()
-    let stop = Task { await sender.stopAll(); await finished.record() }
+    let stop = Task { await sender.stopAll()
+      await finished.record()
+    }
     try await backend.waitForCancellation()
     #expect(await finished.count == 0)
     await sender.enqueue(event(.down, source: .mouse))

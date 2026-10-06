@@ -57,7 +57,9 @@ struct PreviewSetupTests {
     let attachment = fixture.attach()
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let close = Task { await attachment.close(); finished.value = true }
+    let close = Task { await attachment.close()
+      finished.value = true
+    }
     try await waitForState { fixture.probe.wakeWasCancelled }
     #expect(!finished.value)
     await gate.open()
@@ -113,7 +115,9 @@ struct PreviewSetupTests {
     let attachment = fixture.attach()
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let close = Task { await attachment.close(); finished.value = true }
+    let close = Task { await attachment.close()
+      finished.value = true
+    }
     try await waitForState { fixture.probe.bootWasCancelled }
     #expect(!finished.value)
     await gate.open()
@@ -225,7 +229,9 @@ struct PreviewSetupTests {
     fixture.settings.showTouchesDuringCapture = false
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let close = Task { await attachment.close(); finished.value = true }
+    let close = Task { await attachment.close()
+      finished.value = true
+    }
     try await waitForState { attachment.isClosed }
     #expect(!finished.value)
     fixture.probe.writeGate = nil
@@ -245,9 +251,13 @@ struct PreviewSetupTests {
     await gate.waitUntilEntered()
     try await waitForState { fixture.source.starts == 1 }
     let finished = TestValue(0)
-    let first = Task { await attachment.close(); finished.value += 1 }
+    let first = Task { await attachment.close()
+      finished.value += 1
+    }
     try await waitForState { attachment.isClosed }
-    let second = Task { await fixture.service.shutdown(); finished.value += 1 }
+    let second = Task { await fixture.service.shutdown()
+      finished.value += 1
+    }
     #expect(finished.value == 0)
     await gate.open()
     await first.value
@@ -307,7 +317,9 @@ struct PreviewSetupTests {
       DeviceVideoSource.sources[target] = source
     }
 
-    func attach() -> LivePreviewAttachment { service.attach(to: target) }
+    func attach() -> LivePreviewAttachment {
+      service.attach(to: target)
+    }
 
     func close() async {
       await service.shutdown()
@@ -348,13 +360,17 @@ final class PreviewSetupProbe {
     } onCancel: {
       Task { @MainActor in self.bootWasCancelled = true }
     }
-    if bootFailures > 0 { bootFailures -= 1; throw Failure.unavailable }
+    if bootFailures > 0 { bootFailures -= 1
+      throw Failure.unavailable
+    }
     return bootReady
   }
 
   func readDensity() throws -> Double {
     densityQueries += 1
-    if densityFailures > 0 { densityFailures -= 1; throw Failure.unavailable }
+    if densityFailures > 0 { densityFailures -= 1
+      throw Failure.unavailable
+    }
     return 3
   }
 
@@ -403,6 +419,9 @@ final class PreviewSetupSource: LivePreviewFrameSource {
     deliver(.format(format))
   }
 
-  func stop() { stops += 1 }
+  func stop() {
+    stops += 1
+  }
+
   func waitUntilStopped() async {}
 }

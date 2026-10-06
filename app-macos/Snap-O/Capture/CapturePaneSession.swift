@@ -36,6 +36,7 @@ final class CapturePaneSession {
     let review: CaptureReviewState
     let cleanup: Task<Void, Never>
   }
+
   @ObservationIgnored private var retiredReviews: [UUID: RetiredReview] = [:]
   @ObservationIgnored private var retiredPreviews: [UUID: Task<Void, Never>] = [:]
   @ObservationIgnored private var work: [UUID: Task<Void, Never>] = [:]
@@ -66,8 +67,8 @@ final class CapturePaneSession {
       guard !recording.options.recordsBugReport else { return [] }
       return recording.items.compactMap { item in
         switch item.state {
-        case .pending, .recording: return item.target?.isValid == true ? item.device : nil
-        default: return nil
+        case .pending, .recording: item.target?.isValid == true ? item.device : nil
+        default: nil
         }
       }
     }
@@ -83,24 +84,79 @@ final class CapturePaneSession {
       return LivePreviewDevice(id: target.id, device: device, display: display)
     }
   }
-  var currentPreview: LivePreviewDevice? { previews.first { $0.device.id == selectedPreviewDeviceID } }
-  var selectedDeviceID: String? { review?.selectedItem?.device.id ?? selectedPreviewDeviceID }
-  var isRecording: Bool { recording != nil }
-  var isFinishingRecording: Bool { recording?.phase == .finishing }
-  var isReviewingCapture: Bool { review != nil }
-  var isLivePreviewActive: Bool { review == nil }
-  var isProcessing: Bool { review.map { !$0.batch.isComplete } ?? false }
-  var hasDevices: Bool { !(devices.inventory.connected ?? []).isEmpty }
-  var isDeviceListInitialized: Bool { devices.inventory.connected != nil }
-  var adbServerState: ADBServerState { devices.adbServerState }
-  var shouldFloatRecordingWindow: Bool { recording?.options.recordsBugReport == true }
-  var canCaptureNow: Bool { !isClosing && !isRecording && review?.isSaving != true && !(devices.inventory.ready ?? []).isEmpty }
-  var canStartRecordingNow: Bool { !isClosing && !isRecording && review?.isSaving != true && hasDevices }
-  var canSelectLivePreview: Bool { !isClosing && !isRecording && review?.isSaving != true }
-  var currentCaptureDeviceTitle: String? { review?.selectedItem?.device.displayTitle ?? currentPreview?.device.displayTitle }
-  var navigationTitle: String { currentCaptureDeviceTitle ?? "Snap-O" }
-  var loadingPreviewDeviceID: String? { selectedPreviewDeviceID ?? wantedDevices.first?.id }
-  var displayInfoForSizing: DisplayInfo? { review?.currentCapture?.media.common.display ?? currentPreview?.display ?? lastDisplay }
+
+  var currentPreview: LivePreviewDevice? {
+    previews.first { $0.device.id == selectedPreviewDeviceID }
+  }
+
+  var selectedDeviceID: String? {
+    review?.selectedItem?.device.id ?? selectedPreviewDeviceID
+  }
+
+  var isRecording: Bool {
+    recording != nil
+  }
+
+  var isFinishingRecording: Bool {
+    recording?.phase == .finishing
+  }
+
+  var isReviewingCapture: Bool {
+    review != nil
+  }
+
+  var isLivePreviewActive: Bool {
+    review == nil
+  }
+
+  var isProcessing: Bool {
+    review.map { !$0.batch.isComplete } ?? false
+  }
+
+  var hasDevices: Bool {
+    !(devices.inventory.connected ?? []).isEmpty
+  }
+
+  var isDeviceListInitialized: Bool {
+    devices.inventory.connected != nil
+  }
+
+  var adbServerState: ADBServerState {
+    devices.adbServerState
+  }
+
+  var shouldFloatRecordingWindow: Bool {
+    recording?.options.recordsBugReport == true
+  }
+
+  var canCaptureNow: Bool {
+    !isClosing && !isRecording && review?.isSaving != true && !(devices.inventory.ready ?? []).isEmpty
+  }
+
+  var canStartRecordingNow: Bool {
+    !isClosing && !isRecording && review?.isSaving != true && hasDevices
+  }
+
+  var canSelectLivePreview: Bool {
+    !isClosing && !isRecording && review?.isSaving != true
+  }
+
+  var currentCaptureDeviceTitle: String? {
+    review?.selectedItem?.device.displayTitle ?? currentPreview?.device.displayTitle
+  }
+
+  var navigationTitle: String {
+    currentCaptureDeviceTitle ?? "Snap-O"
+  }
+
+  var loadingPreviewDeviceID: String? {
+    selectedPreviewDeviceID ?? wantedDevices.first?.id
+  }
+
+  var displayInfoForSizing: DisplayInfo? {
+    review?.currentCapture?.media.common.display ?? currentPreview?.display ?? lastDisplay
+  }
+
   var captureProgressText: String? {
     if let review {
       guard review.items.count > 1, let index = review.items.firstIndex(where: { $0.id == review.selectedItemID }) else { return nil }
@@ -211,7 +267,9 @@ final class CapturePaneSession {
     run {
       await self.services.startup.discard()
       if batch.options.recordsBugReport {
-        for cleanup in Array(self.retiredPreviews.values) { await cleanup.value }
+        for cleanup in Array(self.retiredPreviews.values) {
+          await cleanup.value
+        }
       }
       if !self.isClosing { batch.start() }
     }
@@ -252,7 +310,9 @@ final class CapturePaneSession {
     review.beginClosing()
     let cleanup = Task {
       if !review.batch.isComplete {
-        for await complete in Observations({ review.batch.isComplete }) where complete { break }
+        for await complete in Observations({ review.batch.isComplete }) where complete {
+          break
+        }
       }
       await review.close()
       retiredReviews[id] = nil
@@ -364,6 +424,7 @@ final class CapturePaneSession {
     guard let target = wantedDevices.first(where: { $0.id == deviceID })?.connection else { return nil }
     return displayedPreview?.target == target ? displayedPreview : nil
   }
+
   func livePreviewScreenshot(for deviceID: String) async throws -> Data {
     guard !isClosing else { throw CancellationError() }
     if let attachment = livePreviewAttachment(for: deviceID) {
@@ -372,29 +433,56 @@ final class CapturePaneSession {
     guard let target = wantedDevices.first(where: { $0.id == deviceID })?.connection else { throw CancellationError() }
     return try await devices.screenshot(for: target)
   }
-  func retryADBServer() { devices.retryADBServer() }
-  func hasAlternativeMedia() -> Bool { (review?.items.count ?? previews.count) > 1 }
-  func selectNextMedia() { selectNeighbor(1) }
-  func selectPreviousMedia() { selectNeighbor(-1) }
+
+  func retryADBServer() {
+    devices.retryADBServer()
+  }
+
+  func hasAlternativeMedia() -> Bool {
+    (review?.items.count ?? previews.count) > 1
+  }
+
+  func selectNextMedia() {
+    selectNeighbor(1)
+  }
+
+  func selectPreviousMedia() {
+    selectNeighbor(-1)
+  }
+
   private func selectNeighbor(_ offset: Int) {
-    if let review { review.selectNeighbor(offset: offset); return }
+    if let review { review.selectNeighbor(offset: offset)
+      return
+    }
     guard !previews.isEmpty else { return }
     let index = previews.firstIndex { $0.device.id == selectedPreviewDeviceID } ?? 0
     selectDevice(id: previews[(index + offset + previews.count) % previews.count].device.id)
   }
+
   func setProgressHovering(_ hovering: Bool) {
     hint.setHovered(hovering)
     if hovering { hint.show(available: previews.count > 1, transient: false) }
   }
-  func copyCurrentImage() { try? review?.copySelectedImage() }
-  func imageCopied() { imageCopyID = UUID() }
-  func discardCaptureReview() { if let review { returnToLive(from: review) } }
+
+  func copyCurrentImage() {
+    try? review?.copySelectedImage()
+  }
+
+  func imageCopied() {
+    imageCopyID = UUID()
+  }
+
+  func discardCaptureReview() {
+    if let review { returnToLive(from: review) }
+  }
 
   @discardableResult
   private func run(_ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
     let id = UUID()
     let task = Task {
-      guard !Task.isCancelled else { work[id] = nil; return }
+      guard !Task.isCancelled else { work[id] = nil
+        return
+      }
       await body()
       work[id] = nil
     }
@@ -403,11 +491,15 @@ final class CapturePaneSession {
   }
 
   func close() async {
-    if let closing { await closing.value; return }
+    if let closing { await closing.value
+      return
+    }
     isClosing = true
     observation?.cancel()
     hint.cancel()
-    for task in work.values { task.cancel() }
+    for task in work.values {
+      task.cancel()
+    }
     let review = review
     let recording = recording
     let retired = Array(retiredReviews.values)
@@ -419,11 +511,19 @@ final class CapturePaneSession {
       await withTaskGroup(of: Void.self) { group in
         if let review { group.addTask { await review.close() } }
         if let recording { group.addTask { await recording.close() } }
-        for old in retired { group.addTask { await old.review.close(); await old.cleanup.value } }
-        for pending in pendingPreviews { group.addTask { await pending.value } }
+        for old in retired {
+          group.addTask { await old.review.close()
+            await old.cleanup.value
+          }
+        }
+        for pending in pendingPreviews {
+          group.addTask { await pending.value }
+        }
       }
       await observation?.value
-      for pending in pendingWork { await pending.value }
+      for pending in pendingWork {
+        await pending.value
+      }
     }
     self.closing = closing
     await closing.value

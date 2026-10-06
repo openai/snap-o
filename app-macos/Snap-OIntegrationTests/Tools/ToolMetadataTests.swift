@@ -16,7 +16,8 @@ struct ToolMetadataTests {
       var metadata = ToolMetadata()
       metadata.applyPackageMetadata(manifest, kind: .network)
       return ToolHTTPService.App(
-        kind: .network, pid: 42, deviceID: "phone", target: target, deviceDisplayTitle: "Phone", socketName: "snapo_network_42", metadata: metadata
+        kind: .network, pid: 42, deviceID: "phone", target: target, deviceDisplayTitle: "Phone", socketName: "snapo_network_42",
+        metadata: metadata
       ).compatibility
     }
     let descriptor: [String: Any] = ["id": "network", "name": "Network"]

@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 @main
 struct MediaLifetimeTestRunner {
   static func main() async {
-    exit(await Testing.__swiftPMEntryPoint())
+    await exit(Testing.__swiftPMEntryPoint())
   }
 }
 
@@ -96,7 +96,7 @@ struct MediaLifetimeTests {
       Issue.record("Missing source should fail retention")
     } catch {}
     #expect(!started)
-    let remainingPaths = fixture.files.map { $0.standardizedFileURL.path }
+    let remainingPaths = fixture.files.map(\.standardizedFileURL.path)
     let originalPath = try #require(capture.media.url).standardizedFileURL.path
     #expect(remainingPaths == [originalPath])
   }
@@ -277,7 +277,7 @@ struct MediaLifetimeTests {
     defer { fixture.cleanup() }
     let capture = try fixture.capture()
     #expect(throws: (any Error).self) { try fixture.store.makeImageDrag(CaptureExportRequest(capture: capture)) }
-    let remainingPaths = fixture.files.map { $0.standardizedFileURL.path }
+    let remainingPaths = fixture.files.map(\.standardizedFileURL.path)
     let originalPath = try #require(capture.media.url).standardizedFileURL.path
     #expect(remainingPaths == [originalPath])
   }
@@ -317,7 +317,7 @@ struct MediaLifetimeTests {
       try fixture.store.withExport { Issue.record("New frame export should be rejected") }
     }
     do {
-      try await fixture.store.withRetainedSources([request]) { _ -> Void in
+      try await fixture.store.withRetainedSources([request]) { _ in
         Issue.record("New file export should be rejected")
       }
       Issue.record("Expected closed export admission")
@@ -406,7 +406,7 @@ struct MediaLifetimeTests {
   func historyShutdownJoinsAcceptedUpdatesInOrder() async throws {
     let fixture = Fixture()
     defer { fixture.cleanup() }
-    await fixture.history.recordFrame(try fixture.capture())
+    try await fixture.history.recordFrame(fixture.capture())
     let initial = await fixture.history.currentSnapshot()
     let entry = try #require(initial.entries.first)
     let history = CaptureHistory(repository: fixture.history)
@@ -556,9 +556,12 @@ struct MediaLifetimeTests {
     var files: [URL] {
       let directory = root.appendingPathComponent("drafts")
       let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])
-      return (enumerator?.allObjects as? [URL] ?? []).filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+      return (enumerator?.allObjects as? [URL] ?? [])
+        .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
     }
 
-    func cleanup() { try? FileManager.default.removeItem(at: root) }
+    func cleanup() {
+      try? FileManager.default.removeItem(at: root)
+    }
   }
 }

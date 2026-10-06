@@ -71,6 +71,7 @@ struct CaptureBatchTests {
     precondition(batch.items.compactMap(\.media).map(\.device.id) == devices.map(\.id))
     await batch.close()
   }
+
   private static func screenshotFailureKeepsItsSlot(root: URL, video: URL) async throws {
     let healthy = RecordingTests.makeDevices()[0]
     let unavailable = Device(
@@ -89,5 +90,4 @@ struct CaptureBatchTests {
     }
     await batch.close()
   }
-
 }

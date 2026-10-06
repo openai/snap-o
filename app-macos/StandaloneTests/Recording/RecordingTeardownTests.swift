@@ -26,7 +26,8 @@ struct RecordingTeardownTests {
         switch ending {
         case "finish": await batch.beginFinalization(discarding: false).value
         case "cancel": await batch.close()
-        default: fixture.coordinator.beginShutdown(); await batch.close()
+        default: fixture.coordinator.beginShutdown()
+          await batch.close()
         }
         finished.value = true
       }
@@ -68,7 +69,8 @@ struct RecordingTeardownTests {
           switch ending {
           case "finish": await batch.beginFinalization(discarding: false).value
           case "cancel": await batch.close()
-          default: fixture.coordinator.beginShutdown(); await batch.close()
+          default: fixture.coordinator.beginShutdown()
+            await batch.close()
           }
           finished.value = true
         }

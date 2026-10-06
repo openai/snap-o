@@ -9,11 +9,21 @@ final class ADBSocketConnection: @unchecked Sendable {
   private var reads = 0
   private var writes = 0
 
-  var isClosed: Bool { condition.withLock { closed } }
-  var readCount: Int { condition.withLock { reads } }
-  var writeCount: Int { condition.withLock { writes } }
+  var isClosed: Bool {
+    condition.withLock { closed }
+  }
 
-  func holdReaderAfterClose() { condition.withLock { mayExit = false } }
+  var readCount: Int {
+    condition.withLock { reads }
+  }
+
+  var writeCount: Int {
+    condition.withLock { writes }
+  }
+
+  func holdReaderAfterClose() {
+    condition.withLock { mayExit = false }
+  }
 
   func releaseReader() {
     condition.withLock {
@@ -42,7 +52,9 @@ final class ADBSocketConnection: @unchecked Sendable {
   }
 
   func sendTransport(to deviceID: String) throws {}
-  func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? { nil }
+  func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
+    nil
+  }
 
   func writeFully(_ bytes: Data) throws {
     condition.withLock { writes += 1 }
@@ -54,7 +66,9 @@ final class ADBSocketConnection: @unchecked Sendable {
     defer { condition.unlock() }
     reads += 1
     testChanges.signal()
-    while bytes.isEmpty, !(closed && mayExit) { condition.wait() }
+    while bytes.isEmpty, !(closed && mayExit) {
+      condition.wait()
+    }
     guard !closed else { return nil }
     let chunk = bytes.prefix(maxLength)
     bytes.removeFirst(chunk.count)
@@ -96,7 +110,7 @@ final class VideoConnectionRegistry: @unchecked Sendable {
   }
 }
 
-struct ADBClient: Sendable {
+struct ADBClient {
   private var target: DeviceTarget?
 
   func bound(to target: DeviceTarget) -> Self {
@@ -105,7 +119,9 @@ struct ADBClient: Sendable {
     return client
   }
 
-  func withTimeout(_ timeout: Duration) -> Self { self }
+  func withTimeout(_ timeout: Duration) -> Self {
+    self
+  }
 
   func runShellString(deviceID: String, command: String) async throws -> String {
     preconditionFailure("Video lifetime tests must not request a native identity proof")

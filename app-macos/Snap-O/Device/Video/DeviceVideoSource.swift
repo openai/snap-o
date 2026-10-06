@@ -53,7 +53,10 @@ final class DeviceVideoHub {
 
 @MainActor
 final class DeviceVideoSource: LivePreviewFrameSource {
-  var hasIndependentFrames: Bool { subscription?.stream.hasIndependentFrames ?? false }
+  var hasIndependentFrames: Bool {
+    subscription?.stream.hasIndependentFrames ?? false
+  }
+
   private let target: DeviceTarget
   private let hub: DeviceVideoHub
   private var subscription: DeviceVideoHub.Subscription?
@@ -106,8 +109,13 @@ private final class DeviceVideoStream {
   private var density: CGFloat?
   private var latestIndependentFrame: CMSampleBuffer?
 
-  var isEmpty: Bool { subscribers.isEmpty }
-  var hasIndependentFrames: Bool { source.hasIndependentFrames }
+  var isEmpty: Bool {
+    subscribers.isEmpty
+  }
+
+  var hasIndependentFrames: Bool {
+    source.hasIndependentFrames
+  }
 
   init(source: any LivePreviewFrameSource, previous: DeviceVideoStream?) {
     self.source = source
@@ -176,10 +184,14 @@ private final class DeviceVideoStream {
     case .format(let description):
       format = description
       latestIndependentFrame = nil
-      for id in subscribers.keys { subscribers[id]?.needsKeyFrame = true }
+      for id in subscribers.keys {
+        subscribers[id]?.needsKeyFrame = true
+      }
     case .sample(let sample, let keyFrame):
       if hasIndependentFrames { latestIndependentFrame = sample }
-      for id in subscribers.keys where keyFrame { subscribers[id]?.needsKeyFrame = false }
+      for id in subscribers.keys where keyFrame {
+        subscribers[id]?.needsKeyFrame = false
+      }
     case .stopped:
       stop()
     }

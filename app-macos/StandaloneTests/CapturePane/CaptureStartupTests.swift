@@ -84,7 +84,7 @@ extension CapturePaneTests {
   }
 
   @Test
-  func closingDropsACommandWaitingForDevices() async throws {
+  func closingDropsACommandWaitingForDevices() async {
     let fixture = Fixture()
     let available = fixture.devices.inventory
     fixture.devices.inventory = DeviceInventory()

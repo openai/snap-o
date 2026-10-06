@@ -38,7 +38,7 @@ private actor TouchSettingLeases {
 
   private var entries: [DeviceTarget: Entry] = [:]
   private var cleanup: [DeviceTarget: (id: UUID, task: Task<Void, Never>)] = [:]
-  // Retain each release while a new acquisition takes over the target's cleanup chain.
+  /// Retain each release while a new acquisition takes over the target's cleanup chain.
   private var restorations: [UUID: Task<Void, Never>] = [:]
 
   func acquire(

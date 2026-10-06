@@ -13,7 +13,9 @@ final class PreviewHint {
   @ObservationIgnored private var clock
 
   func show(available: Bool, transient: Bool) {
-    guard available else { cancel(); return }
+    guard available else { cancel()
+      return
+    }
     hideTask?.cancel()
     hideTask = nil
     isVisible = true

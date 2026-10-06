@@ -81,7 +81,9 @@ struct EmulatorControlsTests {
     owner.perform(.open) {}
     await gate.waitUntilStarted()
     let completed = TestValue(false)
-    let waiter = Task { await attachment.close(); completed.value = true }
+    let waiter = Task { await attachment.close()
+      completed.value = true
+    }
     try await waitForState { attachment.isClosed }
     #expect(owner.controls == nil && owner.pendingAction == nil)
     #expect(fixture.closes == 0)
@@ -96,7 +98,7 @@ struct EmulatorControlsTests {
   }
 
   @Test
-  func shutdownJoinsInitialLoadAndSuppressesLateData() async throws {
+  func shutdownJoinsInitialLoadAndSuppressesLateData() async {
     let fixture = ControlsFixture()
     let gate = TestSuspension()
     fixture.loadGate = gate

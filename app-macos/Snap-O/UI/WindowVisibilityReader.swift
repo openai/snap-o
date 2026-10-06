@@ -31,7 +31,9 @@ final class WindowVisibilityView: NSView {
   }
 
   @available(*, unavailable)
-  required init?(coder: NSCoder) { nil }
+  required init?(coder: NSCoder) {
+    nil
+  }
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
@@ -74,7 +76,9 @@ final class WindowVisibilityView: NSView {
   func stopObserving() {
     pendingReport?.cancel()
     pendingReport = nil
-    for observer in observers { NotificationCenter.default.removeObserver(observer) }
+    for observer in observers {
+      NotificationCenter.default.removeObserver(observer)
+    }
     observers.removeAll()
     observedWindow = nil
     lastVisibility = nil

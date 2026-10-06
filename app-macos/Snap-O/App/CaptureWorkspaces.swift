@@ -41,7 +41,9 @@ final class CaptureWorkspaces {
     if let shutdownTask { return shutdownTask }
     let cleanups = sessions.allObjects.map { $0.close() }
     let task = Task {
-      for cleanup in cleanups { await cleanup.value }
+      for cleanup in cleanups {
+        await cleanup.value
+      }
     }
     shutdownTask = task
     return task

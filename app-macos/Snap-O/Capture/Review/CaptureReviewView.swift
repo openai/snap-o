@@ -88,11 +88,11 @@ struct CaptureReviewView: View {
             ),
             allowsFileDrag: false, crop: review.crop(for: item.id)
           ) { nil }
-          .id(capture.id)
-          .frame(width: frame.width, height: frame.height)
-          .clipped()
-          .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
-          .position(x: frame.midX, y: frame.midY)
+            .id(capture.id)
+            .frame(width: frame.width, height: frame.height)
+            .clipped()
+            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+            .position(x: frame.midX, y: frame.midY)
         }
         CaptureCropOverlay(
           imageFrame: frame,

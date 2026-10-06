@@ -121,7 +121,9 @@ final class AppToolModel {
   @discardableResult
   func stop() -> Task<Void, Never> {
     let pending = Array(pendingWork.values)
-    for task in pending { task.cancel() }
+    for task in pending {
+      task.cancel()
+    }
     running = false
     pollingTask = nil
     refreshTask = nil

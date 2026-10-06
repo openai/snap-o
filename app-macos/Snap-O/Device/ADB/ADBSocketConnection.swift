@@ -76,7 +76,9 @@ public final class ADBSocketConnection {
     Darwin.close(socketDescriptor)
   }
 
-  var connectionTarget: DeviceTarget? { closeLock.withLock { boundTarget } }
+  var connectionTarget: DeviceTarget? {
+    closeLock.withLock { boundTarget }
+  }
 
   /// Transfers socket ownership after the ADB handshake, before concurrent I/O starts.
   func takeSocketDescriptor() throws -> Int32 {

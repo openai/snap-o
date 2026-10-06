@@ -21,7 +21,7 @@ struct SharedPreviewVideoTests {
       if case .sample = event { recordedFrames += 1 }
     }
     let video = PreviewVideo {
-      self.session(target, hub)
+      session(target, hub)
     } canReconnect: { true }
     video.start()
     try await waitForState { video.session != nil }
@@ -74,7 +74,7 @@ struct SharedPreviewVideoTests {
     let sample = try #require(try EmulatorPreviewFrameBuilder().makeSample(
       rgba: Data(repeating: 0, count: 64), width: 4, height: 4, timestamp: 1
     ))
-    source.deliver?(.format(try #require(CMSampleBufferGetFormatDescription(sample))))
+    try source.deliver?(.format(#require(CMSampleBufferGetFormatDescription(sample))))
     source.deliver?(.sample(sample, isKeyFrame: true))
     session.addRenderer(id: UUID()) { _ in secondFrames += 1 }
     source.deliver?(.sample(sample, isKeyFrame: false))
@@ -135,7 +135,9 @@ struct SharedPreviewVideoTests {
     let visible = session(target, hub)
     var visibleCount = 0
     visible.addRenderer(id: UUID()) { _ in visibleCount += 1 }
-    for index in 1 ... 20 { try source.sendFrame(UInt64(index)) }
+    for index in 1 ... 20 {
+      try source.sendFrame(UInt64(index))
+    }
     var pending: [Int64] = []
     unmounted.addRenderer(id: UUID()) { pending.append(CMSampleBufferGetPresentationTimeStamp($0).value) }
     #expect(visibleCount == 20)
@@ -163,7 +165,9 @@ struct SharedPreviewVideoTests {
     healthy.addRenderer(id: UUID()) {
       if healthyBuffer.copyForDisplay($0) != nil { healthyCount += 1 }
     }
-    for index in 1 ... 20 { try source.sendFrame(UInt64(index)) }
+    for index in 1 ... 20 {
+      try source.sendFrame(UInt64(index))
+    }
     #expect(heldFrames.count == 4)
     #expect(healthyCount == 20)
     heldFrames.removeLast()
@@ -285,7 +289,7 @@ struct SharedPreviewVideoTests {
       let sample = try #require(try frames.makeSample(
         rgba: Data(repeating: 0, count: 64), width: 4, height: 4, timestamp: timestamp
       ))
-      deliver?(.format(try #require(CMSampleBufferGetFormatDescription(sample))))
+      try deliver?(.format(#require(CMSampleBufferGetFormatDescription(sample))))
       deliver?(.sample(sample, isKeyFrame: true))
     }
 
@@ -295,6 +299,8 @@ struct SharedPreviewVideoTests {
       if let cleanup { cleanupTask = Task { try? await cleanup.wait() } }
     }
 
-    func waitUntilStopped() async { await cleanupTask?.value }
+    func waitUntilStopped() async {
+      await cleanupTask?.value
+    }
   }
 }

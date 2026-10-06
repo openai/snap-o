@@ -108,7 +108,10 @@ final class AndroidHostClient {
     )])
   }
 
-  func close() { closeCount += 1 }
+  func close() {
+    closeCount += 1
+  }
+
   func delete(_: String, serials: [String]) async throws -> EmulatorInventory {
     actionRequests.append("delete")
     return try await snapshot(serials: serials)

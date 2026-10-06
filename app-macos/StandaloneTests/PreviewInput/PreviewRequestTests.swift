@@ -24,9 +24,13 @@ struct PreviewRequestTests {
     }
     await gate.waitUntilEntered()
     let completed = TestValue(0)
-    let first = Task { await attachment.close(); completed.value += 1 }
+    let first = Task { await attachment.close()
+      completed.value += 1
+    }
     try await waitForState { probe.cancellations == 1 }
-    let second = await startTestTask { await attachment.close(); completed.value += 1 }
+    let second = await startTestTask { await attachment.close()
+      completed.value += 1
+    }
     first.cancel()
     #expect(completed.value == 0)
     await #expect(throws: CancellationError.self) { _ = try await attachment.screenshot() }

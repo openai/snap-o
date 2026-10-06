@@ -3,8 +3,14 @@ import Foundation
 private final class DisplayProvider: NSObject, EmulatorDisplayProvider, @unchecked Sendable {
   let value: String?
   let error: String?
-  init(value: String?, error: String?) { self.value = value; self.error = error }
-  func readDisplay(reply: @escaping @Sendable (String?, String?) -> Void) { reply(value, error) }
+  init(value: String?, error: String?) {
+    self.value = value
+    self.error = error
+  }
+
+  func readDisplay(reply: @escaping @Sendable (String?, String?) -> Void) {
+    reply(value, error)
+  }
 }
 
 private final class DisplayHost: NSObject {
@@ -13,7 +19,7 @@ private final class DisplayHost: NSObject {
     _ serial: String, native: Data, display: any EmulatorDisplayProvider, reply: @escaping @Sendable (Data?, String?) -> Void
   ) {
     DispatchQueue.global().async {
-      do { reply(Data(try EmulatorDisplayReader(provider: display).read().utf8), nil) } catch { reply(nil, error.localizedDescription) }
+      do { try reply(Data(EmulatorDisplayReader(provider: display).read().utf8), nil) } catch { reply(nil, error.localizedDescription) }
     }
   }
 }
@@ -32,7 +38,10 @@ private final class DisplayResponse: @unchecked Sendable {
   let ready = DispatchSemaphore(value: 0)
   private let lock = NSLock()
   private var output: (Data?, String?) = (nil, nil)
-  var value: (Data?, String?) { lock.withLock { output } }
+  var value: (Data?, String?) {
+    lock.withLock { output }
+  }
+
   func finish(_ data: Data?, _ error: String?) {
     lock.withLock { output = (data, error) }
     ready.signal()

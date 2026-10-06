@@ -98,5 +98,4 @@ final class CaptureWindowSession {
     closeTask = task
     return task
   }
-
 }

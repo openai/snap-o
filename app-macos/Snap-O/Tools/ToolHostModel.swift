@@ -136,7 +136,9 @@ final class ToolHostModel {
     if let stopTask { return stopTask }
     isStopped = true
     let modelCleanup = appTool.stop()
-    for task in pendingWork.values { task.cancel() }
+    for task in pendingWork.values {
+      task.cancel()
+    }
     bindings.removeAll()
     for kind in Array(pages.keys) {
       removePage(kind: kind)
@@ -146,7 +148,9 @@ final class ToolHostModel {
     pageTransitions.removeAll()
     let task = Task {
       await modelCleanup.value
-      for task in pending { await task.value }
+      for task in pending {
+        await task.value
+      }
     }
     stopTask = task
     return task

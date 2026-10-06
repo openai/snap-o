@@ -16,7 +16,10 @@ enum LivePreviewPointerAction: String {
 
 struct LivePreviewPointerEvent {
   let target: DeviceTarget
-  var deviceID: String { target.serial }
+  var deviceID: String {
+    target.serial
+  }
+
   let action: LivePreviewPointerAction
   let source: LivePreviewPointerSource
   var locations: [CGPoint]

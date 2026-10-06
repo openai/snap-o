@@ -86,7 +86,9 @@ struct TouchSettingTests {
     if cancel { setup.cancel() } else { await clock.advance(by: .seconds(3)) }
     let lease = await setup.value
     let finished = TestValue(false)
-    let close = await startTestTask { await lease.restore(using: fixture.adb); finished.value = true }
+    let close = await startTestTask { await lease.restore(using: fixture.adb)
+      finished.value = true
+    }
     #expect(!finished.value)
     await gate.open()
     await close.value
@@ -105,10 +107,14 @@ struct TouchSettingTests {
     let gate = TestGate()
     fixture.probe.writeGate = gate
     let finished = TestValue(0)
-    let first = await startTestTask { await lease.restore(using: fixture.adb); finished.value += 1 }
+    let first = await startTestTask { await lease.restore(using: fixture.adb)
+      finished.value += 1
+    }
     await gate.waitUntilEntered()
     if cancel { first.cancel() } else { await clock.advance(by: .seconds(3)) }
-    let second = await startTestTask { await lease.restore(using: fixture.adb); finished.value += 1 }
+    let second = await startTestTask { await lease.restore(using: fixture.adb)
+      finished.value += 1
+    }
     #expect(finished.value == 0)
     await gate.open()
     await first.value
@@ -165,7 +171,9 @@ struct TouchSettingTests {
     await clock.advance(by: .seconds(3))
     let next = await acquire.value
     let finished = TestValue(false)
-    let repeated = await startTestTask { await first.restore(using: fixture.adb); finished.value = true }
+    let repeated = await startTestTask { await first.restore(using: fixture.adb)
+      finished.value = true
+    }
     #expect(!finished.value)
     await gate.open()
     await release.value

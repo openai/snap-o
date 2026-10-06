@@ -116,7 +116,9 @@ final class FileStore: Sendable {
       state.waiters.removeAll()
       return waiters
     }
-    for waiter in waiters { waiter.resume() }
+    for waiter in waiters {
+      waiter.resume()
+    }
   }
 
   func withRetainedFiles<Result>(_ sources: [URL], operation: ([URL]) throws -> Result) throws -> Result {

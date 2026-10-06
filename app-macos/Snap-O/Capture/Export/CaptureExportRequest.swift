@@ -26,6 +26,11 @@ struct CaptureExportRequest: Equatable {
     return Self(capture: CaptureMedia(id: capture.id, device: capture.device, media: media), edits: edits)
   }
 
-  var crop: CGRect { edits.crop }
-  var trim: CaptureTrimRange? { edits.trim }
+  var crop: CGRect {
+    edits.crop
+  }
+
+  var trim: CaptureTrimRange? {
+    edits.trim
+  }
 }

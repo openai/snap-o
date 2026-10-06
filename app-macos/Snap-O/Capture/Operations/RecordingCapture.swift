@@ -169,16 +169,22 @@ final class RecordingCapture: CaptureBatch {
     phase = discarding ? .cancelling : .finishing
     if discarding { startup?.cancel() }
     // Stop acquired sessions now. A different device may still be starting.
-    for entry in entries { finish(entry, discarding: discarding) }
+    for entry in entries {
+      finish(entry, discarding: discarding)
+    }
     let task = Task {
       _ = await startup?.value
-      for entry in entries { await finish(entry, discarding: discarding).value }
+      for entry in entries {
+        await finish(entry, discarding: discarding).value
+      }
       for item in items {
         if case .pending = item.state { item.update(.cancelled) }
       }
       if discarding { await history?.discardEmpty(historyID) }
       await history?.finish(historyID)
-      for (target, handler) in invalidationHandlers { target.removeInvalidationHandler(handler) }
+      for (target, handler) in invalidationHandlers {
+        target.removeInvalidationHandler(handler)
+      }
       invalidationHandlers.removeAll()
       isComplete = true
     }
@@ -187,7 +193,9 @@ final class RecordingCapture: CaptureBatch {
   }
 
   func close() async {
-    if let closeTask { await closeTask.value; return }
+    if let closeTask { await closeTask.value
+      return
+    }
     let completion = beginFinalization(discarding: true)
     let task = Task {
       await completion.value
@@ -232,8 +240,10 @@ final class RecordingCapture: CaptureBatch {
       await history?.recordFailure(deviceID: entry.item.device.id, message: message, in: historyID)
     }
     // Pending devices must get their own chance to start.
-    if !items.contains(where: { if case .pending = $0.state { return true }; return false }),
-       entries.allSatisfy({ $0.stopStatus != .recording }) {
+    if !items.contains(where: { if case .pending = $0.state { return true }
+      return false
+    }),
+      entries.allSatisfy({ $0.stopStatus != .recording }) {
       requestFinish()
     }
   }
@@ -310,5 +320,4 @@ final class RecordingCapture: CaptureBatch {
     ) else { throw invalidRecording }
     return CaptureMedia(device: device, media: media)
   }
-
 }

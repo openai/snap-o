@@ -98,7 +98,7 @@ struct ADBStaticRecordingTests {
         allocator: kCFAllocatorDefault, sampleBuffer: sample, sampleTimingEntryCount: 1,
         sampleTimingArray: &timing, sampleBufferOut: &retimed
       ) == noErr)
-      try #require(staticInput.append(try #require(retimed)))
+      try #require(try staticInput.append(#require(retimed)))
       staticInput.markAsFinished()
       staticWriter.endSession(atSourceTime: .zero)
       await staticWriter.finishWriting()

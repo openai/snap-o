@@ -221,7 +221,9 @@ struct CaptureCropExportTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let store = FileStore(baseDir: root.appendingPathComponent("Drafts"))
-    defer { store.purgeExistingFiles(); try? FileManager.default.removeItem(at: root) }
+    defer { store.purgeExistingFiles()
+      try? FileManager.default.removeItem(at: root)
+    }
     let source = store.makePreviewDestination(deviceID: "test", capturedAt: Date(), kind: .video)
     try await makeVideo(at: source, rotated: rotated)
     let size = rotated ? CGSize(width: 32, height: 64) : CGSize(width: 64, height: 32)

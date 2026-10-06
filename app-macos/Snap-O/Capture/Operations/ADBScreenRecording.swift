@@ -63,7 +63,7 @@ enum ADBRecordingFile {
     guard writer.startWriting() else { throw writer.error ?? ADBError.protocolFailure("Could not finalize the static recording.") }
     writer.startSession(atSourceTime: .zero)
     var timing = CMSampleTimingInfo(
-      duration: CMTime(seconds: seconds, preferredTimescale: 90_000),
+      duration: CMTime(seconds: seconds, preferredTimescale: 90000),
       presentationTimeStamp: .zero, decodeTimeStamp: .invalid
     )
     var retimed: CMSampleBuffer?

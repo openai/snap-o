@@ -61,10 +61,14 @@ final class CaptureCoordinator {
     guard leases.removeValue(forKey: lease.id) != nil, leases.isEmpty else { return }
     let waiters = idleWaiters
     idleWaiters.removeAll()
-    for waiter in waiters { waiter.resume() }
+    for waiter in waiters {
+      waiter.resume()
+    }
   }
 
-  func beginShutdown() { isClosed = true }
+  func beginShutdown() {
+    isClosed = true
+  }
 
   func waitUntilIdle() async {
     guard !leases.isEmpty else { return }

@@ -45,7 +45,7 @@ final class CaptureItem: Identifiable {
     return warning
   }
 
-  // Only the batch producing this item changes its outcome.
+  /// Only the batch producing this item changes its outcome.
   func update(_ state: State) {
     self.state = state
   }

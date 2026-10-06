@@ -58,7 +58,9 @@ struct EmulatorGRPCConnectionTests {
       precondition(peers.count == 2, "Only the two explicitly opened connections may reach the listener")
       try await peers.last.closeFuture.get()
     }
-    for mode in [ProofMode.matches, .mismatch, .retry, .cancel, .timeout] { try await identity(mode) }
+    for mode in [ProofMode.matches, .mismatch, .retry, .cancel, .timeout] {
+      try await identity(mode)
+    }
     print("Emulator gRPC connection and identity tests passed")
   }
 
@@ -87,8 +89,12 @@ struct EmulatorGRPCConnectionTests {
             defer { finished.value = true }
             try await EmulatorGRPCConnection.verify(client: client, metadata: [:]) { marker in
               writes.continuation.yield(marker)
-              if mode == .matches { feed.emit("unrelated log line"); feed.emit(marker) }
-              if mode == .mismatch { feed.emit("snapo-connection-wrong-device"); feed.finish() }
+              if mode == .matches { feed.emit("unrelated log line")
+                feed.emit(marker)
+              }
+              if mode == .mismatch { feed.emit("snapo-connection-wrong-device")
+                feed.finish()
+              }
               if mode == .cancel { await gate.wait() }
               if mode == .timeout { feed.fail(RPCError(code: .deadlineExceeded, message: "Synthetic native timeout")) }
             }
@@ -127,13 +133,21 @@ struct EmulatorGRPCConnectionTests {
     }
   }
 
-  struct LogFeed: RegistrableRPCService, Sendable {
+  struct LogFeed: RegistrableRPCService {
     private let messages = AsyncThrowingStream<String, any Error>.makeStream()
-    func emit(_ text: String) { messages.continuation.yield(text) }
-    func finish() { messages.continuation.finish() }
-    func fail(_ error: any Error) { messages.continuation.finish(throwing: error) }
+    func emit(_ text: String) {
+      messages.continuation.yield(text)
+    }
 
-    func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+    func finish() {
+      messages.continuation.finish()
+    }
+
+    func fail(_ error: any Error) {
+      messages.continuation.finish(throwing: error)
+    }
+
+    func registerMethods(with router: inout RPCRouter<some ServerTransport>) {
       router.registerHandler(
         forMethod: MethodDescriptor(fullyQualifiedService: "android.emulation.control.EmulatorController", method: "streamLogcat"),
         deserializer: EmulatorProtobufCodec<Google_Protobuf_Empty>(),
@@ -162,10 +176,12 @@ struct EmulatorGRPCConnectionTests {
   }
 
   struct Echo: RegistrableRPCService {
-    func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
+    func registerMethods(with router: inout RPCRouter<some ServerTransport>) {
       router.registerHandler(forMethod: echo, deserializer: TextCodec(), serializer: TextCodec()) { request, _ in
         StreamingServerResponse { writer in
-          for try await message in request.messages { try await writer.write(message) }
+          for try await message in request.messages {
+            try await writer.write(message)
+          }
           return [:]
         }
       }
@@ -173,7 +189,10 @@ struct EmulatorGRPCConnectionTests {
   }
 
   struct TextCodec: MessageSerializer, MessageDeserializer {
-    func serialize<Bytes: GRPCContiguousBytes>(_ message: String) throws -> Bytes { Bytes(Array(message.utf8)) }
+    func serialize<Bytes: GRPCContiguousBytes>(_ message: String) throws -> Bytes {
+      Bytes(Array(message.utf8))
+    }
+
     func deserialize(_ bytes: some GRPCContiguousBytes) throws -> String {
       try bytes.withUnsafeBytes {
         guard let text = String(bytes: $0, encoding: .utf8) else {
@@ -199,9 +218,20 @@ struct EmulatorGRPCConnectionTests {
   final class Peers: @unchecked Sendable {
     private let lock = NSLock()
     private var channels: [any Channel] = []
-    var count: Int { lock.withLock { channels.count } }
-    var first: any Channel { lock.withLock { channels[0] } }
-    var last: any Channel { lock.withLock { channels[channels.count - 1] } }
-    func add(_ channel: any Channel) { lock.withLock { channels.append(channel) } }
+    var count: Int {
+      lock.withLock { channels.count }
+    }
+
+    var first: any Channel {
+      lock.withLock { channels[0] }
+    }
+
+    var last: any Channel {
+      lock.withLock { channels[channels.count - 1] }
+    }
+
+    func add(_ channel: any Channel) {
+      lock.withLock { channels.append(channel) }
+    }
   }
 }

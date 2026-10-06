@@ -69,7 +69,9 @@ struct ToolRecoveryTests {
         testChanges.signal()
       }
     }
-    defer { observer.cancel(); previewObserver.cancel() }
+    defer { observer.cancel()
+      previewObserver.cancel()
+    }
     await withDependencies { $0.continuousClock = clock } operation: { await tracker.startTracking() }
     adb.emitDevices("phone device model:First transport_id:1")
     try await eventually { await tracker.latestDevices.first?.model == "First" }

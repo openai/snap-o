@@ -5,10 +5,17 @@ final class EmulatorEndpointProbe: @unchecked Sendable {
   private let lock = NSLock()
   private var requests = 0
   private var closes = 0
-  var requestCount: Int { lock.withLock { requests } }
-  var closeCount: Int { lock.withLock { closes } }
+  var requestCount: Int {
+    lock.withLock { requests }
+  }
 
-  init(gate: TestGate? = nil) { self.gate = gate }
+  var closeCount: Int {
+    lock.withLock { closes }
+  }
+
+  init(gate: TestGate? = nil) {
+    self.gate = gate
+  }
 
   func request() async -> EmulatorGRPCEndpoint? {
     lock.withLock { requests += 1 }

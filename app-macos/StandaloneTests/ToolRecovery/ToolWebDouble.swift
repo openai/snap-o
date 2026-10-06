@@ -7,7 +7,7 @@ final class ToolWebBridge {
   var toolbarHandler: ((ToolToolbar) throws -> Void)?
 }
 
-// Exercise the real owners without creating a WKWebView or window.
+/// Exercise the real owners without creating a WKWebView or window.
 @MainActor
 final class ToolWebContainer {
   var pageReadinessChangedHandler: ((Bool) -> Void)?
@@ -41,6 +41,7 @@ final class ToolWebContainer {
   func setServer(_ endpoint: ToolHTTPService.Endpoint?) {
     serverUpdates += 1
   }
+
   func sendPageEvent(name: String, payload: some Encodable) {}
   func closeNativeColorPanel() {}
 }

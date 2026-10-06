@@ -46,30 +46,49 @@ enum RuntimeTestEnvironment {
 @MainActor
 final class ADBService {
   private let probe = RuntimeTestEnvironment.probe
-  func exec() -> ADBService { self }
-  func bound(to _: DeviceTarget) -> ADBService { self }
-  func withTimeout(_: Duration) -> ADBService { self }
-  func getShowTouches(deviceID: String) throws -> Bool { probe.showsTouches }
+  func exec() -> ADBService {
+    self
+  }
+
+  func bound(to _: DeviceTarget) -> ADBService {
+    self
+  }
+
+  func withTimeout(_: Duration) -> ADBService {
+    self
+  }
+
+  func getShowTouches(deviceID: String) throws -> Bool {
+    probe.showsTouches
+  }
+
   func setShowTouches(deviceID: String, enabled: Bool) async throws {
     if !enabled { await probe.restorationGate?.wait() }
     precondition(probe.target.isValid, "Restoration must finish before target invalidation")
     probe.showsTouches = enabled
   }
-  func startScreenrecord(deviceID: String, bugReport: Bool) throws -> RecordingSession { RecordingSession() }
+
+  func startScreenrecord(deviceID: String, bugReport: Bool) throws -> RecordingSession {
+    RecordingSession()
+  }
 }
 
-struct RecordingSession: Sendable {}
+struct RecordingSession {}
 protocol ScreenRecording: Sendable {}
 struct ADBScreenRecording: ScreenRecording {
   init(session: RecordingSession, adb: ADBService) {}
 }
 
 struct NativeScreenRecording: ScreenRecording {
-  static func start(target: DeviceTarget) async throws -> NativeScreenRecording { Self() }
+  static func start(target: DeviceTarget) async throws -> NativeScreenRecording {
+    Self()
+  }
 }
 
 enum EmulatorGRPCEndpoint {
-  static func isEmulator(_ serial: String) -> Bool { false }
+  static func isEmulator(_ serial: String) -> Bool {
+    false
+  }
 }
 
 @MainActor
@@ -81,7 +100,9 @@ final class AndroidHostClient {
 final class DeviceTracker {
   private let probe = RuntimeTestEnvironment.probe
   init(adbService: ADBService, recoverADBServer: @escaping @Sendable () async throws -> Void) {}
-  func stopTracking() async { await probe.finish(.tracker) }
+  func stopTracking() async {
+    await probe.finish(.tracker)
+  }
 }
 
 @Observable
@@ -89,7 +110,10 @@ final class DeviceTracker {
 final class DeviceManager {
   var inventory = DeviceInventory()
   private var shutdownTask: Task<Void, Never>?
-  var isShuttingDown: Bool { shutdownTask != nil }
+  var isShuttingDown: Bool {
+    shutdownTask != nil
+  }
+
   private let probe = RuntimeTestEnvironment.probe
   init(adb: ADBService, deviceTracker: DeviceTracker, client: AndroidHostClient) {}
   func start() {}
@@ -104,18 +128,28 @@ final class DeviceManager {
 @MainActor
 final class CaptureCoordinator {
   private let probe = RuntimeTestEnvironment.probe
-  func beginShutdown() { probe.admissionClosed = true }
-  func waitUntilIdle() async { await probe.finish(.reservations) }
+  func beginShutdown() {
+    probe.admissionClosed = true
+  }
+
+  func waitUntilIdle() async {
+    await probe.finish(.reservations)
+  }
 }
 
-struct CaptureMedia: Sendable {}
+struct CaptureMedia {}
 
 @MainActor
 final class FileStore {
   private let probe = RuntimeTestEnvironment.probe
   init(frameExportHandler: @escaping @MainActor @Sendable (CaptureMedia) -> Void) {}
-  func beginShutdown() { probe.exportsClosed = true }
-  func shutdown() async { await probe.finish(.files) }
+  func beginShutdown() {
+    probe.exportsClosed = true
+  }
+
+  func shutdown() async {
+    await probe.finish(.files)
+  }
 }
 
 @MainActor
@@ -124,7 +158,9 @@ final class CaptureHistory {
   private let probe = RuntimeTestEnvironment.probe
   func start() {}
   func recordFrame(_ media: CaptureMedia) {}
-  func shutdown() async { await probe.finish(.history) }
+  func shutdown() async {
+    await probe.finish(.history)
+  }
 }
 
 @MainActor
@@ -155,7 +191,9 @@ struct CaptureTimestampSource {}
 final class LivePreviewService {
   private let probe = RuntimeTestEnvironment.probe
   init(coordinator: CaptureCoordinator, adb: ADBService, settings: AppSettings) {}
-  func shutdown() async { await probe.finish(.preview) }
+  func shutdown() async {
+    await probe.finish(.preview)
+  }
 }
 
 enum StartupCaptureMode { case livePreview, screenshot }
@@ -181,12 +219,17 @@ final class StartupCapturePreparation {
   func prepare(mode: StartupCaptureMode, devices: [Device]) {
     probe.startupRequests.value.append(.init(mode: mode, devices: devices))
   }
-  func discard() async { await probe.finish(.startup) }
+
+  func discard() async {
+    await probe.finish(.startup)
+  }
 }
 
 @MainActor
 final class EmulatorControlsController {
-  static func live(target: DeviceTarget) -> EmulatorControlsController? { nil }
+  static func live(target: DeviceTarget) -> EmulatorControlsController? {
+    nil
+  }
 }
 
 @MainActor
@@ -196,5 +239,7 @@ final class CaptureWorkspaces {
     captureServices: CaptureServices, deviceManager: DeviceManager, fileStore: FileStore,
     adbService: ADBService, history: CaptureHistory
   ) {}
-  func beginShutdown() -> Task<Void, Never> { Task { await probe.finish(.workspaces) } }
+  func beginShutdown() -> Task<Void, Never> {
+    Task { await probe.finish(.workspaces) }
+  }
 }

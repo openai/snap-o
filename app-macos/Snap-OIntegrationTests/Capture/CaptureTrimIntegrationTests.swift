@@ -66,7 +66,7 @@ struct CaptureTrimIntegrationTests {
     _ = try await CaptureCropExporter.export(request, to: history)
     for url in [saved, history] {
       let asset = AVURLAsset(url: url)
-      #expect(abs(try await asset.load(.duration).seconds - 0.6) < 0.01)
+      #expect(try await abs(asset.load(.duration).seconds - 0.6) < 0.01)
       let track = try #require(await asset.loadTracks(withMediaType: .video).first)
       #expect(try await track.load(.naturalSize) == CGSize(width: 32, height: 32))
     }

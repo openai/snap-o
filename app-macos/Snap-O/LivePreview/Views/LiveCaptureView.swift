@@ -13,7 +13,10 @@ struct LiveCaptureView: View {
   private var loadingMessage
   let fileStore: FileStore
   private let device: Device
-  private var deviceID: String { device.id }
+  private var deviceID: String {
+    device.id
+  }
+
   private let attachment: LivePreviewAttachment?
   @State private var viewID = UUID()
   @State private var readyRendererID: UUID?
@@ -24,8 +27,13 @@ struct LiveCaptureView: View {
     self.fileStore = fileStore
   }
 
-  private var renderer: LivePreviewRenderer? { attachment?.renderer(for: device, viewID: viewID) }
-  private var focused: Bool { appearsActive && scenePhase == .active }
+  private var renderer: LivePreviewRenderer? {
+    attachment?.renderer(for: device, viewID: viewID)
+  }
+
+  private var focused: Bool {
+    appearsActive && scenePhase == .active
+  }
 
   private func updatePresentation(visible: Bool? = nil) {
     attachment?.updatePresentation(
@@ -45,46 +53,46 @@ struct LiveCaptureView: View {
   private func previewWithFileDrop(_ fileDrop: DeviceFileDrop) -> some View {
     @Bindable var fileDrop = fileDrop
     return previewContent
-    .dropDestination(for: URL.self, isEnabled: fileDrop.canAcceptDrop) { urls, _ in
-      fileDrop.receive(urls)
-    }
-    .dropConfiguration { _ in DropConfiguration(operation: .copy) }
-    .overlay(alignment: .bottom) {
-      VStack(spacing: 0) {
-        if fileDrop.isBusy || fileDrop.status != nil || !fileDrop.failures.isEmpty {
-          DeviceFileDropStatus(model: fileDrop)
-        }
-        if let message = attachment?.preview?.keyboardError {
-          HStack(spacing: 8) {
-            Text(message)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            Button { attachment?.clearKeyboardError() } label: {
-              Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss keyboard status")
+      .dropDestination(for: URL.self, isEnabled: fileDrop.canAcceptDrop) { urls, _ in
+        fileDrop.receive(urls)
+      }
+      .dropConfiguration { _ in DropConfiguration(operation: .copy) }
+      .overlay(alignment: .bottom) {
+        VStack(spacing: 0) {
+          if fileDrop.isBusy || fileDrop.status != nil || !fileDrop.failures.isEmpty {
+            DeviceFileDropStatus(model: fileDrop)
           }
-          .font(.callout)
-          .padding(10)
-          .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+          if let message = attachment?.preview?.keyboardError {
+            HStack(spacing: 8) {
+              Text(message)
+                .frame(maxWidth: .infinity, alignment: .leading)
+              Button { attachment?.clearKeyboardError() } label: {
+                Image(systemName: "xmark")
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("Dismiss keyboard status")
+            }
+            .font(.callout)
+            .padding(10)
+            .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+          }
         }
       }
-    }
-    .alert(fileDrop.installPrompt, isPresented: $fileDrop.asksToInstall) {
-      Button("Install") { fileDrop.start(install: true) }
-      Button("Copy to Downloads") { fileDrop.start(install: false) }
-      Button("Cancel", role: .cancel) { fileDrop.pendingFiles = [] }
-    } message: {
-      if !fileDrop.installMessage.isEmpty { Text(fileDrop.installMessage) }
-    }
-    .alert(
-      "“\(fileDrop.conflictName)” already exists",
-      isPresented: $fileDrop.asksAboutConflict
-    ) {
-      Button("Keep Both") { fileDrop.answerConflict(.keepBoth) }
-      Button("Replace", role: .destructive) { fileDrop.answerConflict(.replace) }
-      Button("Skip", role: .cancel) { fileDrop.answerConflict(.skip) }
-    }
+      .alert(fileDrop.installPrompt, isPresented: $fileDrop.asksToInstall) {
+        Button("Install") { fileDrop.start(install: true) }
+        Button("Copy to Downloads") { fileDrop.start(install: false) }
+        Button("Cancel", role: .cancel) { fileDrop.pendingFiles = [] }
+      } message: {
+        if !fileDrop.installMessage.isEmpty { Text(fileDrop.installMessage) }
+      }
+      .alert(
+        "“\(fileDrop.conflictName)” already exists",
+        isPresented: $fileDrop.asksAboutConflict
+      ) {
+        Button("Keep Both") { fileDrop.answerConflict(.keepBoth) }
+        Button("Replace", role: .destructive) { fileDrop.answerConflict(.replace) }
+        Button("Skip", role: .cancel) { fileDrop.answerConflict(.skip) }
+      }
   }
 
   private var previewContent: some View {

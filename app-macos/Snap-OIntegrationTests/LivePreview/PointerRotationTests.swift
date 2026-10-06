@@ -149,7 +149,9 @@ private actor PointerDevice {
 
   nonisolated let target: DeviceTarget
 
-  init(target: DeviceTarget) { self.target = target }
+  init(target: DeviceTarget) {
+    self.target = target
+  }
 
   nonisolated func makeBackend() -> UInputLivePreviewPointerBackend {
     UInputLivePreviewPointerBackend(target: target, touchscreen: touchscreen) {

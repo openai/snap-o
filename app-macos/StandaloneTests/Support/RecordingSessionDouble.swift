@@ -10,7 +10,9 @@ final class RecordingSession: @unchecked Sendable {
     self.deviceID = deviceID
   }
 
-  func recordedDuration() async throws -> Duration { .seconds(1) }
+  func recordedDuration() async throws -> Duration {
+    .seconds(1)
+  }
 
   func waitUntilStopped() async throws {
     try await withCheckedThrowingContinuation { continuation in

@@ -102,7 +102,9 @@ struct FileDropTests {
     await waitForActorTestState { await gate.waitCount == 1 }
     if invalidates { target.invalidate() }
     let finished = TestValue(false)
-    let stop = Task { await attachment.close(); finished.value = true }
+    let stop = Task { await attachment.close()
+      finished.value = true
+    }
     await waitForActorTestState { await probe.wasCancelled }
     #expect(!finished.value, "Attachment teardown must join the transfer's cleanup")
     #expect(!model.canAcceptDrop)
@@ -134,7 +136,9 @@ struct FileDropTests {
     #expect(firstDrop.receive([url]))
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let closing = Task { await first.close(); finished.value = true }
+    let closing = Task { await first.close()
+      finished.value = true
+    }
     await waitForActorTestState { await firstProbe.wasCancelled }
     #expect(secondDrop.receive([url]))
     try await waitForState { secondDrop.status == "1 copied to Downloads" }

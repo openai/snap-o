@@ -75,7 +75,9 @@ struct LivePreviewAttachmentTests {
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.ready(attachment)
     let finished = TestValue(0)
-    let first = Task { await attachment.close(); finished.value += 1 }
+    let first = Task { await attachment.close()
+      finished.value += 1
+    }
     await gate.waitUntilStarted()
     let entered = TestValue(false)
     let second = Task {

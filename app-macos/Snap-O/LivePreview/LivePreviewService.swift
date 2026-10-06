@@ -12,7 +12,9 @@ private final class PreviewConnectionEntry {
   @ObservationIgnored var closing: Task<Void, Never>?
   @ObservationIgnored var lease: DeviceCaptureLease?
   @ObservationIgnored var invalidationHandler: UUID?
-  init(target: DeviceTarget) { self.target = target }
+  init(target: DeviceTarget) {
+    self.target = target
+  }
 }
 
 @Observable
@@ -23,12 +25,16 @@ private final class PreviewUse {
     let cancel: () -> Void
     let finish: () async -> Void
   }
+
   let id = UUID()
   let entry: PreviewConnectionEntry
   var isClosed = false
   // Prewarm until the window reports its initial visibility.
   var windowVisibility: Bool?
-  var isVisible: Bool { windowVisibility == true }
+  var isVisible: Bool {
+    windowVisibility == true
+  }
+
   var isPaneVisible = true
   var wantsClipboard = true
   var viewID: UUID?
@@ -38,7 +44,9 @@ private final class PreviewUse {
   @ObservationIgnored var requests: [UUID: Request] = [:]
   @ObservationIgnored var release: Task<Void, Never>?
   @ObservationIgnored var inputRelease: Task<Void, Never>?
-  init(entry: PreviewConnectionEntry) { self.entry = entry }
+  init(entry: PreviewConnectionEntry) {
+    self.entry = entry
+  }
 }
 
 /// Owns one connection per target and grants input to one attachment at a time.
@@ -52,7 +60,10 @@ final class LivePreviewService {
   @ObservationIgnored private var entries: [DeviceTarget: PreviewConnectionEntry] = [:]
   @ObservationIgnored private var users: [UUID: PreviewUse] = [:]
   private var inputUser: PreviewUse?
-  private var activeID: UUID? { inputUser?.id }
+  private var activeID: UUID? {
+    inputUser?.id
+  }
+
   @ObservationIgnored private var desiredID: UUID?
   @ObservationIgnored private var clipboardOwner: DevicePreview?
   @ObservationIgnored private var focusRevision = 0
@@ -112,7 +123,9 @@ final class LivePreviewService {
       entry.invalidationHandler = try? target.onInvalidation { [weak self, weak entry] in
         Task { @MainActor in
           guard let self, let entry else { return }
-          for id in Array(entry.users) { await self.release(id) }
+          for id in Array(entry.users) {
+            await self.release(id)
+          }
         }
       }
       start(entry, after: previous)
@@ -153,14 +166,18 @@ final class LivePreviewService {
 
   fileprivate func release(_ id: UUID) async {
     guard let user = users[id] else { return }
-    if let release = user.release { await release.value; return }
+    if let release = user.release { await release.value
+      return
+    }
     user.isClosed = true
     if user.entry.users.contains(where: { users[$0]?.isClosed == false }) {
       updateVideoActivity(user.entry)
     }
     user.fileDrop?.cancel()
     let controls = user.emulatorControls?.beginShutdown()
-    for request in user.requests.values { request.cancel() }
+    for request in user.requests.values {
+      request.cancel()
+    }
     if desiredID == id || activeID == id { requestFocus(nil) }
     let focus = user.inputRelease
     let requests = Array(user.requests.values)
@@ -168,7 +185,9 @@ final class LivePreviewService {
       async let files: Void = user.fileDrop?.shutdown() ?? ()
       await controls?.value
       await files
-      for request in requests { await request.finish() }
+      for request in requests {
+        await request.finish()
+      }
       await focus?.value
       let entry = user.entry
       entry.users.remove(id)
@@ -180,7 +199,9 @@ final class LivePreviewService {
   }
 
   private func close(_ entry: PreviewConnectionEntry) async {
-    if let closing = entry.closing { await closing.value; return }
+    if let closing = entry.closing { await closing.value
+      return
+    }
     if let handler = entry.invalidationHandler {
       entry.target.removeInvalidationHandler(handler)
       entry.invalidationHandler = nil
@@ -242,7 +263,9 @@ final class LivePreviewService {
     clipboardOwner?.setClipboardEnabled(false)
     if let old {
       let keyboard = old.entry.owner?.keyboard.releaseInput()
-      for request in old.requests.values where request.isInput { request.cancel() }
+      for request in old.requests.values where request.isInput {
+        request.cancel()
+      }
       let cleanup = Task { await finishOldInput(old, keyboard: keyboard) }
       old.inputRelease = cleanup
       inputCleanup = cleanup
@@ -287,11 +310,15 @@ final class LivePreviewService {
   private func readyOwner(for user: PreviewUse) async -> DevicePreview? {
     for await ready in Observations({
       user.isClosed || user.entry.owner != nil || user.entry.error != nil
-    }) where ready { break }
+    }) where ready {
+      break
+    }
     guard !Task.isCancelled, !user.isClosed, let owner = user.entry.owner else { return nil }
     for await ready in Observations({
       owner.preparationFinished || user.isClosed
-    }) where ready { break }
+    }) where ready {
+      break
+    }
     return !Task.isCancelled && !user.isClosed && owner.inputReady ? owner : nil
   }
 
@@ -346,13 +373,17 @@ final class LivePreviewService {
   }
 
   func shutdown() async {
-    if let shutdownWork { await shutdownWork.value; return }
+    if let shutdownWork { await shutdownWork.value
+      return
+    }
     isShuttingDown = true
     requestFocus(nil)
     let ids = Array(users.keys)
     let shutdown = Task {
       await withTaskGroup(of: Void.self) { group in
-        for id in ids { group.addTask { await self.release(id) } }
+        for id in ids {
+          group.addTask { await self.release(id) }
+        }
       }
       await focusWork?.value
       await clipboardOwner?.stopClipboard()
@@ -368,26 +399,59 @@ final class LivePreviewService {
 final class LivePreviewAttachment: LivePreviewKeyboardHandling {
   private let service: LivePreviewService
   fileprivate let user: PreviewUse
-  var id: UUID { user.id }
-  var target: DeviceTarget { user.entry.target }
-  var preview: (any PreviewStatus)? { user.isClosed ? nil : user.entry.owner }
+  var id: UUID {
+    user.id
+  }
+
+  var target: DeviceTarget {
+    user.entry.target
+  }
+
+  var preview: (any PreviewStatus)? {
+    user.isClosed ? nil : user.entry.owner
+  }
+
   var error: String? {
     if let error = user.entry.error { return error }
     if case .failed(let message) = preview?.videoState { return message }
     return nil
   }
-  var isClosed: Bool { user.isClosed }
-  var acceptsInput: Bool { service.acceptsInput(user) }
-  var fileDrop: DeviceFileDrop? { user.fileDrop }
-  var emulatorControls: EmulatorControlsController? { user.emulatorControls }
-  var thumbnail: LivePreviewThumbnail { user.thumbnail }
-  var isWindowVisible: Bool { user.isVisible }
-  var hasFailed: Bool { error != nil }
+
+  var isClosed: Bool {
+    user.isClosed
+  }
+
+  var acceptsInput: Bool {
+    service.acceptsInput(user)
+  }
+
+  var fileDrop: DeviceFileDrop? {
+    user.fileDrop
+  }
+
+  var emulatorControls: EmulatorControlsController? {
+    user.emulatorControls
+  }
+
+  var thumbnail: LivePreviewThumbnail {
+    user.thumbnail
+  }
+
+  var isWindowVisible: Bool {
+    user.isVisible
+  }
+
+  var hasFailed: Bool {
+    error != nil
+  }
 
   func mount(_ viewID: UUID) {
     user.viewID = viewID
   }
-  func isMounted(_ viewID: UUID) -> Bool { !isClosed && user.viewID == viewID }
+
+  func isMounted(_ viewID: UUID) -> Bool {
+    !isClosed && user.viewID == viewID
+  }
 
   func updatePresentation(viewID: UUID, visible: Bool, focused: Bool, syncClipboard: Bool) {
     guard user.viewID == viewID, !isClosed else { return }
@@ -404,7 +468,9 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     user.emulatorControls?.disappear()
   }
 
-  func clearKeyboardError() { user.entry.owner?.keyboard.errorMessage = nil }
+  func clearKeyboardError() {
+    user.entry.owner?.keyboard.errorMessage = nil
+  }
 
   func restartVideo() {
     guard !isClosed else { return }
@@ -426,11 +492,26 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     }
   }
 
-  func setVisible(_ visible: Bool) { service.setVisible(visible, user: user) }
-  func setPaneVisible(_ visible: Bool) { service.setPaneVisible(visible, user: user) }
-  func setFocused(_ focused: Bool) { service.setFocused(focused, user: user) }
-  func setClipboardEnabled(_ enabled: Bool) { service.setClipboardEnabled(enabled, user: user) }
-  func send(_ event: LivePreviewKeyboardEvent) { service.send(event, user: user) }
+  func setVisible(_ visible: Bool) {
+    service.setVisible(visible, user: user)
+  }
+
+  func setPaneVisible(_ visible: Bool) {
+    service.setPaneVisible(visible, user: user)
+  }
+
+  func setFocused(_ focused: Bool) {
+    service.setFocused(focused, user: user)
+  }
+
+  func setClipboardEnabled(_ enabled: Bool) {
+    service.setClipboardEnabled(enabled, user: user)
+  }
+
+  func send(_ event: LivePreviewKeyboardEvent) {
+    service.send(event, user: user)
+  }
+
   func prepare() {
     guard acceptsInput else { return }
     user.entry.owner?.keyboard.prepare()
@@ -441,13 +522,22 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     user.entry.owner?.keyboard.discardPendingInput()
   }
 
-  // Leaving the text responder does not deactivate this window's pointer or clipboard.
-  func stop() { discardPendingInput() }
+  /// Leaving the text responder does not deactivate this window's pointer or clipboard.
+  func stop() {
+    discardPendingInput()
+  }
 
-  func screenshot() async throws -> Data { try await service.screenshot(user: user) }
-  func sendKey(_ key: String) async throws { try await service.sendKey(key, user: user) }
+  func screenshot() async throws -> Data {
+    try await service.screenshot(user: user)
+  }
 
-  func retryVideo() { service.retry(user) }
+  func sendKey(_ key: String) async throws {
+    try await service.sendKey(key, user: user)
+  }
+
+  func retryVideo() {
+    service.retry(user)
+  }
 
   func rotate(left: Bool) async throws {
     try await service.request(user: user, isInput: true) { [user] in
@@ -457,5 +547,7 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     }
   }
 
-  func close() async { await service.release(id) }
+  func close() async {
+    await service.release(id)
+  }
 }

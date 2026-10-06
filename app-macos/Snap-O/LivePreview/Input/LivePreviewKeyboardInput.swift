@@ -10,7 +10,9 @@ extension LivePreviewDisplayView: @preconcurrency NSTextInputClient {
     _ handler: (any LivePreviewKeyboardHandling)?,
     isCurrent: @escaping () -> Bool = { true }
   ) {
-    guard keyboard !== handler else { keyboardIsCurrent = isCurrent; return }
+    guard keyboard !== handler else { keyboardIsCurrent = isCurrent
+      return
+    }
     releaseKeyboardFocus()
     if keyboardIsCurrent() { keyboard?.stop() }
     keyboard = handler

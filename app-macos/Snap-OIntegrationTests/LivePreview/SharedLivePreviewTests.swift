@@ -82,7 +82,9 @@ struct SharedLivePreviewTests {
     let first = fixture.service.attach(to: target)
     try await fixture.ready(first)
     let closed = TestValue(false)
-    let firstClose = Task { await first.close(); closed.value = true }
+    let firstClose = Task { await first.close()
+      closed.value = true
+    }
     await cleanup.waitUntilStarted()
     let secondClose = Task { await first.close() }
     fixture.sourceCleanup = nil
@@ -452,7 +454,9 @@ struct SharedLivePreviewTests {
     let second = fixture.service.attach(to: fixture.target("second"))
     try await fixture.ready(second)
     let finished = TestValue(false)
-    let shutdown = Task { await fixture.service.shutdown(); finished.value = true }
+    let shutdown = Task { await fixture.service.shutdown()
+      finished.value = true
+    }
     await gate.waitUntilStarted()
     try await waitForState { fixture.sources[1].stops == 1 }
     #expect(!finished.value)
@@ -607,7 +611,9 @@ struct SharedLivePreviewTests {
     var stops = 0
     private var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
     private var cleanupWork: Task<Void, Never>?
-    init(cleanup: TestSuspension?) { self.cleanup = cleanup }
+    init(cleanup: TestSuspension?) {
+      self.cleanup = cleanup
+    }
 
     func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
       self.deliver = deliver
@@ -619,13 +625,19 @@ struct SharedLivePreviewTests {
       if let format { deliver(.format(format)) }
     }
 
-    func fail() { deliver?(.stopped(CocoaError(.fileReadUnknown))) }
+    func fail() {
+      deliver?(.stopped(CocoaError(.fileReadUnknown)))
+    }
+
     func stop() {
       stops += 1
       deliver = nil
       if let cleanup { cleanupWork = Task { try? await cleanup.wait() } }
     }
-    func waitUntilStopped() async { await cleanupWork?.value }
+
+    func waitUntilStopped() async {
+      await cleanupWork?.value
+    }
   }
 
   actor Pointer: LivePreviewPointerBackend {
@@ -635,6 +647,7 @@ struct SharedLivePreviewTests {
       events.append(event)
       changes.signal()
     }
+
     func waitForEvents(_ count: Int) async {
       while events.count < count {
         let revision = changes.revision
@@ -646,14 +659,21 @@ struct SharedLivePreviewTests {
   actor Clipboard: ClipboardTransport {
     private var receiver: (@Sendable (String) async -> Void)?
     private let changes = TestSignal()
-    func getText() async throws -> String { "" }
+    func getText() async throws -> String {
+      ""
+    }
+
     func setText(_ text: String) async throws {}
     func receive(_ onText: @escaping @Sendable (String) async -> Void) async throws {
       receiver = onText
       changes.signal()
       try await suspendUntilCancelled()
     }
-    func deliver(_ text: String) async { await receiver?(text) }
+
+    func deliver(_ text: String) async {
+      await receiver?(text)
+    }
+
     func waitUntilReceiving() async {
       while receiver == nil {
         let revision = changes.revision
@@ -668,11 +688,22 @@ struct SharedLivePreviewTests {
     private var received: [LivePreviewKeyboardEvent] = []
     private var closed = false
     private var copyGate: TestSuspension?
-    var events: [LivePreviewKeyboardEvent] { lock.withLock { received } }
-    var isClosed: Bool { lock.withLock { closed } }
-    func holdCopy(_ gate: TestSuspension) { lock.withLock { copyGate = gate } }
+    var events: [LivePreviewKeyboardEvent] {
+      lock.withLock { received }
+    }
+
+    var isClosed: Bool {
+      lock.withLock { closed }
+    }
+
+    func holdCopy(_ gate: TestSuspension) {
+      lock.withLock { copyGate = gate }
+    }
+
     func send(_ event: LivePreviewKeyboardEvent) async throws -> LivePreviewKeyboardResponse {
-      let gate = lock.withLock { received.append(event); return copyGate }
+      let gate = lock.withLock { received.append(event)
+        return copyGate
+      }
       changes.signal()
       if event == .copy {
         try? await gate?.wait()
@@ -680,7 +711,11 @@ struct SharedLivePreviewTests {
       }
       return .sent
     }
-    func close() { lock.withLock { closed = true } }
+
+    func close() {
+      lock.withLock { closed = true }
+    }
+
     func waitForEvents(_ count: Int) async throws {
       while true {
         let revision = changes.revision

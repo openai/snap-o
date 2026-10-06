@@ -10,7 +10,10 @@ final class AppTermination {
   }
 
   private(set) var outcome: Outcome?
-  var isRunning: Bool { cleanupTask != nil }
+  var isRunning: Bool {
+    cleanupTask != nil
+  }
+
   private var cleanupTask: Task<Void, Never>?
   private var deadlineTask: Task<Void, Never>?
   @Dependency(\.continuousClock)

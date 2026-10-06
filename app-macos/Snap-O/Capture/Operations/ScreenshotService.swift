@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// Captures one device. The caller owns batching and history.
-struct ScreenshotService: Sendable {
+struct ScreenshotService {
   private let adb: ADBService
   private let fileStore: FileStore
   private let timestampSource = CaptureTimestampSource()

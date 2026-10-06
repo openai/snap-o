@@ -16,7 +16,7 @@ final class AppRuntime {
 
   private enum Cleanup: String, CaseIterable {
     case startup = "startup preparation"
-    case workspaces = "workspaces"
+    case workspaces
     case deviceManager = "device management"
     case deviceTracker = "device tracking"
     case livePreview = "live preview"

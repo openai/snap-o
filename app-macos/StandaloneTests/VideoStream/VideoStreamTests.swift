@@ -26,7 +26,7 @@ struct VideoStreamTests {
       try await emulatorDeadlineEndsSession()
     }
     print("Shared video lifetime tests passed")
-    exit(await Testing.__swiftPMEntryPoint())
+    await exit(Testing.__swiftPMEntryPoint())
   }
 
   static func target(_ serial: String = "test-device") -> DeviceTarget {
@@ -230,8 +230,12 @@ struct VideoStreamTests {
     let source = HeldFrameSource()
     let recording = NativeScreenRecording(source: source)
     let completed = TestValue(0)
-    let first = await startTestTask { try? await recording.stop(); completed.value += 1 }
-    let second = await startTestTask { await recording.close(); completed.value += 1 }
+    let first = await startTestTask { try? await recording.stop()
+      completed.value += 1
+    }
+    let second = await startTestTask { await recording.close()
+      completed.value += 1
+    }
     await waitForActorTestState { await source.cleanup.waitCount == 1 }
     precondition(source.stops == 1 && completed.value == 0)
     await source.cleanup.open()
@@ -342,8 +346,12 @@ struct VideoStreamTests {
     let session = LivePreviewSession(deviceID: "test", densityScale: nil, source: source)
     let ready = Task { try await session.waitUntilReady() }
     let completed = TestValue(0)
-    let first = await startTestTask { _ = await session.waitUntilStop(); completed.value += 1 }
-    let second = await startTestTask { _ = await session.waitUntilStop(); completed.value += 1 }
+    let first = await startTestTask { _ = await session.waitUntilStop()
+      completed.value += 1
+    }
+    let second = await startTestTask { _ = await session.waitUntilStop()
+      completed.value += 1
+    }
     session.cancel()
     session.cancel()
     do {
@@ -368,6 +376,11 @@ private final class HeldFrameSource: LivePreviewFrameSource {
   let cleanup = TestGate()
   var stops = 0
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {}
-  func stop() { stops += 1 }
-  func waitUntilStopped() async { await cleanup.wait() }
+  func stop() {
+    stops += 1
+  }
+
+  func waitUntilStopped() async {
+    await cleanup.wait()
+  }
 }

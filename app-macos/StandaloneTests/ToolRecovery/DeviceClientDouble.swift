@@ -7,7 +7,7 @@ public struct ToolFrontendBundle: Sendable {}
 
 public final class ADBSocketConnection: Sendable {}
 
-// Console tests do not load web content.
+/// Console tests do not load web content.
 enum ToolURL {
   static let api = URL(string: "snapo://tool/api/")!
   static let frontend = api.deletingLastPathComponent()
@@ -104,7 +104,10 @@ public final class ADBClient: @unchecked Sendable {
   private var trackingAttempts = 0
   private var trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
-  func bound(to _: DeviceTarget) -> ADBClient { self }
+  func bound(to _: DeviceTarget) -> ADBClient {
+    self
+  }
+
   public func connectionAttempts(to deviceID: String) -> Int {
     lock.withLock { connectionAttemptsByDevice[deviceID, default: 0] }
   }
@@ -268,8 +271,13 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { propertyGates[deviceID] = gate }
   }
 
-  var propertyRequestCount: Int { lock.withLock { propertyRequests } }
-  var propertyCompletionCount: Int { lock.withLock { propertyCompletions } }
+  var propertyRequestCount: Int {
+    lock.withLock { propertyRequests }
+  }
+
+  var propertyCompletionCount: Int {
+    lock.withLock { propertyCompletions }
+  }
 
   public func getProperties(deviceID: String, prefix: String?) async throws -> [String: String] {
     let gate = lock.withLock {

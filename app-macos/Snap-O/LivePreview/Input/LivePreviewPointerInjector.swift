@@ -79,7 +79,9 @@ actor LivePreviewPointerInjector {
   }
 
   func stopDevice(_ target: DeviceTarget) async {
-    if let cleanup = cleanups[target] { await cleanup.task.value; return }
+    if let cleanup = cleanups[target] { await cleanup.task.value
+      return
+    }
     guard let entry = sessions.removeValue(forKey: target) else { return }
     target.removeInvalidationHandler(entry.invalidationHandler)
     let cleanup = Cleanup(task: Task { await entry.session.stop() })
@@ -89,16 +91,24 @@ actor LivePreviewPointerInjector {
   }
 
   func stopAll() async {
-    if let shutdownTask { await shutdownTask.value; return }
+    if let shutdownTask { await shutdownTask.value
+      return
+    }
     let entries = sessions
     let pending = Array(cleanups.values)
     sessions.removeAll()
-    for (target, entry) in entries { target.removeInvalidationHandler(entry.invalidationHandler) }
+    for (target, entry) in entries {
+      target.removeInvalidationHandler(entry.invalidationHandler)
+    }
     let fallback = fallbackBackend
     let task = Task {
       await withTaskGroup(of: Void.self) { group in
-        for entry in entries.values { group.addTask { await entry.session.stop() } }
-        for cleanup in pending { group.addTask { await cleanup.task.value } }
+        for entry in entries.values {
+          group.addTask { await entry.session.stop() }
+        }
+        for cleanup in pending {
+          group.addTask { await cleanup.task.value }
+        }
       }
       await fallback.stop()
     }
@@ -157,7 +167,9 @@ private actor LivePreviewPointerSession {
     let task = Task { [makeBackend, target] in
       do {
         let backend = try await makeBackend(target)
-        guard !isStopping, target.isValid else { await backend.stop(); return }
+        guard !isStopping, target.isValid else { await backend.stop()
+          return
+        }
         state = .ready(backend)
         SnapOLog.ui.info("Live Preview drag backend ready: uinput (\(target.serial, privacy: .private))")
       } catch {
@@ -194,14 +206,22 @@ private actor LivePreviewPointerSession {
   }
 
   func releaseInput() async {
-    if let inputRelease { await inputRelease.value; return }
-    guard !isStopping else { await shutdownTask?.value; return }
-    let pending = [touchTask, mouseTask].compactMap { $0 }
-    for task in pending { task.cancel() }
+    if let inputRelease { await inputRelease.value
+      return
+    }
+    guard !isStopping else { await shutdownTask?.value
+      return
+    }
+    let pending = [touchTask, mouseTask].compactMap(\.self)
+    for task in pending {
+      task.cancel()
+    }
     touchEvents.removeAll()
     mouseEvents.removeAll()
     let release = Task {
-      for task in pending { await task.value }
+      for task in pending {
+        await task.value
+      }
       guard !isStopping, target.isValid else { return }
       if let lastTouch { try? await sendTouch(cancel(lastTouch)) }
       if let pressedMouse { try? await fallback.send(cancel(pressedMouse)) }
@@ -223,7 +243,9 @@ private actor LivePreviewPointerSession {
   }
 
   func stop() async {
-    if let shutdownTask { await shutdownTask.value; return }
+    if let shutdownTask { await shutdownTask.value
+      return
+    }
     isStopping = true
     let preparation: Task<Void, Never>?
     let backend: (any LivePreviewPointerBackend)?
@@ -232,8 +254,10 @@ private actor LivePreviewPointerSession {
     case .ready(let ready): (preparation, backend) = (nil, ready)
     case .fallback, nil: (preparation, backend) = (nil, nil)
     }
-    let pending = [preparation, touchTask, mouseTask, inputRelease].compactMap { $0 }
-    for task in pending { task.cancel() }
+    let pending = [preparation, touchTask, mouseTask, inputRelease].compactMap(\.self)
+    for task in pending {
+      task.cancel()
+    }
     touchEvents.removeAll()
     mouseEvents.removeAll()
     route = nil
@@ -242,7 +266,9 @@ private actor LivePreviewPointerSession {
     state = nil
     let task = Task {
       await backend?.stop()
-      for work in pending { await work.value }
+      for work in pending {
+        await work.value
+      }
     }
     shutdownTask = task
     await task.value
@@ -334,7 +360,9 @@ private actor LivePreviewPointerSession {
       guard !isStopping else { return }
       route = .preferred(backend)
     case .preparing, .fallback:
-      guard event.locations.count == 1 else { route = .discarded; return }
+      guard event.locations.count == 1 else { route = .discarded
+        return
+      }
       // Keep the route even when the reply fails: Android may have received Down.
       route = .fallback
       try await fallback.send(event)

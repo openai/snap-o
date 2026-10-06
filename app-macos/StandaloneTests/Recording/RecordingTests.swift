@@ -172,7 +172,6 @@ struct RecordingTests {
       let requests = await fixture.adb.densityRequests
       precondition(requests == (disconnected ? [] : [target.serial]))
       await batch.close()
-
     }
   }
 
@@ -319,7 +318,9 @@ struct RecordingTests {
     batch.start()
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let cancellation = await startTestTask { await batch.close(); finished.value = true }
+    let cancellation = await startTestTask { await batch.close()
+      finished.value = true
+    }
     precondition(!finished.value, "Close must join pending device work")
     try fixture.expectReserved(devices[0])
     await gate.open()
@@ -351,7 +352,9 @@ struct RecordingTests {
     await gate.waitUntilEntered(2)
     fixture.coordinator.beginShutdown()
     let closed = TestValue(false)
-    let shutdown = await startTestTask { await batch.close(); closed.value = true }
+    let shutdown = await startTestTask { await batch.close()
+      closed.value = true
+    }
     precondition(!closed.value)
     let rejected = await fixture.captureScreenshots(for: devices)
     precondition(rejected.items.count == devices.count)
@@ -606,6 +609,7 @@ struct RecordingTests {
     let removed = await fixture.adb.removedRecordings
     precondition(removed == [devices[0].id], "A confirmed stop and usable local copy allow remote cleanup")
   }
+
   static func finalDeviceFailureCompletesRecording(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
     let batch = await fixture.startRecording(for: [devices[0]])
@@ -684,9 +688,13 @@ struct RecordingTests {
     let first = batch.beginFinalization(discarding: false)
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let again = await startTestTask { await batch.beginFinalization(discarding: false).value; finished.value = true }
+    let again = await startTestTask { await batch.beginFinalization(discarding: false).value
+      finished.value = true
+    }
     let closed = TestValue(false)
-    let close = await startTestTask { await batch.close(); closed.value = true }
+    let close = await startTestTask { await batch.close()
+      closed.value = true
+    }
     precondition(!finished.value && !closed.value)
     await gate.open()
     await first.value
@@ -718,5 +726,4 @@ struct RecordingTests {
     await batch.close()
     await fixture.coordinator.waitUntilIdle()
   }
-
 }

@@ -6,8 +6,14 @@ import Observation
 final class DeviceManager {
   private(set) var emulators: [ManagedEmulator] = []
   private(set) var inventory = DeviceInventory()
-  var connectedDevices: [Device] { inventory.connected ?? [] }
-  var latestDevices: [Device] { inventory.ready ?? [] }
+  var connectedDevices: [Device] {
+    inventory.connected ?? []
+  }
+
+  var latestDevices: [Device] {
+    inventory.ready ?? []
+  }
+
   private(set) var adbServerState: ADBServerState = .connecting
   @ObservationIgnored private var adbRecoveryTask: Task<Void, Never>?
 
@@ -18,7 +24,10 @@ final class DeviceManager {
   @ObservationIgnored private var matchingTasks: [Int: Task<Void, Never>] = [:]
   @ObservationIgnored private var refreshTask: Task<Void, Never>?
   private var shutdownTask: Task<Void, Never>?
-  var isShuttingDown: Bool { shutdownTask != nil }
+  var isShuttingDown: Bool {
+    shutdownTask != nil
+  }
+
   private var trackedConnections: [EmulatorConnection] = []
   private(set) var isRefreshing = false
   private(set) var hasLoaded = false
@@ -251,7 +260,8 @@ final class DeviceManager {
     let emulator = emulators.first { $0.avdName.replacingOccurrences(of: "_", with: " ") == device.avdName }
       ?? emulators.first { connection != nil && $0.serial == device.id }
     // Keep a resolved name through temporary console failures, but never across transports.
-    let previous = connectedDevices.first { $0.id == device.id && $0.connection == device.connection && $0.transportID == device.transportID }
+    let previous = connectedDevices
+      .first { $0.id == device.id && $0.connection == device.connection && $0.transportID == device.transportID }
     return Device(
       id: device.id, model: device.model, androidVersion: device.androidVersion,
       vendorModel: device.vendorModel, manufacturer: device.manufacturer, avdName: device.avdName,
@@ -375,15 +385,19 @@ final class DeviceManager {
   }
 
   private func cancelMatching() {
-    for task in matchingTasks.values { task.cancel() }
+    for task in matchingTasks.values {
+      task.cancel()
+    }
   }
 
   @discardableResult
   func shutdown() -> Task<Void, Never> {
     if let shutdownTask { return shutdownTask }
-    let pending = [adbRecoveryTask, observationTask, refreshTask].compactMap { $0 }
+    let pending = [adbRecoveryTask, observationTask, refreshTask].compactMap(\.self)
       + Array(matchingTasks.values) + Array(actionTasks.values)
-    for task in pending { task.cancel() }
+    for task in pending {
+      task.cancel()
+    }
     adbRecoveryTask = nil
     observationTask = nil
     refreshTask = nil
@@ -393,7 +407,9 @@ final class DeviceManager {
     actionTasks.removeAll()
     client.close()
     let task = Task {
-      for task in pending { await task.value }
+      for task in pending {
+        await task.value
+      }
     }
     shutdownTask = task
     return task

@@ -80,7 +80,9 @@ final class EmulatorControlsController {
     }
   }
 
-  func dismissFailure() { failure = nil }
+  func dismissFailure() {
+    failure = nil
+  }
 
   func disappear(viewID: UUID? = nil) {
     guard mountID != nil, viewID == nil || self.viewID == viewID else { return }
@@ -101,7 +103,9 @@ final class EmulatorControlsController {
     }
   }
 
-  func waitForCleanup() async { await cleanup?.value }
+  func waitForCleanup() async {
+    await cleanup?.value
+  }
 
   @discardableResult
   func beginShutdown() -> Task<Void, Never> {
@@ -115,7 +119,9 @@ final class EmulatorControlsController {
     return shutdown
   }
 
-  func shutdown() async { await beginShutdown().value }
+  func shutdown() async {
+    await beginShutdown().value
+  }
 
   private func loadControls(id: UUID) async {
     var delay = 1

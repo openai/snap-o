@@ -19,13 +19,17 @@ actor ADBService {
     self.video = video
   }
 
-  func bound(to _: DeviceTarget) -> ADBService { self }
+  func bound(to _: DeviceTarget) -> ADBService {
+    self
+  }
 
   func exec() -> ADBService {
     self
   }
 
-  func blockScreenshots(on gate: TestGate) { screenshotGate = gate }
+  func blockScreenshots(on gate: TestGate) {
+    screenshotGate = gate
+  }
 
   func blockScreenshot(for deviceID: String, on gate: TestGate) {
     deviceScreenshotGates[deviceID] = gate
@@ -56,7 +60,9 @@ actor ADBService {
     touchSettings[deviceID] ?? false
   }
 
-  func blockTouchRestoration(on gate: TestGate) { touchRestorationGate = gate }
+  func blockTouchRestoration(on gate: TestGate) {
+    touchRestorationGate = gate
+  }
 
   func setShowTouches(deviceID: String, enabled: Bool) async throws {
     if !enabled { await touchRestorationGate?.wait() }
@@ -89,7 +95,9 @@ actor ADBService {
     session.end()
   }
 
-  func blockDownload(on gate: TestGate) { downloadGate = gate }
+  func blockDownload(on gate: TestGate) {
+    downloadGate = gate
+  }
 
   func downloadScreenrecord(session: RecordingSession, savingTo url: URL) async throws {
     await downloadGate?.wait()
@@ -105,7 +113,9 @@ actor ADBService {
 }
 
 enum EmulatorGRPCEndpoint {
-  static func isEmulator(_ serial: String) -> Bool { serial.hasPrefix("emulator-") }
+  static func isEmulator(_ serial: String) -> Bool {
+    serial.hasPrefix("emulator-")
+  }
 }
 
 enum StartupCaptureMode { case screenshot, livePreview }

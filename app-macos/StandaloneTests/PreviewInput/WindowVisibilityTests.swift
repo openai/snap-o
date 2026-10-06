@@ -134,7 +134,15 @@ struct WindowVisibilityTests {
 @MainActor
 private final class VisibilityTestWindow: NSWindow {
   var testOcclusion: NSWindow.OcclusionState = .visible
-  override var occlusionState: NSWindow.OcclusionState { testOcclusion }
-  override var isVisible: Bool { true }
-  override var isMiniaturized: Bool { false }
+  override var occlusionState: NSWindow.OcclusionState {
+    testOcclusion
+  }
+
+  override var isVisible: Bool {
+    true
+  }
+
+  override var isMiniaturized: Bool {
+    false
+  }
 }

@@ -4,7 +4,7 @@ import Testing
 
 extension CapturePaneTests {
   @Test
-  func unusedWindowsAreReleasedAndLateWindowsCannotStart() async throws {
+  func unusedWindowsAreReleasedAndLateWindowsCannotStart() async {
     let fixture = Fixture()
     let workspaces = fixture.workspaces()
     weak var released: CaptureWindowSession?
@@ -43,7 +43,9 @@ extension CapturePaneTests {
     let firstClose = first.close()
     await firstGate.waitUntilStarted()
     let finished = TestValue(false)
-    let shutdown = Task { await workspaces.shutdown(); finished.value = true }
+    let shutdown = Task { await workspaces.shutdown()
+      finished.value = true
+    }
     await secondGate.waitUntilStarted()
     #expect(first.isClosed && second.isClosed && !finished.value)
     let repeated = workspaces.beginShutdown()
@@ -102,7 +104,7 @@ extension CapturePaneTests {
     await fixture.start(other)
     let ownAttachment = try #require(pane.livePreviewAttachment(for: "A"))
     let otherAttachment = try #require(other.livePreviewAttachment(for: "A"))
-    for _ in 0..<3 {
+    for _ in 0 ..< 3 {
       window.contentView = NSView()
       session.attach(to: window)
     }

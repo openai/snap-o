@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-struct ADBServerSessionTests {
+enum ADBServerSessionTests {
   static func run() async throws {
     try await trackingPublishesOnlyAnchoredSnapshot()
     try await restartBeforeTrackerEOFRejectsReusedTransport()
@@ -146,24 +146,39 @@ final class ScriptGate: @unchecked Sendable {
   private let event = DispatchSemaphore(value: 0)
   private let lock = NSLock()
   private var reached = false
-  var wasReached: Bool { lock.withLock { reached } }
-  func signal() { lock.withLock { reached = true }; event.signal() }
-  func wait() { event.wait() }
+  var wasReached: Bool {
+    lock.withLock { reached }
+  }
+
+  func signal() {
+    lock.withLock { reached = true }
+    event.signal()
+  }
+
+  func wait() {
+    event.wait()
+  }
 }
 
 final class ScriptedADBServer: @unchecked Sendable {
-  enum Step: Sendable {
+  enum Step {
     case reply(String, String)
     case disconnectOnRequest(String, ScriptGate)
     case stall(String, ScriptGate)
     case closed
   }
+
   private let lock = NSLock()
   private let workers = DispatchGroup()
   private var scripts: [[Step]]
 
-  init(_ scripts: [[Step]]) { self.scripts = scripts }
-  var client: ADBClient { ADBClient(discoveryTimeout: .seconds(2), connectionFactory: connect) }
+  init(_ scripts: [[Step]]) {
+    self.scripts = scripts
+  }
+
+  var client: ADBClient {
+    ADBClient(discoveryTimeout: .seconds(2), connectionFactory: connect)
+  }
 
   func connect() throws -> ADBSocketConnection {
     let steps = lock.withLock {
@@ -175,7 +190,9 @@ final class ScriptedADBServer: @unchecked Sendable {
     let peer = pair[1]
     workers.enter()
     DispatchQueue.global().async { [workers] in
-      defer { Darwin.close(peer); workers.leave() }
+      defer { Darwin.close(peer)
+        workers.leave()
+      }
       for step in steps {
         switch step {
         case .reply(let expected, let response):

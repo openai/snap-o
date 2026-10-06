@@ -11,7 +11,9 @@ actor ADBService {
     self.timesOut = timesOut
   }
 
-  func bound(to _: DeviceTarget) -> ADBService { self }
+  func bound(to _: DeviceTarget) -> ADBService {
+    self
+  }
 
   func exec() -> ADBService {
     self
@@ -43,7 +45,8 @@ enum ScreenshotDeadline {
   }
 }
 
-
 enum EmulatorGRPCEndpoint {
-  static func isEmulator(_ serial: String) -> Bool { serial.hasPrefix("emulator-") }
+  static func isEmulator(_ serial: String) -> Bool {
+    serial.hasPrefix("emulator-")
+  }
 }

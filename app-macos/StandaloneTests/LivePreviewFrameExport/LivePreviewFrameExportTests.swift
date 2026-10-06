@@ -15,8 +15,13 @@ enum SnapOLog {
 final class LivePreviewSession {
   let displayInfo: DisplayInfo? = DisplayInfo(size: CGSize(width: 64, height: 64), densityScale: 1)
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)?
-  func addRenderer(id: UUID, receive: @escaping (CMSampleBuffer) -> Void) { sampleBufferHandler = receive }
-  func removeRenderer(id: UUID) { sampleBufferHandler = nil }
+  func addRenderer(id: UUID, receive: @escaping (CMSampleBuffer) -> Void) {
+    sampleBufferHandler = receive
+  }
+
+  func removeRenderer(id: UUID) {
+    sampleBufferHandler = nil
+  }
 }
 
 enum LivePreviewPointerAction { case down, move, up, cancel }
@@ -121,8 +126,10 @@ struct LivePreviewFrameExportTests {
     let stops = keyboard.stops
     old.releaseKeyboardFocus()
     old.configureKeyboard(nil)
-    precondition(keyboard.discardedInputs == discards && keyboard.stops == stops,
-                 "Old view teardown must not discard the current view's keyboard work")
+    precondition(
+      keyboard.discardedInputs == discards && keyboard.stops == stops,
+      "Old view teardown must not discard the current view's keyboard work"
+    )
     current.releaseKeyboardFocus()
     precondition(keyboard.discardedInputs == discards + 1)
     current.configureKeyboard(nil)

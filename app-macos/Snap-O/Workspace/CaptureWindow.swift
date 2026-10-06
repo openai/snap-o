@@ -48,7 +48,10 @@ struct CaptureWindow: View {
     session.tools
   }
 
-  private var workspace: WorkspaceLayoutController { session.workspace }
+  private var workspace: WorkspaceLayoutController {
+    session.workspace
+  }
+
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
@@ -588,7 +591,6 @@ struct CaptureWindow: View {
       } else {
         WaitingForDeviceView()
       }
-
     }
     .clipped()
   }
@@ -659,5 +661,4 @@ struct CaptureWindow: View {
       max(totalWidth - 720, minimumWidth)
     )
   }
-
 }

@@ -60,7 +60,7 @@ struct CapturePaneTests {
   }
 
   @Test
-  func openingDeviceFromReviewDoesNotStartThePreviousPreview() async throws {
+  func openingDeviceFromReviewDoesNotStartThePreviousPreview() async {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
@@ -270,7 +270,7 @@ struct CapturePaneTests {
     let media = CaptureMedia(device: item.device, media: .image(
       url: url, capturedAt: Date(), display: DisplayInfo(size: CGSize(width: 1, height: 1), densityScale: 1)
     ))
-    item.update(.ready(await fixture.history.repository.record(media, in: entryID)))
+    await item.update(.ready(fixture.history.repository.record(media, in: entryID)))
     batch.isComplete = true
     await fixture.history.repository.finish(entryID)
     fixture.history.start()
@@ -286,7 +286,7 @@ struct CapturePaneTests {
   }
 
   @Test
-  func pendingReviewKeepsTheLiveDisplaySize() async throws {
+  func pendingReviewKeepsTheLiveDisplaySize() async {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
@@ -334,7 +334,7 @@ struct CapturePaneTests {
   }
 
   @Test
-  func lateDeviceOpenCannotReplaceManualSelection() async throws {
+  func lateDeviceOpenCannotReplaceManualSelection() async {
     let fixture = Fixture()
     let gate = TestSuspension()
     fixture.devices.resolveRequest = { _, progress in
@@ -402,7 +402,7 @@ struct CapturePaneTests {
   }
 
   @Test(arguments: [false, true])
-  func newCaptureCancelsPendingDeviceOpen(recording: Bool) async throws {
+  func newCaptureCancelsPendingDeviceOpen(recording: Bool) async {
     let fixture = Fixture()
     let gate = TestGate()
     fixture.devices.resolveRequest = { _, progress in
@@ -445,7 +445,9 @@ struct CapturePaneTests {
     pane.openDevice(.serial("B"))
     try await waitForState { pane.selectedPreviewDeviceID == "B" }
     let finished = TestValue(false)
-    let closing = Task { await pane.close(); finished.value = true }
+    let closing = Task { await pane.close()
+      finished.value = true
+    }
     try await waitForState { pane.isClosing }
     #expect(!finished.value, "Superseded work stays owned until it returns")
     await gate.open()
@@ -470,7 +472,9 @@ struct CapturePaneTests {
     #expect(pane.review === review)
     #expect(fixture.screenshots.value.count == 1 && fixture.recordings.value.isEmpty)
     let batch = try #require(fixture.screenshots.value.first)
-    for item in batch.items { item.update(.failed("Unavailable")) }
+    for item in batch.items {
+      item.update(.failed("Unavailable"))
+    }
     batch.isComplete = true
     await #expect(throws: (any Error).self) { try await save.value }
     #expect(pane.review === review, "A failed save keeps review available")
@@ -503,11 +507,13 @@ struct CapturePaneTests {
     pane.startRecording()
     let batch = try #require(pane.recording)
     pane.stopRecording()
-    pane.returnToLive(from: try #require(pane.review))
+    try pane.returnToLive(from: #require(pane.review))
     let gate = TestSuspension()
     batch.closeGate = gate
     let finished = TestValue(false)
-    let closing = Task { await pane.close(); finished.value = true }
+    let closing = Task { await pane.close()
+      finished.value = true
+    }
     await gate.waitUntilStarted()
     #expect(!finished.value)
     gate.resume()
@@ -612,6 +618,7 @@ struct CapturePaneTests {
       }
       devices.inventory = DeviceInventory(connected: connected, ready: connected)
     }
+
     var services: CaptureServices {
       CaptureServices(
         livePreview: previews,
@@ -627,15 +634,18 @@ struct CapturePaneTests {
         }
       )
     }
+
     func pane() -> CapturePaneSession {
       CapturePaneSession(services: services, devices: devices, fileStore: store, history: history)
     }
+
     func workspaces() -> CaptureWorkspaces {
       CaptureWorkspaces(
         captureServices: services, deviceManager: devices, fileStore: store,
         adbService: ADBService(), history: history
       )
     }
+
     func window(_ pane: CapturePaneSession, showsCapture: Bool, showsTool: Bool) -> CaptureWindowSession {
       guard let defaults = UserDefaults(suiteName: root.lastPathComponent) else { preconditionFailure("Missing test defaults") }
       let workspace = WorkspaceLayoutController(
@@ -644,6 +654,7 @@ struct CapturePaneTests {
       )
       return CaptureWindowSession(capture: pane, tools: ToolSession(), workspace: workspace)
     }
+
     func start(_ panes: CapturePaneSession...) async {
       for pane in panes {
         pane.enqueue(.livepreview)
@@ -654,6 +665,7 @@ struct CapturePaneTests {
         }
       }
     }
+
     func close() async {
       await history.shutdown()
       UserDefaults().removePersistentDomain(forName: root.lastPathComponent)

@@ -238,7 +238,9 @@ actor ToolHTTPService {
     }
     isStopped = true
     let work = Array(pendingWork.values)
-    for task in work { task.cancel() }
+    for task in work {
+      task.cancel()
+    }
     for observer in observers.values {
       observer.finish()
     }
@@ -251,13 +253,15 @@ actor ToolHTTPService {
     discoveredKeys.removeAll()
     retryAfter.removeAll()
     let task = Task {
-      for task in work { await task.value }
+      for task in work {
+        await task.value
+      }
     }
     stopTask = task
     await task.value
   }
 
-  // Lookup maps describe current work; this retains superseded work until it finishes.
+  /// Lookup maps describe current work; this retains superseded work until it finishes.
   private func startWork(_ operation: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
     let id = UUID()
     let task = Task {

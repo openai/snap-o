@@ -74,7 +74,7 @@ struct LivePreviewSessionStateTests {
     let source = Source()
     let session = LivePreviewSession(deviceID: "test", densityScale: nil, source: source)
     let entered = TestValue(0)
-    let pending = (0..<2).map { _ in
+    let pending = (0 ..< 2).map { _ in
       Task {
         entered.value += 1
         return try await session.waitUntilReady()
@@ -130,10 +130,14 @@ struct LivePreviewSessionStateTests {
         width: width, height: height, extensions: nil, formatDescriptionOut: &format
       )
       #expect(status == noErr)
-      deliver?(.format(try #require(format)))
+      try deliver?(.format(#require(format)))
     }
 
-    func stop() { stops += 1; deliver = nil }
+    func stop() {
+      stops += 1
+      deliver = nil
+    }
+
     func waitUntilStopped() async {}
   }
 }

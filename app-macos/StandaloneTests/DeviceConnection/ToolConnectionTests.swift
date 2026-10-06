@@ -8,7 +8,9 @@ struct ToolConnectionTests {
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else { throw POSIXError(.EIO) }
     let connection = ADBSocketConnection(connectedSocket: sockets[0])
     let peer = ADBSocketConnection(connectedSocket: sockets[1])
-    defer { connection.close(); peer.close() }
+    defer { connection.close()
+      peer.close()
+    }
     let target = DeviceTarget(serial: "synthetic", transportID: "1")
     try connection.bind(to: target)
     let input = try ToolHTTPRequestInput(request: URLRequest(url: ToolURL.api))

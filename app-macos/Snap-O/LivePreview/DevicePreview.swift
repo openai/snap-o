@@ -16,7 +16,7 @@ protocol PreviewStatus: AnyObject {
 @Observable
 @MainActor
 final class DevicePreview: PreviewStatus {
-  struct Preparation: Sendable {
+  struct Preparation {
     let touches: ShowTouchesOverride?
     let density: CGFloat?
   }
@@ -52,10 +52,21 @@ final class DevicePreview: PreviewStatus {
     canReconnect: { [weak self] in self?.target.isValid == true && self?.isClosed == false }
   )
 
-  var videoState: PreviewVideo.Phase { video.phase }
-  var display: DisplayInfo? { video.display }
-  var keyboardError: String? { keyboard.errorMessage }
-  var clipboardUnavailable: Bool { clipboard?.isUnavailable == true }
+  var videoState: PreviewVideo.Phase {
+    video.phase
+  }
+
+  var display: DisplayInfo? {
+    video.display
+  }
+
+  var keyboardError: String? {
+    keyboard.errorMessage
+  }
+
+  var clipboardUnavailable: Bool {
+    clipboard?.isUnavailable == true
+  }
 
   init(
     target: DeviceTarget, adb: ADBService, settings: AppSettings? = nil,
@@ -85,7 +96,7 @@ final class DevicePreview: PreviewStatus {
       while true {
         try Task.checkCancellation()
         _ = try target.requireTransport(for: target.serial)
-        if (try? await exec.isBootComplete(deviceID: target.serial)) == true { break }
+        if await (try? exec.isBootComplete(deviceID: target.serial)) == true { break }
         try await clock.sleep(for: delay)
         delay = min(delay * 2, .seconds(10))
       }
@@ -160,7 +171,9 @@ final class DevicePreview: PreviewStatus {
   }
 
   func close() async {
-    if let closing { await closing.value; return }
+    if let closing { await closing.value
+      return
+    }
     isClosed = true
     inputReady = false
     allowsClipboard = false

@@ -45,7 +45,10 @@ struct CaptureReviewEscapeTests {
 
     for captureNumber in 1 ... 3 {
       if cropImage {
-        fixture.controller.review.setCrop(CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8), for: try #require(fixture.controller.review.selectedItemID))
+        try fixture.controller.review.setCrop(
+          CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8),
+          for: #require(fixture.controller.review.selectedItemID)
+        )
         try await Task.sleep(for: .milliseconds(50))
       }
       try fixture.window.sendEvent(key(53, in: fixture.window))

@@ -27,6 +27,7 @@ final class CaptureReviewState {
     let kind: Reader
     let task: Task<Void, Never>
   }
+
   @ObservationIgnored private var readers: [UUID: Read] = [:]
   @ObservationIgnored private var exports: [UUID: Task<Void, Error>] = [:]
   @ObservationIgnored private var closeTask: Task<Void, Never>?
@@ -50,9 +51,18 @@ final class CaptureReviewState {
     }
   }
 
-  var selectedItem: CaptureItem? { items.first { $0.id == selectedItemID } }
-  var currentCapture: CaptureMedia? { selectedItem?.media }
-  var mediaList: [CaptureMedia] { items.compactMap(\.media) }
+  var selectedItem: CaptureItem? {
+    items.first { $0.id == selectedItemID }
+  }
+
+  var currentCapture: CaptureMedia? {
+    selectedItem?.media
+  }
+
+  var mediaList: [CaptureMedia] {
+    items.compactMap(\.media)
+  }
+
   var selectedItemWasDeleted: Bool {
     selectedItemID != nil && selectedItem == nil
   }
@@ -86,8 +96,13 @@ final class CaptureReviewState {
     select(items[(index + offset + items.count) % items.count].id)
   }
 
-  func crop(for id: UUID) -> CGRect { edits[id]?.crop ?? CaptureCropGeometry.fullImage }
-  func trim(for id: UUID) -> CaptureTrimRange? { edits[id]?.trim }
+  func crop(for id: UUID) -> CGRect {
+    edits[id]?.crop ?? CaptureCropGeometry.fullImage
+  }
+
+  func trim(for id: UUID) -> CaptureTrimRange? {
+    edits[id]?.trim
+  }
 
   func setCrop(_ crop: CGRect, for id: UUID) {
     guard !isClosing, !isSaving, items.contains(where: { $0.id == id && $0.media != nil }) else { return }
@@ -106,7 +121,9 @@ final class CaptureReviewState {
     return CaptureExportRequest(capture: capture, edits: edits[id] ?? MediaEdits())
   }
 
-  func clearError() { errorMessage = nil }
+  func clearError() {
+    errorMessage = nil
+  }
 
   func copySelectedImage(to pasteboard: NSPasteboard = .general) throws {
     guard !isClosing, let selectedItemID else { return }
@@ -139,7 +156,9 @@ final class CaptureReviewState {
     defer { isSaving = false }
     try await performExport {
       if !self.batch.isComplete {
-        for await complete in Observations({ self.batch.isComplete }) where complete { break }
+        for await complete in Observations({ self.batch.isComplete }) where complete {
+          break
+        }
       }
       let requests = try self.items.filter { $0.media != nil }.map { try self.exportRequest(for: $0.id) }
       guard !requests.isEmpty else { throw CocoaError(.fileReadNoSuchFile) }
@@ -180,7 +199,9 @@ final class CaptureReviewState {
   }
 
   private func read(_ kind: Reader, operation: @escaping @MainActor () async -> Void) async {
-    for read in readers.values where read.kind == kind { read.task.cancel() }
+    for read in readers.values where read.kind == kind {
+      read.task.cancel()
+    }
     let id = UUID()
     let task = Task {
       guard !Task.isCancelled else { return }
@@ -214,19 +235,27 @@ final class CaptureReviewState {
   }
 
   private func stopReaders() {
-    for read in readers.values { read.task.cancel() }
+    for read in readers.values {
+      read.task.cancel()
+    }
     playback.stop()
     dragExport.stop()
   }
 
   func close() async {
-    if let closeTask { await closeTask.value; return }
+    if let closeTask { await closeTask.value
+      return
+    }
     beginClosing()
     let acceptedExports = Array(exports.values)
     let pendingReads = readers.values.map(\.task)
     let task = Task {
-      for read in pendingReads { await read.value }
-      for export in acceptedExports { _ = try? await export.value }
+      for read in pendingReads {
+        await read.value
+      }
+      for export in acceptedExports {
+        _ = try? await export.value
+      }
       await batch.close()
       historyTask?.cancel()
       await historyTask?.value

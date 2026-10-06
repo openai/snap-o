@@ -47,7 +47,7 @@ private final class ConsoleFixture: @unchecked Sendable {
   }
 }
 
-// Socket ownership is tested separately; these fixtures use Unix socket pairs.
+/// Socket ownership is tested separately; these fixtures use Unix socket pairs.
 private func acceptFixturePeer(_ socket: Int32) {}
 
 func runConsoleTests() throws {

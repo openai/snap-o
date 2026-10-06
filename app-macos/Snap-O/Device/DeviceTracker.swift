@@ -51,7 +51,9 @@ actor DeviceTracker {
   func previewDeviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
-      guard stoppingTask == nil else { continuation.finish(); return }
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       previewContinuations[id] = continuation
       if hasSeenDeviceIDs { continuation.yield(previewDevices) }
       continuation.onTermination = { [weak self] _ in
@@ -84,7 +86,9 @@ actor DeviceTracker {
   func deviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
-      guard stoppingTask == nil else { continuation.finish(); return }
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       continuations[id] = continuation
       if self.hasSeenFirstMessage {
         continuation.yield(self.latestDevices)
@@ -99,7 +103,9 @@ actor DeviceTracker {
   func serverStateStream() -> AsyncStream<ADBServerState> {
     let id = UUID()
     return AsyncStream { continuation in
-      guard stoppingTask == nil else { continuation.finish(); return }
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       serverStateContinuations[id] = continuation
       continuation.yield(serverState)
       continuation.onTermination = { [weak self] _ in
@@ -164,18 +170,28 @@ actor DeviceTracker {
       return
     }
     retainTargets([])
-    let pending = [trackTask, recoveryTask].compactMap { $0 } + Array(propertyTasks.values)
-    for task in pending { task.cancel() }
+    let pending = [trackTask, recoveryTask].compactMap(\.self) + Array(propertyTasks.values)
+    for task in pending {
+      task.cancel()
+    }
     trackTask = nil
     let activeContinuations = Array(continuations.values)
     continuations.removeAll()
-    for continuation in activeContinuations { continuation.finish() }
-    for continuation in previewContinuations.values { continuation.finish() }
+    for continuation in activeContinuations {
+      continuation.finish()
+    }
+    for continuation in previewContinuations.values {
+      continuation.finish()
+    }
     previewContinuations.removeAll()
-    for continuation in serverStateContinuations.values { continuation.finish() }
+    for continuation in serverStateContinuations.values {
+      continuation.finish()
+    }
     serverStateContinuations.removeAll()
     let task = Task {
-      for task in pending { await task.value }
+      for task in pending {
+        await task.value
+      }
     }
     stoppingTask = task
     await task.value
@@ -183,7 +199,9 @@ actor DeviceTracker {
   }
 
   private func cancelPropertyRequests() {
-    for task in propertyTasks.values { task.cancel() }
+    for task in propertyTasks.values {
+      task.cancel()
+    }
   }
 
   private func removeContinuation(_ id: UUID) {

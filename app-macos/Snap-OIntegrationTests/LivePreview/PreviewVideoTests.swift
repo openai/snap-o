@@ -49,7 +49,9 @@ struct PreviewVideoTests {
     video.start()
     await startup.waitUntilStarted()
     let completed = TestValue(false)
-    let close = Task { await video.close(); completed.value = true }
+    let close = Task { await video.close()
+      completed.value = true
+    }
     try await waitForState { video.phase == .closed }
     #expect(!completed.value)
     startup.resume()
@@ -145,7 +147,7 @@ struct PreviewVideoTests {
     } canReconnect: { true }
     video.start()
     let delays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2), .seconds(3)]
-    for attempt in 0...4 {
+    for attempt in 0 ... 4 {
       try await waitForState { sources.value.count == attempt + 1 }
       await clock.advance(by: .seconds(60))
       if becomesReady { try sources.value[attempt].becomeReady() }
@@ -174,7 +176,7 @@ struct PreviewVideoTests {
     } canReconnect: { true }
     video.start()
     let delays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2), .milliseconds(500)]
-    for attempt in 0...3 {
+    for attempt in 0 ... 3 {
       try await waitForState { sources.value.count == attempt + 1 }
       try sources.value[attempt].becomeReady()
       try await waitForState { video.phase == .streaming }
@@ -252,11 +254,15 @@ struct PreviewVideoTests {
     var stops = 0
     var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
     private var cleanupTask: Task<Void, Never>?
-    init(cleanup: TestSuspension? = nil) { self.cleanup = cleanup }
+    init(cleanup: TestSuspension? = nil) {
+      self.cleanup = cleanup
+    }
+
     func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
       starts += 1
       self.deliver = deliver
     }
+
     func becomeReady() throws {
       var format: CMVideoFormatDescription?
       let status = CMVideoFormatDescriptionCreate(
@@ -264,13 +270,17 @@ struct PreviewVideoTests {
         width: 2, height: 3, extensions: nil, formatDescriptionOut: &format
       )
       #expect(status == noErr)
-      deliver?(.format(try #require(format)))
+      try deliver?(.format(#require(format)))
     }
+
     func stop() {
       stops += 1
       deliver = nil
       if let cleanup { cleanupTask = Task { try? await cleanup.wait() } }
     }
-    func waitUntilStopped() async { await cleanupTask?.value }
+
+    func waitUntilStopped() async {
+      await cleanupTask?.value
+    }
   }
 }

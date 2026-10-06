@@ -68,7 +68,9 @@ final class PreviewVideo {
   }
 
   func close() async {
-    if let closing { await closing.value; return }
+    if let closing { await closing.value
+      return
+    }
     isClosed = true
     phase = .closed
     work?.cancel()
@@ -91,14 +93,20 @@ final class PreviewVideo {
     var recovering = false
     var errorMessage = "Live preview is unavailable."
     while !isClosed, !Task.isCancelled {
-      guard canReconnect() else { phase = .failed(errorMessage); return }
+      guard canReconnect() else { phase = .failed(errorMessage)
+        return
+      }
       if recovering {
-        guard retryIndex < delays.count else { phase = .failed(errorMessage); return }
+        guard retryIndex < delays.count else { phase = .failed(errorMessage)
+          return
+        }
         phase = .waitingToReconnect
         do { try await clock.sleep(for: delays[retryIndex]) } catch { return }
         retryIndex += 1
         guard !isClosed, !Task.isCancelled else { return }
-        guard canReconnect() else { phase = .failed(errorMessage); return }
+        guard canReconnect() else { phase = .failed(errorMessage)
+          return
+        }
       }
       phase = .starting
       let attempt = await runAttempt()
@@ -106,7 +114,9 @@ final class PreviewVideo {
       errorMessage = attempt.error ?? "Live preview disconnected."
       recovering = recovering || attempt.opened || retryStartup
       if let duration = attempt.duration, duration >= .seconds(10) { retryIndex = 0 }
-      if !recovering { phase = .failed(errorMessage); return }
+      if !recovering { phase = .failed(errorMessage)
+        return
+      }
     }
   }
 
@@ -124,7 +134,7 @@ final class PreviewVideo {
     }
     session = candidate
     candidate.displayDidChange = { [weak self, weak candidate] display in
-      guard let self, let candidate, self.session === candidate, !isClosed else { return }
+      guard let self, let candidate, session === candidate, !isClosed else { return }
       self.display = display
     }
     if let ready = try? await candidate.waitUntilReady(), !isClosed, !Task.isCancelled {
