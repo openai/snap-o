@@ -13,6 +13,11 @@ struct DeviceThumbnailView: View {
     action != nil || device.isTransitioning
   }
 
+  private var connection: DeviceTarget? {
+    guard device.isRunning, let serial = device.serial else { return nil }
+    return manager.connectedDevices.first { $0.id == serial }?.connection
+  }
+
   var body: some View {
     ZStack {
       if device.isRunning, let image = liveThumbnail?.image ?? screenshot.image {
@@ -45,17 +50,17 @@ struct DeviceThumbnailView: View {
     .help(device.detail ?? action ?? device.status)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(action ?? device.status)
-    .task(id: device.isRunning ? device.serial : nil) {
+    .task(id: connection) {
       liveThumbnail = nil
       screenshot = LivePreviewThumbnail()
-      guard device.isRunning, let serial = device.serial else { return }
+      guard let connection else { return }
       let pixelSize = CGSize(width: 40 * displayScale, height: 60 * displayScale)
       while !Task.isCancelled {
-        if let live = SnapOCommandCoordinator.shared.liveThumbnail(deviceID: serial) {
+        if let live = SnapOCommandCoordinator.shared.liveThumbnail(for: connection) {
           live.cacheLiveFrame()
           liveThumbnail = live
         } else {
-          await screenshot.refresh(pixelSize: pixelSize) { try await manager.screenshot(for: serial) }
+          await screenshot.refresh(pixelSize: pixelSize) { try await manager.screenshot(for: connection) }
           guard !Task.isCancelled else { return }
           liveThumbnail = nil
         }

@@ -16,6 +16,7 @@ struct SnapOApp: App {
     appDelegate.prepareForTermination = {
       await runtime.shutdown()
     }
+    appDelegate.unfinishedTerminationWork = { runtime.unfinishedCleanup }
     runtime.start()
   }
 
@@ -25,17 +26,10 @@ struct SnapOApp: App {
       for: WorkspaceWindowConfiguration.self,
       content: { configuration in
         CaptureWindow(
-          captureServices: runtime.captureServices,
-          deviceManager: runtime.deviceManager,
-          fileStore: runtime.fileStore,
-          adbService: runtime.adbService,
+          workspaces: runtime.workspaces,
           initialWorkspace: configuration.wrappedValue.workspace
         )
         .modifier(WorkspaceWindowLauncher())
-        .handlesExternalEvents(
-          preferring: Set(["open", "record", "capture", "livepreview", "check-updates", "check-for-updates"]),
-          allowing: Set(["*"])
-        )
       },
       defaultValue: {
         WorkspaceWindowConfiguration(workspace: .persisted())
@@ -45,7 +39,6 @@ struct SnapOApp: App {
     .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 480, height: 480)
-    .handlesExternalEvents(matching: Set(["open", "record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
         history: runtime.captureHistory,

@@ -10,8 +10,13 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
   private var endpoint: ToolHTTPService.Endpoint?
   private var tasks: [ObjectIdentifier: (api: Bool, task: Task<Void, Never>)] = [:]
   private var session: URLSession?
+  private let makeExchange: ToolHTTPRequestOperation.MakeExchange
 
-  init(developmentURL: URL? = nil) {
+  init(
+    developmentURL: URL? = nil,
+    makeExchange: @escaping ToolHTTPRequestOperation.MakeExchange = NIOToolHTTPExchange.connect
+  ) {
+    self.makeExchange = makeExchange
     self.developmentURL = developmentURL
     super.init()
     if developmentURL != nil {
@@ -67,7 +72,7 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
         try Task.checkCancellation()
         if api, let endpoint {
           let input = try ToolHTTPRequestInput(request: urlSchemeTask.request)
-          let operation = ToolHTTPRequestOperation(input: input) {
+          let operation = ToolHTTPRequestOperation(input: input, makeExchange: makeExchange) {
             try await endpoint.adb.openLocalAbstract(
               deviceID: endpoint.reference.deviceId, abstractSocket: endpoint.reference.socketName
             )

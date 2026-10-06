@@ -48,7 +48,7 @@ struct CaptureHistorySettings: View {
         Button("Apply") {
           Task {
             removalCandidates = await history.repository.cleanupCandidates(using: policy)
-            if removalCandidates.isEmpty { await apply() } else { confirmsPolicy = true }
+            if removalCandidates.isEmpty { apply() } else { confirmsPolicy = true }
           }
         }
         .keyboardShortcut(.defaultAction)
@@ -58,15 +58,17 @@ struct CaptureHistorySettings: View {
     .frame(width: 460)
     .onAppear { policy = history.retention }
     .alert("Apply storage settings?", isPresented: $confirmsPolicy) {
-      Button("Apply and Remove", role: .destructive) { Task { await apply() } }
+      Button("Apply and Remove", role: .destructive) { apply() }
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("\(removalCandidates.count) older captures will be removed.")
     }
     .alert("Clear capture history?", isPresented: $confirmsClear) {
       Button("Clear History", role: .destructive) {
+        let ids = Set(history.entries.map(\.id))
+        let deletion = history.update { await $0.delete(ids) }
         Task {
-          await history.repository.delete(Set(history.entries.map(\.id)))
+          await deletion?.value
           dismiss()
         }
       }
@@ -76,8 +78,12 @@ struct CaptureHistorySettings: View {
     }
   }
 
-  private func apply() async {
-    await history.repository.setRetention(policy)
-    dismiss()
+  private func apply() {
+    let policy = policy
+    let update = history.update { await $0.setRetention(policy) }
+    Task {
+      await update?.value
+      dismiss()
+    }
   }
 }

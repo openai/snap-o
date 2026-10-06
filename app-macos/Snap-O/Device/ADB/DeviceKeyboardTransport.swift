@@ -2,14 +2,15 @@ import Foundation
 
 struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
   static let version: UInt32 = 1
-  let connection: ADBSocketConnection
+  let connection: any ADBConnection
   private let queue = DispatchQueue(label: "snapo.keyboard")
 
-  static func connect(serial: String, adb: ADBClient = ADBClient()) async throws -> Self {
-    guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
-      throw ADBError.protocolFailure("Missing device input helper")
-    }
-    let command = try DeviceClipboardProtocol.launchCommand(helper: Data(contentsOf: url), keyboard: true)
+  static func connect(
+    serial: String,
+    adb: ADBClient = ADBClient(),
+    helper: @Sendable () throws -> Data = DeviceClipboardProtocol.bundledHelper
+  ) async throws -> Self {
+    let command = try DeviceClipboardProtocol.launchCommand(helper: helper(), keyboard: true)
     let connection = try await adb.makeConnection()
     let transport = Self(connection: connection)
     do {

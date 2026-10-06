@@ -8,24 +8,52 @@ actor DeviceTracker {
   private let recoverADBServer: @Sendable () async throws -> Void
   @Dependency(\.continuousClock)
   private var clock
-  private let infoCache = DeviceInfoCache()
+  private var infoCache: [DeviceTarget: DeviceInfo] = [:]
 
   private(set) var serverState: ADBServerState = .connecting
   private var serverStateContinuations: [UUID: AsyncStream<ADBServerState>.Continuation] = [:]
   private var trackTask: Task<Void, Never>?
-  private var propertyTask: Task<Void, Never>?
-  private var isRecovering = false
+  private var propertyTasks: [UUID: Task<Void, Never>] = [:]
+  private var recoveryTask: Task<Void, Never>?
+  private var stoppingTask: Task<Void, Never>?
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private(set) var latestDevices: [Device] = []
 
   private var previewContinuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private var previewDevices: [Device] = []
+  private var targets: [String: DeviceTarget] = [:]
+
+  private func target(for serial: String, transportID: String?, server: (any DeviceServerConnection)?) -> DeviceTarget {
+    if let existing = targets[serial], existing.transportID == transportID, existing.server?.id == server?.id, existing.isValid {
+      return existing
+    }
+    if let old = targets.removeValue(forKey: serial) {
+      old.invalidate()
+      infoCache.removeValue(forKey: old)
+    }
+    let target = DeviceTarget(serial: serial, transportID: transportID, server: server)
+    targets[serial] = target
+    return target
+  }
+
+  private func retainTargets(_ serials: Set<String>) {
+    for serial in Array(targets.keys) where !serials.contains(serial) {
+      if let old = targets.removeValue(forKey: serial) {
+        old.invalidate()
+        infoCache.removeValue(forKey: old)
+      }
+    }
+  }
+
   private var hasSeenDeviceIDs = false
 
   /// Preview transport needs a connected serial, not descriptive Android properties.
   func previewDeviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       previewContinuations[id] = continuation
       if hasSeenDeviceIDs { continuation.yield(previewDevices) }
       continuation.onTermination = { [weak self] _ in
@@ -58,6 +86,9 @@ actor DeviceTracker {
   func deviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       continuations[id] = continuation
       if self.hasSeenFirstMessage {
         continuation.yield(self.latestDevices)
@@ -72,6 +103,9 @@ actor DeviceTracker {
   func serverStateStream() -> AsyncStream<ADBServerState> {
     let id = UUID()
     return AsyncStream { continuation in
+      guard stoppingTask == nil else { continuation.finish()
+        return
+      }
       serverStateContinuations[id] = continuation
       continuation.yield(serverState)
       continuation.onTermination = { [weak self] _ in
@@ -98,18 +132,24 @@ actor DeviceTracker {
   }
 
   private func attemptRecovery() async {
-    guard !isRecovering else { return }
-    isRecovering = true
-    defer { isRecovering = false }
+    guard recoveryTask == nil, stoppingTask == nil else { return }
     updateServerState(.starting)
-    do {
-      try await recoverADBServer()
-      guard !Task.isCancelled, serverState == .starting else { return }
-      updateServerState(.connecting)
-    } catch {
-      guard !Task.isCancelled, serverState == .starting else { return }
-      updateServerState(.unavailable(error.localizedDescription))
+    let task = Task {
+      defer { recoveryTask = nil }
+      do {
+        try Task.checkCancellation()
+        try await recoverADBServer()
+        guard !Task.isCancelled, serverState == .starting else { return }
+        updateServerState(.connecting)
+      } catch {
+        guard !Task.isCancelled, serverState == .starting else { return }
+        updateServerState(.unavailable(error.localizedDescription))
+      }
     }
+    recoveryTask = task
+    await withTaskCancellationHandler {
+      await task.value
+    } onCancel: { task.cancel() }
   }
 
   // MARK: - Tracking
@@ -118,18 +158,23 @@ actor DeviceTracker {
     #if PERF_TRACING
     Perf.startupEvent("tracker start entered")
     #endif
-    guard trackTask == nil else { return }
+    guard trackTask == nil, stoppingTask == nil, !Task.isCancelled else { return }
     trackTask = Task { [weak self] in
       await self?.trackLoop()
     }
   }
 
   func stopTracking() async {
-    let task = trackTask
-    task?.cancel()
+    if let stoppingTask {
+      await stoppingTask.value
+      return
+    }
+    retainTargets([])
+    let pending = [trackTask, recoveryTask].compactMap(\.self) + Array(propertyTasks.values)
+    for task in pending {
+      task.cancel()
+    }
     trackTask = nil
-    propertyTask?.cancel()
-    propertyTask = nil
     let activeContinuations = Array(continuations.values)
     continuations.removeAll()
     for continuation in activeContinuations {
@@ -143,7 +188,20 @@ actor DeviceTracker {
       continuation.finish()
     }
     serverStateContinuations.removeAll()
-    await task?.value
+    let task = Task {
+      for task in pending {
+        await task.value
+      }
+    }
+    stoppingTask = task
+    await task.value
+    stoppingTask = nil
+  }
+
+  private func cancelPropertyRequests() {
+    for task in propertyTasks.values {
+      task.cancel()
+    }
   }
 
   private func removeContinuation(_ id: UUID) {
@@ -205,12 +263,18 @@ actor DeviceTracker {
               vendorModel: nil,
               manufacturer: nil,
               avdName: nil,
-              transportID: row.fields["transport_id"]
+              transportID: row.fields["transport_id"],
+              connection: target(for: row.id, transportID: row.fields["transport_id"], server: handle.server)
             )
           }
+          retainTargets(Set(devices.map(\.id)))
           broadcastPreview(devices)
-          propertyTask?.cancel()
-          propertyTask = Task { await self.refreshProperties(from: payload, exec: exec) }
+          cancelPropertyRequests()
+          let requestID = UUID()
+          propertyTasks[requestID] = Task {
+            defer { propertyTasks[requestID] = nil }
+            await refreshProperties(from: payload, exec: exec)
+          }
         }
         if Task.isCancelled { break }
       } catch is CancellationError {
@@ -224,10 +288,10 @@ actor DeviceTracker {
   }
 
   private func handleTrackingInterruption() async {
+    retainTargets([])
     if serverState == .online { updateServerState(.connecting) }
-    propertyTask?.cancel()
-    propertyTask = nil
-    await infoCache.removeAll()
+    cancelPropertyRequests()
+    infoCache.removeAll()
     broadcastPreview([])
     if hasSeenFirstMessage { broadcast([]) }
   }
@@ -259,16 +323,14 @@ actor DeviceTracker {
       .split(separator: "\n", omittingEmptySubsequences: true)
       .compactMap(parseDeviceRow)
 
-    let activeDeviceIDs = Set(parsed.map(\.id))
-    await infoCache.retain(deviceIDs: activeDeviceIDs)
-
     return await withTaskGroup(of: (Int, Device)?.self) { group in
       for (index, element) in parsed.enumerated() {
+        guard let connection = targets[element.id] else { continue }
         group.addTask {
           let (id, fields) = element
           guard let info = await self.deviceInfo(
             for: id,
-            transportID: fields["transport_id"],
+            connection: connection,
             fallbackModel: fields["model"],
             exec: exec
           ) else { return nil }
@@ -281,7 +343,8 @@ actor DeviceTracker {
               vendorModel: info.vendorModel,
               manufacturer: info.manufacturer,
               avdName: info.avdName,
-              transportID: fields["transport_id"]
+              transportID: fields["transport_id"],
+              connection: connection
             )
           )
         }
@@ -329,16 +392,19 @@ actor DeviceTracker {
 
   private func deviceInfo(
     for id: String,
-    transportID: String?,
+    connection: DeviceTarget,
     fallbackModel: String?,
     exec: ADBClient
   ) async -> DeviceInfo? {
-    if let cached = await infoCache.value(for: id, transportID: transportID) {
+    guard connection.isValid, targets[id] == connection else { return nil }
+    if let cached = infoCache[connection] {
       return cached
     }
 
     // A failed shell request means this device is not ready for discovery or capture.
-    guard let props = try? await exec.getProperties(deviceID: id, prefix: "ro.") else { return nil }
+    let client = exec.bound(to: connection)
+    guard let props = try? await client.getProperties(deviceID: id, prefix: "ro."),
+          connection.isValid, targets[id] == connection else { return nil }
 
     let model = fallbackModel
       ?? cleanProp("ro.product.model", in: props)
@@ -358,7 +424,7 @@ actor DeviceTracker {
       avdName: avdName
     )
     guard !Task.isCancelled else { return nil }
-    await infoCache.set(info, for: id, transportID: transportID)
+    infoCache[connection] = info
     return info
   }
 
@@ -370,35 +436,6 @@ actor DeviceTracker {
     let vendorModel: String?
     let manufacturer: String?
     let avdName: String?
-  }
-
-  private actor DeviceInfoCache {
-    /// ADB can reuse an emulator serial, but each connection gets a new transport ID.
-    private struct Entry {
-      let transportID: String?
-      let info: DeviceInfo
-    }
-
-    private var storage: [String: Entry] = [:]
-
-    func value(for deviceID: String, transportID: String?) -> DeviceInfo? {
-      guard let entry = storage[deviceID], entry.transportID == transportID else {
-        return nil
-      }
-      return entry.info
-    }
-
-    func set(_ info: DeviceInfo, for deviceID: String, transportID: String?) {
-      storage[deviceID] = Entry(transportID: transportID, info: info)
-    }
-
-    func retain(deviceIDs: Set<String>) {
-      storage = storage.filter { deviceIDs.contains($0.key) }
-    }
-
-    func removeAll() {
-      storage.removeAll()
-    }
   }
 
   // MARK: - Property helpers

@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct CaptureVideoPlayer: NSViewRepresentable {
-  let player: AVPlayer
+  let player: AVPlayer?
   var onFocusChange: (Bool) -> Void = { _ in }
   var showsPlaybackControls = true
   var allowsVideoFrameAnalysis = true

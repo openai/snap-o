@@ -7,6 +7,7 @@ actor ToolService {
   private var toolAppOrder: [String: Int] = [:]
   private var refreshTask: Task<Void, Error>?
   private var isStopped = false
+  private var stopTask: Task<Void, Never>?
   private var frontends: [(key: [String], bundle: ToolFrontendBundle)] = []
 
   init(adbService: ADBService, deviceManager: DeviceManager) {
@@ -76,7 +77,12 @@ actor ToolService {
   }
 
   func openApp(_ input: OpenAppInput) async throws {
-    let adb = await adbService.exec()
+    let devices = await deviceManager.latestDevices
+    guard let device = devices.first(where: { $0.id == input.deviceId }) else {
+      throw ADBError.protocolFailure("The device connection is no longer available.")
+    }
+    let target = try device.requireConnection()
+    let adb = await adbService.exec().bound(to: target)
     try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName, androidUserID: input.androidUserId)
   }
 
@@ -89,7 +95,9 @@ actor ToolService {
   ) async throws -> ToolFrontendBundle {
     guard let frontend = tool.frontend,
           frontend.isHostAPICompatible else { throw ToolError.frontendUnavailable }
+    let target = try await httpService.target(for: reference)
     let key = [
+      target.id.uuidString,
       reference.deviceId,
       String(identity.androidUserId),
       identity.packageName,
@@ -102,13 +110,14 @@ actor ToolService {
       frontends.append(cached)
       return cached.bundle
     }
-    let adb = await adbService.exec()
+    let adb = await adbService.exec().bound(to: target)
     let helper = (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
       .appending(path: "snapo-tool-reader.jar")
     let bundle = try await adb.pluginFrontend(
       deviceID: reference.deviceId, socketName: reference.socketName, identity: identity, tool: tool, helperURL: helper
     )
     guard !Task.isCancelled, !isStopped else { throw CancellationError() }
+    _ = try target.requireTransport(for: reference.deviceId)
     frontends.removeAll { $0.key == key }
     while frontends.count >= 4 {
       frontends.removeFirst()
@@ -118,13 +127,22 @@ actor ToolService {
   }
 
   func stop() async {
-    guard !isStopped else { return }
+    if let stopTask {
+      await stopTask.value
+      return
+    }
     isStopped = true
     frontends.removeAll()
-    refreshTask?.cancel()
-    try? await refreshTask?.value
+    let refresh = refreshTask
+    refresh?.cancel()
     refreshTask = nil
-    await httpService.stop()
+    let task = Task {
+      async let stopHTTP: Void = httpService.stop()
+      _ = try? await refresh?.value
+      await stopHTTP
+    }
+    stopTask = task
+    await task.value
   }
 
   private func refresh() async throws {
@@ -140,11 +158,10 @@ actor ToolService {
   }
 
   private func refreshNow() async throws {
-    let deviceUpdates = await deviceManager.deviceStream()
-    guard let devices = await deviceUpdates.first(where: { _ in true }),
+    guard let devices = await deviceManager.waitForReadyDevices(),
           !Task.isCancelled, !isStopped else { return }
     let adb = await adbService.exec()
-    let sockets = try await ToolDiscovery.discover(on: devices.map(\.id), using: adb)
+    let sockets = try await ToolDiscovery.discover(on: devices, using: adb)
     guard !Task.isCancelled, !isStopped else { return }
     await httpService.refresh(devices: devices, sockets: sockets, using: adb)
   }

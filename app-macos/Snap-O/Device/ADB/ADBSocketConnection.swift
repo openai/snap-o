@@ -1,11 +1,12 @@
 import Darwin
 import Foundation
 
-public final class ADBSocketConnection {
+public final class ADBSocketConnection: ADBSocketTransfer {
   enum Request {
     case trackDevices
     case devicesList
     case transport(deviceID: String)
+    case transportID(String)
     case shell(command: String)
     case exec(command: String)
     case localAbstract(name: String)
@@ -17,6 +18,8 @@ public final class ADBSocketConnection {
         "host:track-devices-l"
       case .devicesList:
         "host:devices-l"
+      case .transportID(let id):
+        "host:transport-id:\(id)"
       case .transport(let deviceID):
         "host:transport:\(deviceID)"
       case .shell(let command):
@@ -40,16 +43,21 @@ public final class ADBSocketConnection {
   private let socketDescriptor: Int32
   private let closeLock = NSLock()
   private var isClosed = false
-  private var ioTimeout: Duration?
+  private var boundTarget: DeviceTarget?
+  private var invalidationHandler: UUID?
+  public private(set) var ioTimeout: Duration?
   private var lineBuffer = Data()
   private var isSkippingOversizedLine = false
 
-  public init() throws {
-    socketDescriptor = try Self.openSocket()
+  public convenience init() throws {
+    try self.init(connectedSocket: Self.openSocket())
   }
 
   init(connectedSocket: Int32) {
     socketDescriptor = connectedSocket
+    // A closed peer must cause a write error, not terminate the process.
+    var noSigPipe: Int32 = 1
+    _ = setsockopt(connectedSocket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
   }
 
   deinit {
@@ -60,31 +68,35 @@ public final class ADBSocketConnection {
     closeLock.lock()
     let shouldClose = !isClosed
     isClosed = true
+    let target = boundTarget
+    let handler = invalidationHandler
+    invalidationHandler = nil
     closeLock.unlock()
+    if let handler { target?.removeInvalidationHandler(handler) }
 
     guard shouldClose else { return }
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
   }
 
+  public var connectionTarget: DeviceTarget? {
+    closeLock.withLock { boundTarget }
+  }
+
   /// Transfers socket ownership after the ADB handshake, before concurrent I/O starts.
   func takeSocketDescriptor() throws -> Int32 {
-    try closeLock.withLock {
+    let handler = try closeLock.withLock {
       guard !isClosed, lineBuffer.isEmpty else { throw ADBError.protocolFailure("ADB socket is not transferable") }
       isClosed = true
-      return socketDescriptor
+      let handler = invalidationHandler
+      invalidationHandler = nil
+      return handler
     }
+    if let handler { boundTarget?.removeInvalidationHandler(handler) }
+    return socketDescriptor
   }
 
-  /// Use only before handing the connection to concurrent readers or writers.
-  func withRequestTimeout<T>(_ timeout: Duration, _ body: () throws -> T) throws -> T {
-    let previous = ioTimeout
-    defer { try? setIOTimeout(previous) }
-    try setIOTimeout(timeout)
-    return try body()
-  }
-
-  func setIOTimeout(_ timeout: Duration?) throws {
+  public func setIOTimeout(_ timeout: Duration?) throws {
     try closeLock.withLock {
       guard !isClosed else { throw ADBError.protocolFailure("ADB connection closed") }
       let parts = (timeout ?? .zero).components
@@ -112,8 +124,31 @@ public final class ADBSocketConnection {
     try send(.devicesList)
   }
 
+  /// Bind before handing a connection to concurrent readers or writers.
+  public func bind(to target: DeviceTarget) throws {
+    _ = try target.requireTransport(for: target.serial)
+    boundTarget = target
+    let handler = try target.onInvalidation { [weak self] in self?.close() }
+    closeLock.withLock {
+      if isClosed {
+        target.removeInvalidationHandler(handler)
+      } else {
+        invalidationHandler = handler
+      }
+    }
+    try checkOpen()
+  }
+
   public func sendTransport(to deviceID: String) throws {
-    try send(.transport(deviceID: deviceID))
+    if let target = boundTarget {
+      try target.selectTransport(for: deviceID) { try sendTransportID($0) }
+    } else {
+      try send(.transport(deviceID: deviceID))
+    }
+  }
+
+  public func sendTransportID(_ transportID: String) throws {
+    try send(.transportID(transportID))
   }
 
   public func sendShell(_ command: String) throws {
@@ -124,7 +159,7 @@ public final class ADBSocketConnection {
     try send(.localAbstract(name: name))
   }
 
-  func sendSync() throws {
+  public func sendSync() throws {
     try send(.sync)
   }
 
@@ -132,7 +167,7 @@ public final class ADBSocketConnection {
     try writeFully(Data("\(value)\n".utf8))
   }
 
-  func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
+  public func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
     let payload = try Self.utf8Data(command, label: "request")
     let header = String(format: "%04X", payload.count)
     let headerData = try Self.asciiData(header, label: "header")
@@ -207,19 +242,23 @@ public final class ADBSocketConnection {
     try readChunk(maxLength: maxLength, deadline: deadline, clock: ContinuousClock())
   }
 
-  func readChunk<C: Clock<Duration>>(maxLength: Int, deadline: C.Instant, clock: C) throws -> Data? {
+  public func readChunk<C: Clock<Duration>>(maxLength: Int, deadline: C.Instant, clock: C) throws -> Data? {
     while true {
       try Task.checkCancellation()
-      let remaining = clock.now.duration(to: deadline)
-      guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for socket data") }
-      let parts = remaining.components
-      let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1
+      let milliseconds = try Self.readTimeout(deadline: deadline, clock: clock)
       var descriptor = pollfd(fd: socketDescriptor, events: Int16(POLLIN), revents: 0)
       let result = Darwin.poll(&descriptor, 1, Int32(clamping: milliseconds))
       if result > 0 { return try readChunk(maxLength: maxLength) }
       if result == 0 { throw ADBError.requestTimedOut("Waiting for socket data") }
       if errno != EINTR { throw Self.makeSocketError(errno, context: "poll") }
     }
+  }
+
+  static func readTimeout<C: Clock<Duration>>(deadline: C.Instant, clock: C) throws -> Int32 {
+    let remaining = clock.now.duration(to: deadline)
+    guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for socket data") }
+    let parts = remaining.components
+    return Int32(clamping: parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1)
   }
 
   public func readLengthPrefixedPayload() throws -> Data? {
@@ -232,7 +271,7 @@ public final class ADBSocketConnection {
     return try readExact(length)
   }
 
-  func sendSyncRequest(id: String, path: String) throws {
+  public func sendSyncRequest(id: String, path: String) throws {
     guard id.count == 4 else { throw ADBError.protocolFailure("invalid sync id") }
     let idData = try Self.asciiData(id, label: "sync id")
     let pathData = try Self.utf8Data(path, label: "sync path")
@@ -251,7 +290,7 @@ public final class ADBSocketConnection {
     try writeFully(buffer)
   }
 
-  func readSyncData(callback: (Data) throws -> Void) throws {
+  public func readSyncData(callback: (Data) throws -> Void) throws {
     while true {
       let idData = try readExact(4)
       guard let id = String(data: idData, encoding: .ascii) else {
@@ -277,7 +316,7 @@ public final class ADBSocketConnection {
     }
   }
 
-  func sendFile(_ file: FileHandle, remotePath: String, progress: (Int64) -> Void) throws {
+  public func sendFile(_ file: FileHandle, remotePath: String, progress: (Int64) -> Void) throws {
     func packet(_ id: String, value: UInt32, payload: Data = Data()) throws {
       var number = value.littleEndian
       var data = Data(id.utf8)
@@ -311,7 +350,7 @@ public final class ADBSocketConnection {
     throw ADBError.protocolFailure("Invalid file upload response.")
   }
 
-  func writeFully(_ data: Data) throws {
+  public func writeFully(_ data: Data) throws {
     try data.withUnsafeBytes { buffer in
       guard let start = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
         throw ADBError.protocolFailure("invalid buffer state")
@@ -478,11 +517,6 @@ private extension ADBSocketConnection {
   static func openSocket() throws -> Int32 {
     let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
     guard descriptor >= 0 else { throw makeSocketError(errno, context: "socket") }
-
-    var noSigPipe: Int32 = 1
-    withUnsafePointer(to: &noSigPipe) {
-      _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, $0, socklen_t(MemoryLayout<Int32>.size))
-    }
 
     var address = sockaddr_in()
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)

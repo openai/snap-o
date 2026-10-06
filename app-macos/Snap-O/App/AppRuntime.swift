@@ -1,21 +1,37 @@
 import Foundation
 import Observation
 
-/// App-scoped services and their startup lifecycle.
+/// Starts shared services and waits for them to stop when the app quits.
 @MainActor
 final class AppRuntime {
   let deviceManager: DeviceManager
   let adbService: ADBService
   private let deviceTracker: DeviceTracker
   let fileStore: FileStore
-  let captureServices: CaptureServices
+  private let captureServices: CaptureServices
+  let workspaces: CaptureWorkspaces
   let captureHistory: CaptureHistory
 
   private let captureCoordinator: CaptureCoordinator
 
+  private enum Cleanup: String, CaseIterable {
+    case startup = "startup preparation"
+    case workspaces
+    case deviceManager = "device management"
+    case deviceTracker = "device tracking"
+    case livePreview = "live preview"
+    case reservations = "capture reservations"
+    case files = "file exports"
+    case history = "History"
+  }
+
+  private var pendingCleanup: Set<Cleanup> = []
+  var unfinishedCleanup: [String] {
+    Cleanup.allCases.filter { pendingCleanup.contains($0) }.map(\.rawValue)
+  }
+
   private var startupTask: Task<Void, Never>?
   private var shutdownTask: Task<Void, Never>?
-  private var startupDevices: [Device] = []
 
   init() {
     let adbService = ADBService()
@@ -30,28 +46,20 @@ final class AppRuntime {
     }
     let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker, client: hostClient)
     let captureHistory = CaptureHistory()
-    let fileStore = FileStore { url, deviceID, size in
-      captureHistory.recordFrame(url: url, size: size) {
-        await deviceManager.connectedDevices.first { $0.id == deviceID }
-          ?? Device(id: deviceID, model: deviceID, androidVersion: "", vendorModel: nil, manufacturer: nil, avdName: nil)
-      }
-    }
+    let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
+    let fileStore = FileStore(frameExportHandler: recordFrame)
     let captureCoordinator = CaptureCoordinator()
-    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore, coordinator: captureCoordinator)
-    let startRecording: RecordingService.StartRecording = { deviceID, bugReport in
-      if EmulatorGRPCEndpoint.isEmulator(deviceID) || bugReport {
-        let session = try await adbService.exec().startScreenrecord(deviceID: deviceID, bugReport: bugReport)
+    let startRecording: RecordingCapture.StartRecording = { device, bugReport in
+      let target = try device.requireConnection()
+      if EmulatorGRPCEndpoint.isEmulator(device.id) || bugReport {
+        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.id, bugReport: bugReport)
         return ADBScreenRecording(session: session, adb: adbService)
       }
-      return try await NativeScreenRecording.start(deviceID: deviceID)
+      return try await NativeScreenRecording.start(target: target)
     }
-    let recording = RecordingService(
-      adb: adbService,
-      fileStore: fileStore,
-      coordinator: captureCoordinator,
-      startRecording: startRecording
-    )
-    let livePreview = LivePreviewService(adb: adbService, coordinator: captureCoordinator)
+    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
+    let timestamps = CaptureTimestampSource()
+    let livePreview = LivePreviewService(coordinator: captureCoordinator, adb: adbService, settings: .shared)
 
     self.deviceManager = deviceManager
     self.adbService = adbService
@@ -59,12 +67,29 @@ final class AppRuntime {
     self.fileStore = fileStore
     self.captureHistory = captureHistory
     self.captureCoordinator = captureCoordinator
-    captureServices = CaptureServices(
-      coordinator: captureCoordinator,
-      screenshots: screenshots,
-      recording: recording,
+    let makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController? = {
+      EmulatorControlsController.live(target: $0)
+    }
+    let captureServices = CaptureServices(
       livePreview: livePreview,
-      startup: StartupCapturePreparation(screenshots: screenshots, livePreview: livePreview)
+      screenshots: { devices in
+        ScreenshotCapture(
+          devices: devices, screenshots: screenshots, fileStore: fileStore,
+          coordinator: captureCoordinator
+        )
+      },
+      recording: { devices, options in
+        RecordingCapture(
+          devices: devices, options: options, adb: adbService, fileStore: fileStore,
+          coordinator: captureCoordinator,
+          startRecording: startRecording, loadRecording: nil, timestampSource: timestamps
+        )
+      },
+      makeEmulatorControls: makeEmulatorControls
+    )
+    self.captureServices = captureServices
+    workspaces = CaptureWorkspaces(
+      captureServices: captureServices, deviceManager: deviceManager, fileStore: fileStore, adbService: adbService, history: captureHistory
     )
   }
 
@@ -74,56 +99,32 @@ final class AppRuntime {
     Perf.step(.appFirstSnapshot, "services start")
     deviceManager.start()
     let manager = deviceManager
-    if AppSettings.shared.startupCaptureMode == .livePreview {
-      let preferredID = AppSettings.shared.lastViewedDeviceID
-      captureServices.startup.prepareEarlyPreview(
-        options: LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
-      ) {
-        let stream = await manager.previewDeviceStream()
-        for await devices in stream {
-          guard !Task.isCancelled else { return nil }
-          if let preferredID, devices.contains(where: { $0.id == preferredID }) { return preferredID }
-          if let first = devices.first { return first.id }
-        }
-        return nil
-      }
-    }
-    captureHistory.start()
-    observeStartupSettings()
-
-    startupTask = Task { [weak self] in
+    startupTask = Task.immediate { [weak self] in
       #if PERF_TRACING
       Perf.startupEvent("runtime startup task entered")
       #endif
-      let stream = manager.deviceStream()
-      for await devices in stream {
-        guard !Task.isCancelled, let self, captureServices.startup.isAvailable else { return }
-        startupDevices = devices
-        refreshStartupPreparation()
+      let settings = AppSettings.shared
+      let updates = Observations {
+        (
+          settings.startupCaptureMode, settings.lastViewedDeviceID,
+          manager.inventory, manager.isShuttingDown
+        )
+      }
+      for await (mode, preferredID, inventory, isShuttingDown) in updates {
+        guard !Task.isCancelled, !isShuttingDown, let self, captureServices.startup.isAvailable else { return }
+        let devices: [Device]
+        switch mode {
+        case .livePreview:
+          let connected = inventory.connected ?? []
+          let preferred = connected.first { $0.id == preferredID } ?? connected.first
+          devices = preferred.map { [$0] } ?? []
+        case .screenshot:
+          devices = inventory.ready ?? []
+        }
+        captureServices.startup.prepare(mode: mode, devices: devices)
       }
     }
-  }
-
-  private func refreshStartupPreparation() {
-    guard shutdownTask == nil else { return }
-    captureServices.startup.prepare(
-      mode: AppSettings.shared.startupCaptureMode,
-      devices: startupDevices,
-      liveOptions: LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
-    )
-  }
-
-  private func observeStartupSettings() {
-    guard shutdownTask == nil, captureServices.startup.isAvailable else { return }
-    withObservationTracking {
-      _ = AppSettings.shared.startupCaptureMode
-      _ = AppSettings.shared.showTouchesDuringCapture
-    } onChange: { [weak self] in
-      Task { @MainActor [weak self] in
-        self?.refreshStartupPreparation()
-        self?.observeStartupSettings()
-      }
-    }
+    captureHistory.start()
   }
 
   func shutdown() async {
@@ -132,43 +133,62 @@ final class AppRuntime {
       return
     }
 
-    deviceManager.shutdown()
+    pendingCleanup = Set(Cleanup.allCases)
+    captureCoordinator.beginShutdown()
+    fileStore.beginShutdown()
+    let workspaceCleanup = workspaces.beginShutdown()
+    let deviceCleanup = deviceManager.shutdown()
     let activeStartupTask = startupTask
     activeStartupTask?.cancel()
     startupTask = nil
     let deviceTracker = deviceTracker
     let captureCoordinator = captureCoordinator
     let captureServices = captureServices
+    let captureHistory = captureHistory
+    let fileStore = fileStore
     let task = Task {
       Perf.start(.appShutdown, name: "App Quit → Cleanup")
-      captureCoordinator.beginShutdown()
-      await captureServices.startup.discard()
-      Perf.step(.appShutdown, "startup preparation discarded")
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
           await activeStartupTask?.value
-          await deviceTracker.stopTracking()
-          Perf.step(.appShutdown, "device tracking stopped")
+          await captureServices.startup.discard()
+          await self.finishCleanup(.startup)
+          Perf.step(.appShutdown, "startup preparation discarded")
         }
         group.addTask {
-          await captureServices.screenshots.shutdown()
-          Perf.step(.appShutdown, "screenshots stopped")
+          await workspaceCleanup.value
+          await self.finishCleanup(.workspaces)
+          Perf.step(.appShutdown, "workspaces closed")
         }
         group.addTask {
-          await captureServices.recording.shutdown()
-          Perf.step(.appShutdown, "recording stopped")
+          await deviceCleanup.value
+          await self.finishCleanup(.deviceManager)
         }
         group.addTask {
           await captureServices.livePreview.shutdown()
+          await self.finishCleanup(.livePreview)
           Perf.step(.appShutdown, "live preview stopped")
         }
       }
       await captureCoordinator.waitUntilIdle()
+      finishCleanup(.reservations)
+      // Keep device connections open until captures and previews have restored their settings.
+      await deviceTracker.stopTracking()
+      finishCleanup(.deviceTracker)
+      Perf.step(.appShutdown, "device tracking stopped")
+      await fileStore.shutdown()
+      finishCleanup(.files)
+      Perf.step(.appShutdown, "file exports finished")
+      await captureHistory.shutdown()
+      finishCleanup(.history)
+      Perf.step(.appShutdown, "history exports finished")
       Perf.end(.appShutdown, finalLabel: "cleanup finished")
     }
     shutdownTask = task
     await task.value
-    await captureHistory.finishFrameExports()
-    captureHistory.stop()
+  }
+
+  private func finishCleanup(_ owner: Cleanup) {
+    pendingCleanup.remove(owner)
   }
 }

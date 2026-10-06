@@ -6,6 +6,23 @@ final class AndroidHostClient {
   private var generation = UUID()
   private var pending: [UUID: CheckedContinuation<Data, Error>] = [:]
   private var timeouts: [UUID: Task<Void, Never>] = [:]
+  private let connectionFactory: @MainActor () -> NSXPCConnection
+  private let displayReader: @Sendable (DeviceTarget) async throws -> String
+
+  init(
+    connectionFactory: @escaping @MainActor () -> NSXPCConnection = {
+      let name = (Bundle.main.bundleIdentifier ?? "com.openai.snapo") + ".AndroidHostService"
+      return NSXPCConnection(serviceName: name)
+    },
+    displayReader: @escaping @Sendable (DeviceTarget) async throws -> String = { target in
+      try await ADBClient().bound(to: target).withTimeout(.seconds(2)).runShellString(
+        deviceID: target.serial, command: "wm size; dumpsys display"
+      )
+    }
+  ) {
+    self.connectionFactory = connectionFactory
+    self.displayReader = displayReader
+  }
 
   func previewEndpoint(_ serial: String) async throws -> EmulatorGRPCEndpoint? {
     try await JSONDecoder().decode(EmulatorGRPCEndpoint?.self, from: request { proxy, reply in
@@ -19,15 +36,42 @@ final class AndroidHostClient {
     _ = try await request { proxy, reply in proxy.ensureADBServerRunning(environment, reply: reply) }
   }
 
-  func controls(serial: String) async throws -> EmulatorControls {
-    try await JSONDecoder().decode(EmulatorControls.self, from: request { proxy, reply in
-      proxy.controls(serial, reply: reply)
-    })
+  func controls(target: DeviceTarget, native: EmulatorNativeConnection) async throws -> EmulatorControls {
+    let connection = try JSONEncoder().encode(native)
+    return try await withDisplayProbe(target: target) { display in
+      try await JSONDecoder().decode(EmulatorControls.self, from: request(waitForReplyOnCancellation: true) { proxy, reply in
+        proxy.controls(target.serial, native: connection, display: display, reply: reply)
+      })
+    }
   }
 
-  func control(serial: String, avdPath: String, action: EmulatorControlAction) async throws {
-    _ = try await request { proxy, reply in
-      proxy.control(serial, avdPath: avdPath, action: action.rawValue, reply: reply)
+  func control(target: DeviceTarget, native: EmulatorNativeConnection, avdPath: String, action: EmulatorControlAction) async throws {
+    let payload = try JSONEncoder().encode(EmulatorControlRequest(native: native, avdPath: avdPath, action: action))
+    try await withDisplayProbe(target: target) { display in
+      _ = try await request(waitForReplyOnCancellation: true) { proxy, reply in
+        proxy.control(target.serial, request: payload, display: display, reply: reply)
+      }
+    }
+  }
+
+  private func withDisplayProbe<Value>(
+    target: DeviceTarget, operation: (EmulatorDisplayProbe) async throws -> Value
+  ) async throws -> Value {
+    _ = try target.requireTransport(for: target.serial)
+    let display = try EmulatorDisplayProbe(target: target, read: displayReader)
+    return try await withTaskCancellationHandler {
+      do {
+        let value = try await operation(display)
+        await display.shutdown()
+        try Task.checkCancellation()
+        _ = try target.requireTransport(for: target.serial)
+        return value
+      } catch {
+        await display.shutdown()
+        throw error
+      }
+    } onCancel: {
+      Task { @MainActor in display.cancel() }
     }
   }
 
@@ -76,11 +120,10 @@ final class AndroidHostClient {
 
   private func connect() -> NSXPCConnection {
     if let connection { return connection }
-    let name = (Bundle.main.bundleIdentifier ?? "com.openai.snapo") + ".AndroidHostService"
-    let connection = NSXPCConnection(serviceName: name)
+    let connection = connectionFactory()
     let generation = UUID()
     self.generation = generation
-    connection.remoteObjectInterface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
+    connection.remoteObjectInterface = AndroidHostInterface.make()
     let disconnected: @Sendable () -> Void = { [weak self] in
       Task { @MainActor in
         guard let self, self.generation == generation else { return }
@@ -95,6 +138,7 @@ final class AndroidHostClient {
   }
 
   private func request(
+    waitForReplyOnCancellation: Bool = false,
     _ send: (any AndroidHostServiceProtocol, @escaping @Sendable (Data?, String?) -> Void) -> Void
   ) async throws -> Data {
     let id = UUID()
@@ -127,6 +171,7 @@ final class AndroidHostClient {
         }
       }
     } onCancel: {
+      guard !waitForReplyOnCancellation else { return }
       Task { @MainActor [weak self] in self?.complete(id, with: .failure(CancellationError())) }
     }
   }

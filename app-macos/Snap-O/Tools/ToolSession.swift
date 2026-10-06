@@ -8,24 +8,44 @@ final class ToolSession {
   @ObservationIgnored private let adbService: ADBService
   @ObservationIgnored private let deviceManager: DeviceManager
   @ObservationIgnored private var service: ToolService?
+  @ObservationIgnored private var stopTask: Task<Void, Never>?
 
   init(adbService: ADBService, deviceManager: DeviceManager) {
     self.adbService = adbService
     self.deviceManager = deviceManager
   }
 
+  func setVisible(_ visible: Bool) {
+    guard stopTask == nil else { return }
+    if visible {
+      startIfNeeded()
+    } else {
+      model?.webContainer?.closeNativeColorPanel()
+    }
+  }
+
   func startIfNeeded() {
-    guard model == nil else { return }
+    guard model == nil, stopTask == nil else { return }
     let service = ToolService(adbService: adbService, deviceManager: deviceManager)
     self.service = service
     model = ToolHostModel(service: service)
   }
 
   func stop() async {
-    model?.stop()
+    if let stopTask {
+      await stopTask.value
+      return
+    }
+    let modelCleanup = model?.stop()
+    let service = service
     model = nil
-    guard let service else { return }
     self.service = nil
-    await service.stop()
+    let task = Task {
+      async let serviceCleanup = service?.stop()
+      await modelCleanup?.value
+      _ = await serviceCleanup
+    }
+    stopTask = task
+    await task.value
   }
 }

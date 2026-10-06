@@ -1,8 +1,10 @@
 import Foundation
 
-/// Emulator state stays on its worker queue; ADB startup has a separate serial queue.
+/// Inventory, endpoint discovery, and ADB startup each have their own serial queue.
 final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
   private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
+  // Preview startup must not wait for SDK scans or emulator start/stop commands.
+  private let endpointWorker = DispatchQueue(label: "com.openai.snapo.emulator-endpoints", qos: .userInitiated)
   private let adbWorker = DispatchQueue(label: "com.openai.snapo.adb")
   private let host = EmulatorHost()
   private let discovery = EmulatorGRPCDiscovery()
@@ -16,7 +18,7 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     guard let clientRequirement else { return false }
     connection.setCodeSigningRequirement(clientRequirement)
     #endif
-    connection.exportedInterface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
+    connection.exportedInterface = AndroidHostInterface.make()
     connection.exportedObject = self
     connection.resume()
     return true
@@ -27,7 +29,7 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
   }
 
   func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
-    worker.async { [self] in
+    endpointWorker.async { [self] in
       do {
         try reply(JSONEncoder().encode(discovery.endpoint(for: serial, access: .rotation)), nil)
       } catch { reply(nil, "The emulator's rotation connection is unavailable.") }
@@ -35,7 +37,7 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
   }
 
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
-    worker.async { [self] in
+    endpointWorker.async { [self] in
       do {
         try reply(JSONEncoder().encode(discovery.endpoint(for: serial, access: .clipboard)), nil)
       } catch { reply(nil, "The emulator's authenticated clipboard connection is unavailable.") }
@@ -55,7 +57,7 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
   }
 
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
-    worker.async { [self] in
+    endpointWorker.async { [self] in
       do {
         let endpoint = try discovery.endpoint(for: serial)
         try reply(JSONEncoder().encode(endpoint), nil)
@@ -74,18 +76,25 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     }
   }
 
-  func controls(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+  func controls(_ serial: String, native: Data, display: any EmulatorDisplayProvider, reply: @escaping @Sendable (Data?, String?) -> Void) {
     worker.async { [self] in
       do {
-        try reply(JSONEncoder().encode(host.controls(serial: serial)), nil)
+        let connection = try JSONDecoder().decode(EmulatorNativeConnection.self, from: native)
+        try reply(JSONEncoder().encode(host.controls(serial: serial, native: connection, display: display)), nil)
       } catch { reply(nil, error.localizedDescription) }
     }
   }
 
-  func control(_ serial: String, avdPath: String, action: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+  func control(
+    _ serial: String, request: Data, display: any EmulatorDisplayProvider,
+    reply: @escaping @Sendable (Data?, String?) -> Void
+  ) {
     worker.async { [self] in
       do {
-        try host.control(serial: serial, avdPath: avdPath, action: action)
+        let command = try JSONDecoder().decode(EmulatorControlRequest.self, from: request)
+        try host.control(
+          serial: serial, avdPath: command.avdPath, action: command.action.rawValue, native: command.native, display: display
+        )
         reply(Data(), nil)
       } catch { reply(nil, error.localizedDescription) }
     }

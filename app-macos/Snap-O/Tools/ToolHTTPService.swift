@@ -7,6 +7,7 @@ actor ToolHTTPService {
     let kind: ToolID
     let pid: Int
     let deviceID: String
+    let target: DeviceTarget
     var deviceDisplayTitle: String
     let socketName: String
     var metadata = ToolMetadata()
@@ -67,6 +68,7 @@ actor ToolHTTPService {
   private struct Connection {
     let id: UUID
     let reference: ToolServerReference
+    let target: DeviceTarget
     var isReady = false
     var healthTask: Task<Void, Never>?
   }
@@ -79,13 +81,15 @@ actor ToolHTTPService {
   private var knownApps: [String: App] = [:]
   private var discoveredKeys: Set<String> = []
   private var retryAfter: [String: AnyClock<Duration>.Instant] = [:]
-  private var metadataTasks: [String: Task<Void, Never>] = [:]
+  private var metadataTasks: [DeviceTarget: Task<Void, Never>] = [:]
   private var legacyTasks: [String: Task<Void, Never>] = [:]
   private var metadataReadAt: [String: AnyClock<Duration>.Instant] = [:]
   private let helperURL: URL
   private var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
   private var snapshotRevision: UInt64 = 0
   private var isStopped = false
+  private var pendingWork: [UUID: Task<Void, Never>] = [:]
+  private var stopTask: Task<Void, Never>?
 
   init(
     adbService: ADBService, helperURL: URL? = nil
@@ -102,7 +106,7 @@ actor ToolHTTPService {
     snapshotRevision += 1
     let apps = discoveredKeys.compactMap { key -> App? in
       guard var app = knownApps[key], app.isVisible else { return nil }
-      app.isConnected = connections[key]?.isReady == true && !app.awaitingMetadata
+      app.isConnected = app.target.isValid && connections[key]?.isReady == true && !app.awaitingMetadata
       return app
     }.sorted {
       if $0.deviceID != $1.deviceID { return $0.deviceID < $1.deviceID }
@@ -139,14 +143,19 @@ actor ToolHTTPService {
   func refresh(devices: [Device], sockets: [DiscoveredPluginSocket], using adb: ADBClient) async {
     guard !isStopped else { return }
     let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
-    let activeKeys = Set(sockets.filter { devicesByID[$0.reference.deviceId] != nil }.map(\.reference.key))
+    let activeTargets = Set(devices.compactMap(\.connection))
+    for target in metadataTasks.keys where !activeTargets.contains(target) {
+      metadataTasks.removeValue(forKey: target)?.cancel()
+    }
+    let activeKeys = Set(sockets.filter { devicesByID[$0.reference.deviceId]?.connection?.isValid == true }.map(\.reference.key))
     discoveredKeys = activeKeys
     // Socket discovery owns list membership; temporary HTTP failures only change connectivity.
     for socket in sockets {
       let reference = socket.reference
-      guard let device = devicesByID[reference.deviceId] else { continue }
-      if var previous = knownApps[reference.key], previous.socketInode != socket.inode {
+      guard let device = devicesByID[reference.deviceId], let target = device.connection, target.isValid else { continue }
+      if var previous = knownApps[reference.key], previous.target != target || previous.socketInode != socket.inode {
         metadataReadAt[reference.key] = nil
+        retryAfter[reference.key] = nil
         legacyTasks.removeValue(forKey: reference.key)?.cancel()
         previous.metadata.invalidateCompatibility()
         previous.checkingLegacy = false
@@ -154,7 +163,7 @@ actor ToolHTTPService {
         if let connection = connections.removeValue(forKey: reference.key) {
           connection.healthTask?.cancel()
         }
-        if let processName = socket.processName, processName == previous.processName {
+        if previous.target == target, let processName = socket.processName, processName == previous.processName {
           // Keep display metadata, but verify the process before using a replacement listener.
           previous.socketInode = socket.inode
           previous.awaitingMetadata = true
@@ -165,7 +174,7 @@ actor ToolHTTPService {
       }
       if knownApps[reference.key] == nil {
         knownApps[reference.key] = App(
-          kind: socket.kind, pid: socket.pid, deviceID: reference.deviceId,
+          kind: socket.kind, pid: socket.pid, deviceID: reference.deviceId, target: target,
           deviceDisplayTitle: device.displayTitle, socketName: reference.socketName, socketInode: socket.inode
         )
       }
@@ -205,36 +214,62 @@ actor ToolHTTPService {
     let id: UUID
     let reference: ToolServerReference
     let adb: ADBClient
+    let target: DeviceTarget
+  }
+
+  func target(for reference: ToolServerReference) throws -> DeviceTarget {
+    guard discoveredKeys.contains(reference.key), let app = knownApps[reference.key], app.target.isValid else {
+      throw ToolError.serverNotConnected(reference)
+    }
+    return app.target
   }
 
   func endpoint(for reference: ToolServerReference) async throws -> Endpoint {
     let connection = try connection(for: reference)
-    return await Endpoint(id: connection.id, reference: reference, adb: adbService.exec())
+    let adb = await adbService.exec().bound(to: connection.target)
+    _ = try connection.target.requireTransport(for: reference.deviceId)
+    return Endpoint(id: connection.id, reference: reference, adb: adb, target: connection.target)
   }
 
   func stop() async {
-    guard !isStopped else { return }
+    if let stopTask {
+      await stopTask.value
+      return
+    }
     isStopped = true
+    let work = Array(pendingWork.values)
+    for task in work {
+      task.cancel()
+    }
     for observer in observers.values {
       observer.finish()
     }
     observers.removeAll()
-    for task in metadataTasks.values {
-      task.cancel()
-    }
     metadataTasks.removeAll()
-    for task in legacyTasks.values {
-      task.cancel()
-    }
     legacyTasks.removeAll()
     metadataReadAt.removeAll()
-    for connection in connections.values {
-      connection.healthTask?.cancel()
-    }
     connections.removeAll()
     knownApps.removeAll()
     discoveredKeys.removeAll()
     retryAfter.removeAll()
+    let task = Task {
+      for task in work {
+        await task.value
+      }
+    }
+    stopTask = task
+    await task.value
+  }
+
+  /// Lookup maps describe current work; this retains superseded work until it finishes.
+  private func startWork(_ operation: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+    let id = UUID()
+    let task = Task {
+      await operation()
+      pendingWork[id] = nil
+    }
+    pendingWork[id] = task
+    return task
   }
 
   private func connect(reference: ToolServerReference) {
@@ -243,28 +278,32 @@ actor ToolHTTPService {
       return
     }
 
-    guard knownApps[key]?.isVisible == true else { return }
-    connections[key] = Connection(id: UUID(), reference: reference)
+    guard let app = knownApps[key], app.isVisible, app.target.isValid else { return }
+    connections[key] = Connection(id: UUID(), reference: reference, target: app.target)
     checkHealth(for: key)
   }
 
   private func populateMetadata(sockets: [DiscoveredPluginSocket], using adb: ADBClient) {
-    for (deviceID, sockets) in Dictionary(grouping: sockets, by: { $0.reference.deviceId }) {
-      guard metadataTasks[deviceID] == nil else { continue }
+    for (_, sockets) in Dictionary(grouping: sockets, by: { $0.reference.deviceId }) {
+      guard let target = sockets.first.flatMap({ knownApps[$0.reference.key]?.target }),
+            target.isValid, metadataTasks[target] == nil else { continue }
       let pendingPIDs = Set(sockets.filter {
         guard let app = knownApps[$0.reference.key] else { return true }
         return app.needsMetadataRead(lastAttempt: metadataReadAt[$0.reference.key], now: clock.now)
       }.map(\.pid))
       let pending = sockets.filter { pendingPIDs.contains($0.pid) }
       guard !pending.isEmpty else { continue }
-      metadataTasks[deviceID] = Task { [weak self] in
-        await self?.loadMetadata(deviceID: deviceID, sockets: pending, using: adb)
+      metadataTasks[target] = startWork { [weak self] in
+        await self?.loadMetadata(target: target, sockets: pending, using: adb.bound(to: target))
       }
     }
   }
 
-  private func loadMetadata(deviceID: String, sockets: [DiscoveredPluginSocket], using adb: ADBClient) async {
-    defer { metadataTasks[deviceID] = nil }
+  private func loadMetadata(target: DeviceTarget, sockets: [DiscoveredPluginSocket], using adb: ADBClient) async {
+    let deviceID = target.serial
+    defer {
+      if !Task.isCancelled { metadataTasks[target] = nil }
+    }
     let socketsByPID = Dictionary(grouping: sockets, by: \.pid)
     let pids = socketsByPID.keys.sorted()
     for offset in stride(from: 0, to: pids.count, by: 64) {
@@ -272,11 +311,11 @@ actor ToolHTTPService {
       let records = try? await adb.pluginMetadata(
         deviceID: deviceID, processIDs: batch, helperURL: helperURL
       )
-      guard !Task.isCancelled, !isStopped else { return }
+      guard !Task.isCancelled, !isStopped, target.isValid else { return }
       var changed = false
       for socket in batch.flatMap({ socketsByPID[$0] ?? [] }) {
         let key = socket.reference.key
-        guard var app = knownApps[key], app.socketInode == socket.inode,
+        guard var app = knownApps[key], app.target == target, app.socketInode == socket.inode,
               discoveredKeys.contains(key) else { continue }
         metadataReadAt[key] = clock.now
         let hadResult = app.metadata.process.verifiedIdentity != nil || app.metadata.compatibility != .unknown || app.metadataReadFailed
@@ -293,8 +332,8 @@ actor ToolHTTPService {
           connect(reference: socket.reference)
         }
         if needsLegacy, legacyTasks[key] == nil {
-          legacyTasks[key] = Task { [weak self] in
-            await self?.loadLegacyMetadata(socket: socket, using: adb)
+          legacyTasks[key] = startWork { [weak self] in
+            await self?.loadLegacyMetadata(socket: socket, target: target, using: adb)
           }
         }
         changed = true
@@ -303,11 +342,11 @@ actor ToolHTTPService {
     }
   }
 
-  private func loadLegacyMetadata(socket: DiscoveredPluginSocket, using adb: ADBClient) async {
+  private func loadLegacyMetadata(socket: DiscoveredPluginSocket, target: DeviceTarget, using adb: ADBClient) async {
     let key = socket.reference.key
     let metadata = try? await adb.legacyPluginMetadata(reference: socket.reference, kind: socket.kind, pid: socket.pid)
-    guard !Task.isCancelled, !isStopped, discoveredKeys.contains(key),
-          var app = knownApps[key], app.socketInode == socket.inode else { return }
+    guard !Task.isCancelled, !isStopped, target.isValid, discoveredKeys.contains(key),
+          var app = knownApps[key], app.target == target, app.socketInode == socket.inode else { return }
     legacyTasks[key] = nil
     app.checkingLegacy = false
     if let metadata { app.metadata.applyLegacyMetadata(metadata, kind: app.kind) }
@@ -318,7 +357,7 @@ actor ToolHTTPService {
   private func checkHealth(for key: String) {
     guard let app = knownApps[key], app.isVisible, !app.metadata.isLegacy else { return }
     guard let connection = connections[key], connection.healthTask == nil else { return }
-    connections[key]?.healthTask = Task { [weak self] in
+    connections[key]?.healthTask = startWork { [weak self] in
       await self?.loadHealth(for: key, connectionID: connection.id)
     }
   }
@@ -331,7 +370,7 @@ actor ToolHTTPService {
     var request = URLRequest(url: ToolURL.api)
     request.httpMethod = "OPTIONS"
     do {
-      let adb = await adbService.exec()
+      let adb = await adbService.exec().bound(to: connection.target)
       let input = try ToolHTTPRequestInput(request: request)
       let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .seconds(2)) {
         try await adb.openLocalAbstract(deviceID: connection.reference.deviceId, abstractSocket: connection.reference.socketName)
@@ -353,7 +392,7 @@ actor ToolHTTPService {
   }
 
   private func connection(for reference: ToolServerReference) throws -> Connection {
-    guard let connection = connections[reference.key], connection.isReady,
+    guard let connection = connections[reference.key], connection.isReady, connection.target.isValid,
           let app = knownApps[reference.key], !app.awaitingMetadata, let descriptor = app.descriptor,
           descriptor.frontend?.isHostAPICompatible ?? true else {
       throw ToolError.serverNotConnected(reference)

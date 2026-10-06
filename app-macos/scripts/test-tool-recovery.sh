@@ -28,14 +28,18 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/ToolDiscovery.swift \
   Snap-O/Device/ToolManifest.swift \
   Snap-O/Device/LegacyPluginMetadata.swift \
-  Snap-O/Device/DeviceDiscovery.swift \
-  Tests/ToolRecovery/DeviceClientDouble.swift Snap-O/Models/Device+Formatting.swift \
+  Snap-O/Device/DeviceDiscovery.swift Snap-O/Device/ADB/DeviceDiscovery+ADB.swift \
+  StandaloneTests/ToolRecovery/DeviceClientDouble.swift Snap-O/Models/Device+Formatting.swift \
   Snap-O/Device/DeviceTracker.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/ToolMetadata.swift \
-  Snap-OTests/Tools/ToolTestFixtures.swift \
+  Snap-OIntegrationTests/Tools/ToolTestFixtures.swift \
   Snap-O/Tools/ToolHTTPService.swift \
   Snap-O/Tools/ToolService.swift \
-  Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/Support/DeviceManagerFake.swift \
-  Tests/ToolRecovery/ToolRecoveryTests.swift -o "$TEST_DIR/tool-recovery-tests"
+  Snap-O/Tools/ToolSelection.swift Snap-O/Tools/AppToolPresentation.swift \
+  Snap-O/Tools/AppToolModel.swift Snap-O/Tools/ToolHostModel.swift Snap-O/Tools/ToolSession.swift \
+  Snap-O/Tools/ToolWebPolicy.swift Snap-O/Tools/ToolPageContainer.swift StandaloneTests/ToolRecovery/ToolWebDouble.swift \
+  StandaloneTests/ToolRecovery/ToolLifecycleTests.swift \
+  Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift StandaloneTests/Support/DeviceManagerFake.swift \
+  StandaloneTests/ToolRecovery/ToolRecoveryTests.swift -o "$TEST_DIR/tool-recovery-tests"
 run_test "$TEST_DIR/tool-recovery-tests"

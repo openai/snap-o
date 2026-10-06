@@ -13,8 +13,10 @@ struct EmulatorConsole {
     try withSession(serial: serial) { try $0.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines) }
   }
 
-  func controls(serial: String, displaySize: (() throws -> String)? = nil) throws -> EmulatorControls {
-    try withSession(serial: serial) { session in
+  func controls(
+    serial: String, displaySize: (() throws -> String)? = nil, verify: (Int32) throws -> Void
+  ) throws -> EmulatorControls {
+    try withSession(serial: serial, verify: verify) { session in
       let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
       return try controls(path: path, session: session, displaySize: displaySize)
     }
@@ -24,10 +26,11 @@ struct EmulatorConsole {
     serial: String,
     expectedPath: String,
     action: EmulatorControlAction,
-    displaySize: (() throws -> String)? = nil
+    displaySize: (() throws -> String)? = nil,
+    verify: (Int32) throws -> Void
   ) throws {
     let deadline = Date().addingTimeInterval(30)
-    try withSession(serial: serial) { session in
+    try withSession(serial: serial, verify: verify) { session in
       let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
       guard URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path == expectedPath else {
         throw AndroidHostServiceError(message: "The emulator connection changed. Reopen Live Preview and try again.")
@@ -88,7 +91,8 @@ struct EmulatorConsole {
        let value = response.split(separator: "=").last {
       hingeAngle = Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
-    let size = try configuration["hw.resizable.configs"] == nil ? nil : displaySize?()
+    // Verify the app's device after opening this console, before any mutation.
+    let size = try displaySize?()
     return EmulatorControls(
       avdPath: directory.path,
       commands: commands,
@@ -109,7 +113,7 @@ struct EmulatorConsole {
     }
   }
 
-  private func withSession<T>(serial: String, _ body: (Session) throws -> T) throws -> T {
+  private func withSession<T>(serial: String, verify: (Int32) throws -> Void = { _ in }, _ body: (Session) throws -> T) throws -> T {
     guard serial.hasPrefix("emulator-"), let port = UInt16(serial.dropFirst(9)), port >= 1024 else {
       throw AndroidHostServiceError(message: "Invalid emulator console port.")
     }
@@ -120,6 +124,7 @@ struct EmulatorConsole {
     guard setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &enabled, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
       throw failure()
     }
+    try verify(socket)
     let session = Session(socket: socket, timeout: timeout)
     let greeting = try session.response()
     if greeting.contains("Authentication required") {

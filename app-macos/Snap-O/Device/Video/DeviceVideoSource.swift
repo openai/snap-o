@@ -1,55 +1,97 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-/// Shares a physical device's encoder across preview renderers and recorders.
+/// Shares one video source per connection across preview renderers and recorders.
 @MainActor
 final class DeviceVideoHub {
   static let shared = DeviceVideoHub()
-  private var sessions: [String: DeviceVideoStream] = [:]
-
-  func subscribe(deviceID: String, receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) -> UUID {
+  fileprivate struct Subscription {
+    let target: DeviceTarget
     let stream: DeviceVideoStream
-    if let existing = sessions[deviceID], !existing.hasStopped {
-      stream = existing
-    } else {
-      stream = DeviceVideoStream(deviceID: deviceID)
-      sessions[deviceID] = stream
-    }
-    return stream.subscribe(receive)
+    let id: UUID
   }
 
-  func unsubscribe(deviceID: String, id: UUID) {
-    guard let stream = sessions[deviceID] else { return }
-    stream.unsubscribe(id)
-    if stream.isEmpty {
-      stream.stop()
-      sessions.removeValue(forKey: deviceID)
+  private let makeSource: (DeviceTarget) -> any LivePreviewFrameSource
+  private var sessions: [DeviceTarget: DeviceVideoStream] = [:]
+
+  init(makeSource: @escaping (DeviceTarget) -> any LivePreviewFrameSource = { target in
+    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+      EmulatorPreviewFrameSource(target: target)
+    } else {
+      DeviceVideoConnection(target: target)
+    }
+  }) {
+    self.makeSource = makeSource
+  }
+
+  fileprivate func subscription(target: DeviceTarget) -> Subscription {
+    let stream: DeviceVideoStream
+    if let existing = sessions[target], !existing.hasStopped {
+      stream = existing
+    } else {
+      let previous = sessions[target]
+      previous?.stop()
+      stream = DeviceVideoStream(source: makeSource(target), previous: previous)
+      sessions[target] = stream
+    }
+    return Subscription(target: target, stream: stream, id: UUID())
+  }
+
+  fileprivate func unsubscribe(_ subscription: Subscription) -> Task<Void, Never>? {
+    let stream = subscription.stream
+    stream.unsubscribe(subscription.id)
+    guard stream.isEmpty else { return nil }
+    stream.stop()
+    return Task {
+      await stream.waitUntilStopped()
+      if sessions[subscription.target] === stream {
+        sessions.removeValue(forKey: subscription.target)
+      }
     }
   }
 }
 
 @MainActor
 final class DeviceVideoSource: LivePreviewFrameSource {
-  let hasIndependentFrames = false
-  private let deviceID: String
-  private var subscription: UUID?
+  var hasIndependentFrames: Bool {
+    subscription?.stream.hasIndependentFrames ?? false
+  }
 
-  init(deviceID: String) {
-    self.deviceID = deviceID
+  private let target: DeviceTarget
+  private let hub: DeviceVideoHub
+  private var subscription: DeviceVideoHub.Subscription?
+  private var cleanup: Task<Void, Never>?
+  private var hasStopped = false
+
+  init(target: DeviceTarget, hub: DeviceVideoHub = .shared) {
+    self.target = target
+    self.hub = hub
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-    guard subscription == nil else { return }
-    subscription = DeviceVideoHub.shared.subscribe(deviceID: deviceID, receive: deliver)
+    guard subscription == nil, !hasStopped else { return }
+    let subscription = hub.subscription(target: target)
+    self.subscription = subscription
+    subscription.stream.subscribe(subscription.id, receive: deliver)
+  }
+
+  func requestKeyFrame() {
+    subscription?.stream.requestKeyFrame()
   }
 
   func stop() {
-    guard let subscription else { return }
-    self.subscription = nil
-    DeviceVideoHub.shared.unsubscribe(deviceID: deviceID, id: subscription)
+    guard !hasStopped else { return }
+    hasStopped = true
+    if let subscription { cleanup = hub.unsubscribe(subscription) }
+    subscription = nil
+  }
+
+  func waitUntilStopped() async {
+    await cleanup?.value
   }
 }
 
+/// Keeps subscriber state separate from the device transport.
 @MainActor
 private final class DeviceVideoStream {
   private struct Subscriber {
@@ -57,32 +99,59 @@ private final class DeviceVideoStream {
     var needsKeyFrame = true
   }
 
-  let deviceID: String
+  private let source: any LivePreviewFrameSource
+  private var previous: DeviceVideoStream?
+  private var startup: Task<Void, Never>?
+  private var hasStarted = false
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
-  private var connection: ADBSocketConnection?
-  private var isReady = false
-  private var task: Task<Void, Never>?
-  private var timeout: Task<Void, Never>?
   private var format: CMVideoFormatDescription?
   private var density: CGFloat?
-  private let commands = DispatchQueue(label: "snapo.video.commands")
+  private var latestIndependentFrame: CMSampleBuffer?
+
   var isEmpty: Bool {
     subscribers.isEmpty
   }
 
-  init(deviceID: String) {
-    self.deviceID = deviceID
+  var hasIndependentFrames: Bool {
+    source.hasIndependentFrames
   }
 
-  func subscribe(_ receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) -> UUID {
-    let id = UUID()
+  init(source: any LivePreviewFrameSource, previous: DeviceVideoStream?) {
+    self.source = source
+    self.previous = previous
+  }
+
+  func subscribe(_ id: UUID, receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
     subscribers[id] = Subscriber(receive: receive)
     if let density { receive(.density(density)) }
+    guard subscribers[id] != nil, !hasStopped else { return }
     if let format { receive(.format(format)) }
-    if task == nil { start() }
-    requestKeyFrame()
-    return id
+    guard subscribers[id] != nil, !hasStopped else { return }
+    if let latestIndependentFrame {
+      subscribers[id]?.needsKeyFrame = false
+      receive(.sample(latestIndependentFrame, isKeyFrame: true))
+    }
+    guard subscribers[id] != nil, !hasStopped else { return }
+    if hasStarted {
+      source.requestKeyFrame()
+    } else if startup == nil {
+      if let previous {
+        self.previous = nil
+        startup = Task {
+          await previous.waitUntilStopped()
+          guard !hasStopped else { return }
+          start()
+        }
+      } else {
+        start()
+      }
+    }
+  }
+
+  func requestKeyFrame() {
+    guard !hasStopped else { return }
+    source.requestKeyFrame()
   }
 
   func unsubscribe(_ id: UUID) {
@@ -90,83 +159,21 @@ private final class DeviceVideoStream {
   }
 
   func stop() {
-    task?.cancel()
-    timeout?.cancel()
-    connection?.close()
-    connection = nil
+    guard !hasStopped else { return }
     hasStopped = true
+    startup?.cancel()
+    latestIndependentFrame = nil
+    source.stop()
   }
 
-  private func requestKeyFrame() {
-    guard isReady, !hasStopped, let connection else { return }
-    commands.async { try? connection.writeFully(Data([1])) }
+  func waitUntilStopped() async {
+    await startup?.value
+    await source.waitUntilStopped()
   }
 
   private func start() {
-    let deviceID = deviceID
-    timeout = Task { [weak self] in
-      do { try await Task.sleep(for: .seconds(8)) } catch { return }
-      self?.receive(.stopped(ADBError.requestTimedOut("Device video did not start")))
-      self?.stop()
-    }
-    task = Task.detached(priority: .userInitiated) { [weak self] in
-      var socket: ADBSocketConnection?
-      do {
-        guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
-          throw ADBError.protocolFailure("Missing device video helper")
-        }
-        let helper = try Data(contentsOf: url)
-        guard !helper.isEmpty, helper.count <= 128 * 1024 else { throw ADBError.protocolFailure("Invalid device helper") }
-        let command = """
-        directory=$(mktemp -d /data/local/tmp/snapo-video.XXXXXX) || exit 1
-        trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
-        (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
-          chmod 444 "$directory/helper.jar" || exit 1
-        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" 2>/dev/null
-        """
-        let connection = try await ADBClient().makeConnection()
-        socket = connection
-        guard await self?.install(connection) == true else { connection.close()
-          return
-        }
-        try Task.checkCancellation()
-        try connection.withRequestTimeout(.seconds(8)) {
-          try connection.sendTransport(to: deviceID)
-          _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
-          try DeviceVideoPacket.validateHeader(Self.readExactly(4, from: connection))
-        }
-        await self?.markReady()
-        var builder = DeviceVideoSampleBuilder()
-        while !Task.isCancelled {
-          let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
-          switch packet {
-          case .display(_, _, let density, _):
-            builder.reset()
-            await self?.receive(.density(CGFloat(density) / 160))
-          case .frame(let flags, let timestamp, let data):
-            let oldFormat = builder.format
-            let sample = try builder.sample(data: data, timestamp: timestamp, flags: flags)
-            if oldFormat == nil, let format = builder.format { await self?.receive(.format(format)) }
-            if let sample { await self?.receive(.sample(sample, isKeyFrame: flags & 1 != 0)) }
-          }
-        }
-      } catch {
-        await self?.receive(.stopped(Task.isCancelled ? nil : error))
-      }
-      socket?.close()
-    }
-  }
-
-  private func markReady() {
-    guard !hasStopped else { return }
-    isReady = true
-    requestKeyFrame()
-  }
-
-  private func install(_ connection: ADBSocketConnection) -> Bool {
-    guard !hasStopped else { return false }
-    self.connection = connection
-    return true
+    hasStarted = true
+    source.start { [weak self] event in self?.receive(event) }
   }
 
   private func receive(_ event: LivePreviewFrameEvent) {
@@ -176,32 +183,22 @@ private final class DeviceVideoStream {
       self.density = density
     case .format(let description):
       format = description
+      latestIndependentFrame = nil
       for id in subscribers.keys {
         subscribers[id]?.needsKeyFrame = true
       }
-    case .sample(_, let keyFrame):
-      timeout?.cancel()
+    case .sample(let sample, let keyFrame):
+      if hasIndependentFrames { latestIndependentFrame = sample }
       for id in subscribers.keys where keyFrame {
         subscribers[id]?.needsKeyFrame = false
       }
     case .stopped:
-      hasStopped = true
-      timeout?.cancel()
+      stop()
     }
-    for subscriber in Array(subscribers.values) {
+    for (id, subscriber) in Array(subscribers) {
+      guard subscribers[id] != nil else { continue }
       if case .sample = event, subscriber.needsKeyFrame { continue }
       subscriber.receive(event)
     }
-  }
-
-  private nonisolated static func readExactly(_ count: Int, from connection: ADBSocketConnection) throws -> Data {
-    var bytes = Data()
-    while bytes.count < count {
-      guard let chunk = try connection.readChunk(maxLength: count - bytes.count), !chunk.isEmpty else {
-        throw ADBError.protocolFailure("Device video disconnected")
-      }
-      bytes.append(chunk)
-    }
-    return bytes
   }
 }

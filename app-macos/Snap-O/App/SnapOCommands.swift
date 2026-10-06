@@ -6,7 +6,7 @@ struct SnapOCommands: Commands {
   @Environment(\.openWindow)
   private var openWindow
   @FocusedValue(\.captureController)
-  var captureController: CaptureWindowController?
+  var captureController: CapturePaneSession?
   @FocusedValue(\.captureImage)
   var captureImage: NSImage?
   @FocusedValue(\.workspaceController)
@@ -54,20 +54,20 @@ struct SnapOCommands: Commands {
 
       Button("New Screenshot") {
         workspaceController?.revealCapture()
-        Task { await captureController?.captureScreenshots() }
+        captureController?.launch(.screenshot)
       }
       .keyboardShortcut("s", modifiers: [.command, .shift])
       .disabled(captureController?.canCaptureNow != true)
 
       if captureController?.isRecording == true {
         Button("Stop Screen Recording") {
-          Task { await captureController?.stopRecording() }
+          captureController?.launch(.stopRecording)
         }
         .keyboardShortcut("v", modifiers: [.command, .shift])
       } else {
         Button("Start Screen Recording") {
           workspaceController?.revealCapture()
-          Task { await captureController?.startRecording() }
+          captureController?.launch(.startRecording)
         }
         .keyboardShortcut("v", modifiers: [.command, .shift])
         .disabled(captureController?.canStartRecordingNow != true)
@@ -75,7 +75,7 @@ struct SnapOCommands: Commands {
 
       Button("Live Preview") {
         workspaceController?.revealCapture()
-        Task { await captureController?.startLivePreview() }
+        captureController?.launch(.livePreview)
       }
       .keyboardShortcut("l", modifiers: [.command, .shift])
       .disabled(captureController?.canSelectLivePreview != true)
@@ -89,7 +89,8 @@ struct SnapOCommands: Commands {
         }
         guard
           let controller = captureController,
-          let capture = controller.currentCapture,
+          let review = controller.review,
+          let capture = review.currentCapture,
           capture.media.url != nil,
           let saveKind = capture.media.saveKind
         else { return }
@@ -102,12 +103,9 @@ struct SnapOCommands: Commands {
         savePanel.directoryURL = SaveLocation.defaultDirectory(for: saveKind)
 
         if savePanel.runModal() == .OK, let dest = savePanel.url {
-          let crop = controller.reviewCrops[capture.id] ?? CaptureCropGeometry.fullImage
-          controller.isSavingReview = true
           Task {
-            defer { controller.isSavingReview = false }
             do {
-              try await CaptureCropExporter.save(capture, crop: crop, to: dest)
+              try await review.exportSelected(to: dest)
               SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: saveKind)
             } catch {
               let alert = NSAlert()
@@ -119,7 +117,9 @@ struct SnapOCommands: Commands {
           }
         }
       }
-      .disabled(historyActions == nil && (captureController?.currentCapture?.media.url == nil || captureController?.isSavingReview == true))
+      .disabled(historyActions == nil && (
+        captureController?.review?.currentCapture?.media.url == nil || captureController?.review?.isSaving == true
+      ))
       .keyboardShortcut("s")
     }
     if let captureController {

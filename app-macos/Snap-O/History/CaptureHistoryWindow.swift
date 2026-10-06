@@ -1,5 +1,4 @@
 import AppKit
-import Darwin
 import SwiftUI
 
 struct CaptureHistoryActions {
@@ -219,7 +218,7 @@ struct CaptureHistoryWindow: View {
       },
       open: { open(entry) },
       rename: { name in
-        Task { await history.repository.rename(entry.id, to: name) }
+        history.update { await $0.rename(entry.id, to: name) }
       },
       delete: { requestGridDeletion(entry) }
     )
@@ -244,6 +243,7 @@ struct CaptureHistoryWindow: View {
         Group {
           if entry.kind == .image {
             ImageCaptureView(
+              fileStore: fileStore,
               url: url,
               exportFilename: FileStore.exportFilename(capturedAt: entry.capturedAt, kind: .image, name: entry.name),
               onDelete: entry.completedAt == nil ? nil : { requestDeletion(entry, item: item) },
@@ -323,8 +323,8 @@ struct CaptureHistoryWindow: View {
             guard let source = draggedMedia else { return }
             draggedMedia = nil
             insertion = nil
-            Task {
-              await history.repository.moveItem(
+            history.update { repository in
+              await repository.moveItem(
                 source.itemID, to: destination.itemID,
                 afterTarget: destination.afterTarget, in: source.entryID
               )
@@ -346,7 +346,7 @@ struct CaptureHistoryWindow: View {
       VStack(alignment: .leading, spacing: 1) {
         if let entry {
           CaptureNameButton(entry: entry) { name in
-            Task { await history.repository.rename(entry.id, to: name) }
+            history.update { await $0.rename(entry.id, to: name) }
           }
           .font(.headline)
           Text(entry.capturedAt.formatted(date: .abbreviated, time: .shortened))
@@ -442,10 +442,7 @@ struct CaptureHistoryWindow: View {
     guard panel.runModal() == .OK, let destination = panel.url else { return }
     do {
       let source = entry.fileURL(for: item, in: history.repository.root)
-      let fileExport = try StagedFileExport(to: destination)
-      defer { fileExport.cleanup() }
-      try FileManager.default.copyItem(at: source, to: fileExport.url)
-      try fileExport.commit()
+      try fileStore.saveFile(at: source, to: destination)
       SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: kind)
     } catch { errorMessage = error.localizedDescription }
   }
@@ -460,13 +457,10 @@ struct CaptureHistoryWindow: View {
   private func dragFile(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item) -> URL? {
     do {
       let kind: MediaSaveKind = entry.kind == .image ? .image : .video
-      let destination = try fileStore.makeUniqueDragDestination(capturedAt: entry.capturedAt, kind: kind, name: entry.name)
-      let source = entry.fileURL(for: item, in: history.repository.root)
-      // Copy-on-write avoids copying large recordings while starting a drag.
-      if clonefile(source.path, destination.path, 0) != 0 {
-        try FileManager.default.copyItem(at: source, to: destination)
-      }
-      return destination
+      return try fileStore.makeDragCopy(
+        of: entry.fileURL(for: item, in: history.repository.root),
+        capturedAt: entry.capturedAt, kind: kind, name: entry.name
+      )
     } catch { errorMessage = error.localizedDescription
       return nil
     }
@@ -507,17 +501,17 @@ struct CaptureHistoryWindow: View {
   }
 
   private func delete(_ deletion: CaptureHistoryDeletion) {
-    Task {
+    history.update { repository in
       if let itemID = deletion.itemID, let entryID = deletion.entryIDs.first {
-        await history.repository.deleteItem(itemID, in: entryID)
+        await repository.deleteItem(itemID, in: entryID)
       } else {
-        await history.repository.delete(deletion.entryIDs)
+        await repository.delete(deletion.entryIDs)
       }
     }
   }
 
   private func clearError() {
     errorMessage = nil
-    Task { await history.repository.clearError() }
+    history.update { await $0.clearError() }
   }
 }
