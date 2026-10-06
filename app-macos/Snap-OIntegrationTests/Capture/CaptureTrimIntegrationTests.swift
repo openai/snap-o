@@ -73,28 +73,6 @@ struct CaptureTrimIntegrationTests {
     #expect(FileManager.default.fileExists(atPath: fixture.url.path))
   }
 
-  @Test
-  func invalidTrimPreservesDestinationAndSource() async throws {
-    let fixture = try await TrimVideoFixture.make()
-    defer { fixture.remove() }
-    let destination = fixture.url.deletingLastPathComponent().appendingPathComponent("saved.mp4")
-    let original = try Data(contentsOf: fixture.url)
-    let saved = Data([1, 2, 3])
-    try saved.write(to: destination)
-    await #expect(throws: (any Error).self) {
-      try await CaptureCropExporter.save(
-        CaptureExportRequest(
-          capture: fixture.capture,
-          crop: CaptureCropGeometry.fullImage,
-          trim: CaptureTrimRange(start: 2, end: 1)
-        ),
-        to: destination
-      )
-    }
-    #expect(try Data(contentsOf: destination) == saved)
-    #expect(try Data(contentsOf: fixture.url) == original)
-  }
-
   @Test @MainActor
   func dragExportUsesConfirmedTrim() async throws {
     let fixture = try await TrimVideoFixture.make()

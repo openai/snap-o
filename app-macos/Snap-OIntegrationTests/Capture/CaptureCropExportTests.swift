@@ -130,9 +130,11 @@ struct CaptureCropExportTests {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-    let source = root.appendingPathComponent("missing.png")
+    let source = root.appendingPathComponent("invalid.png")
     let destination = root.appendingPathComponent("existing.png")
     let original = Data([1, 2, 3])
+    let sourceBytes = Data("Invalid image".utf8)
+    try sourceBytes.write(to: source)
     try original.write(to: destination)
     await #expect(throws: (any Error).self) {
       let crop = CGRect(x: 0, y: 0, width: 0.5, height: 1)
@@ -149,6 +151,7 @@ struct CaptureCropExportTests {
       }
     }
     #expect(try Data(contentsOf: destination) == original)
+    #expect(try Data(contentsOf: source) == sourceBytes)
   }
 
   @Test(arguments: [false, true])
