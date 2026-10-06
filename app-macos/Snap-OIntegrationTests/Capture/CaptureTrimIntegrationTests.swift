@@ -48,7 +48,7 @@ struct CaptureTrimIntegrationTests {
     let fixture = try await TrimVideoFixture.make()
     defer { fixture.remove() }
     let root = fixture.url.deletingLastPathComponent()
-    let store = FileStore(baseDir: root)
+    let store = FileStore(baseDir: root.appendingPathComponent("store"))
     let review = CaptureReviewState(
       batch: ReadyCaptureBatch([fixture.capture], fileStore: store), selectedDeviceID: fixture.capture.device.id,
       fileStore: store, history: CaptureHistory(repository: CaptureHistoryRepository(root: root.appendingPathComponent("saved-history")))

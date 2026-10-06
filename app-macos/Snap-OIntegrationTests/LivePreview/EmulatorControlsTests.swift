@@ -67,7 +67,7 @@ struct EmulatorControlsTests {
     await owner.shutdown()
   }
 
-  @Test
+  @Test(.dependency(\.continuousClock, TestClock()))
   func attachmentCloseJoinsPendingControl() async throws {
     let fixture = ControlsFixture()
     let gate = TestSuspension()

@@ -1,5 +1,7 @@
 import AppKit
 @preconcurrency import AVFoundation
+import Clocks
+import DependenciesTestSupport
 @testable import Snap_O
 import SwiftUI
 import Testing
@@ -57,7 +59,7 @@ struct CaptureViewTests {
     }
   }
 
-  @Test
+  @Test(.dependency(\.continuousClock, TestClock()))
   func connectButtonClearsTheSelectedConnectionFailure() async throws {
     NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
     let fixture = try SharedLivePreviewTests.Fixture()
@@ -78,6 +80,8 @@ struct CaptureViewTests {
     window.contentView = view
     defer { window.contentView = nil }
     view.layoutSubtreeIfNeeded()
+    // The offscreen host does not report a visible window. Model visibility for the button action.
+    connection.setVisible(true)
     let button = try #require(connectButton(in: view))
     #expect(button.accessibilityPerformPress?() == true)
     #expect(!connection.hasFailed)
