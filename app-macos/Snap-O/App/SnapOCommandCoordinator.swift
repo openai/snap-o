@@ -17,7 +17,10 @@ final class SnapOCommandCoordinator {
   private weak var lastTarget: (any SnapOCommandTarget)?
   private var pendingDeviceRequest: DeviceOpenRequest?
   private var isOpeningWorkspace = false
-  var openWorkspace: (() -> Void)?
+  var openWorkspace: (() -> Void)? {
+    didSet { openWorkspaceIfNeeded() }
+  }
+
   private var pendingCommands: [SnapOCommand] = []
 
   init() {}
@@ -34,6 +37,7 @@ final class SnapOCommandCoordinator {
       target.perform(command)
     } else {
       pendingCommands.append(command)
+      openWorkspaceIfNeeded()
     }
     return true
   }
@@ -43,11 +47,15 @@ final class SnapOCommandCoordinator {
       target.openDevice(request)
     } else {
       pendingDeviceRequest = request
-      if !isOpeningWorkspace, let openWorkspace {
-        isOpeningWorkspace = true
-        openWorkspace()
-      }
+      openWorkspaceIfNeeded()
     }
+  }
+
+  private func openWorkspaceIfNeeded() {
+    guard pendingDeviceRequest != nil || !pendingCommands.isEmpty,
+          !isOpeningWorkspace, let openWorkspace else { return }
+    isOpeningWorkspace = true
+    openWorkspace()
   }
 
   func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
@@ -164,17 +172,22 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   }
 
   func perform(_ command: SnapOCommand) {
+    showWindow()
     performCommand(command)
   }
 
   func openDevice(_ request: DeviceOpenRequest) {
+    showWindow()
+    openDeviceRequest(request)
+  }
+
+  private func showWindow() {
     // Let SwiftUI finish creating a hidden launch window before requesting focus.
     if let window, window.isVisible || window.isMiniaturized {
       NSApplication.shared.activate(ignoringOtherApps: true)
       window.deminiaturize(nil)
       window.makeKeyAndOrderFront(nil)
     }
-    openDeviceRequest(request)
   }
 
   func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {

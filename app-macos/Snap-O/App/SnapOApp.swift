@@ -30,15 +30,6 @@ struct SnapOApp: App {
           initialWorkspace: configuration.wrappedValue.workspace
         )
         .modifier(WorkspaceWindowLauncher())
-        .handlesExternalEvents(
-          preferring: Set(["open", "record", "capture", "livepreview", "check-updates", "check-for-updates"]),
-          allowing: Set(["*"])
-        )
-        .onOpenURL { url in
-          if !updateCoordinator.handle(url: url) {
-            _ = SnapOCommandCoordinator.shared.handle(url: url)
-          }
-        }
       },
       defaultValue: {
         WorkspaceWindowConfiguration(workspace: .persisted())
@@ -48,7 +39,6 @@ struct SnapOApp: App {
     .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 480, height: 480)
-    .handlesExternalEvents(matching: Set(["open", "record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
         history: runtime.captureHistory,

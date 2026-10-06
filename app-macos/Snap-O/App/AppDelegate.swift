@@ -16,6 +16,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ])
   }
 
+  /// Handle URLs before SwiftUI chooses a scene and changes the active window.
+  func application(_ application: NSApplication, open urls: [URL]) {
+    for url in urls {
+      if UpdateCoordinator.shared.handle(url: url) { continue }
+      _ = SnapOCommandCoordinator.shared.handle(url: url)
+    }
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     true
   }

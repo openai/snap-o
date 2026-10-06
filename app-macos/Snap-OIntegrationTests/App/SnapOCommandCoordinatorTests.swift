@@ -118,6 +118,42 @@ struct SnapOCommandCoordinatorTests {
     #expect(target.commands.isEmpty)
   }
 
+  @Test(arguments: [SnapOCommand.capture, .record, .livepreview], [false, true])
+  func commandURLsUseCurrentWorkspace(command: SnapOCommand, appIsInactive: Bool) throws {
+    let coordinator = SnapOCommandCoordinator()
+    var windowsOpened = 0
+    coordinator.openWorkspace = { windowsOpened += 1 }
+    let other = CommandTarget()
+    let current = CommandTarget()
+    coordinator.register(other)
+    coordinator.activate(current)
+    if appIsInactive { coordinator.deactivate(current) }
+
+    let url = try #require(URL(string: "snapo://\(command.rawValue)"))
+    #expect(coordinator.handle(url: url))
+    #expect(current.commands == [command])
+    #expect(other.commands.isEmpty)
+    #expect(windowsOpened == 0)
+  }
+
+  @Test(arguments: [false, true])
+  func queuedCommandsOpenOneWorkspace(launcherIsReady: Bool) throws {
+    let coordinator = SnapOCommandCoordinator()
+    var windowsOpened = 0
+    let openWorkspace = { windowsOpened += 1 }
+    if launcherIsReady { coordinator.openWorkspace = openWorkspace }
+    #expect(try coordinator.handle(url: #require(URL(string: "snapo://record"))))
+    #expect(try coordinator.handle(url: #require(URL(string: "snapo://capture"))))
+    if !launcherIsReady { coordinator.openWorkspace = openWorkspace }
+    #expect(windowsOpened == 1)
+
+    let target = CommandTarget()
+    coordinator.register(target)
+    coordinator.activate(target)
+    #expect(target.commands == [.record, .capture])
+    #expect(windowsOpened == 1)
+  }
+
   @Test func thumbnailsBelongToOneConnection() {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
