@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 
 @MainActor
 final class ToolWebBridge {
@@ -9,7 +10,14 @@ final class ToolWebBridge {
 
 /// Exercise the real owners without creating a WKWebView or window.
 @MainActor
-final class ToolWebContainer {
+final class ToolWebContainer: ToolPageContainer {
+  var webView: WKWebView {
+    preconditionFailure("Model tests must not request a native view")
+  }
+
+  #if DEBUG
+  func showWebInspector() {}
+  #endif
   var pageReadinessChangedHandler: ((Bool) -> Void)?
   var pageLoadFailedHandler: ((String) -> Void)?
   var cleanupGate: TestGate?

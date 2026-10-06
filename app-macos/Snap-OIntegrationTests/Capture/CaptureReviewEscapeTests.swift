@@ -1,5 +1,6 @@
 import AppKit
 @preconcurrency import AVFoundation
+import Dependencies
 import DependenciesTestSupport
 import Observation
 @testable import Snap_O
@@ -74,12 +75,14 @@ struct CaptureReviewEscapeTests {
     }
   }
 
-  @Test(arguments: [false, true])
+  @Test(.dependency(\.videoFiles.inspect) { _ in
+    VideoFileInfo(duration: 3, size: CGSize(width: 32, height: 32))
+  }, arguments: [false, true])
   func escapeWorksWhileNativeVideoHasFocus(isTrimming: Bool) async throws {
     let fixture = try await makeReview()
     defer { fixture.close() }
     let url = fixture.root.appendingPathComponent("recording.mp4")
-    try await makeVideo(at: url)
+    try Data("placeholder".utf8).write(to: url)
     let video = CaptureMedia(
       device: fixture.capture.device,
       media: .video(
@@ -213,7 +216,12 @@ struct CaptureReviewEscapeTests {
       self.showsReview = showsReview
       review = CaptureReviewState(
         batch: ReadyCaptureBatch([capture], fileStore: store), selectedDeviceID: capture.device.id,
-        fileStore: store, history: history
+        fileStore: store, history: history,
+        dragExport: CaptureReviewDragExport { _, destination in
+          try Data("placeholder".utf8).write(to: destination)
+          return NSImage(size: CGSize(width: 1, height: 1))
+        },
+        playback: CaptureReviewPlayback(driver: EmptyPlaybackDriver())
       )
     }
 
@@ -222,7 +230,12 @@ struct CaptureReviewEscapeTests {
       cleanup = Task { await previous.close() }
       review = CaptureReviewState(
         batch: ReadyCaptureBatch([capture], fileStore: store), selectedDeviceID: capture.device.id,
-        fileStore: store, history: history
+        fileStore: store, history: history,
+        dragExport: CaptureReviewDragExport { _, destination in
+          try Data("placeholder".utf8).write(to: destination)
+          return NSImage(size: CGSize(width: 1, height: 1))
+        },
+        playback: CaptureReviewPlayback(driver: EmptyPlaybackDriver())
       )
     }
 
@@ -252,32 +265,6 @@ struct CaptureReviewEscapeTests {
         Text("Live Preview").focusable()
       }
     }
-  }
-
-  private func makeVideo(at url: URL) async throws {
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-      AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 32, AVVideoHeightKey: 32,
-      AVVideoCompressionPropertiesKey: [AVVideoAllowFrameReorderingKey: false]
-    ])
-    let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: nil)
-    try #require(writer.startWriting())
-    writer.startSession(atSourceTime: .zero)
-    let buffer = try CVMutablePixelBuffer(.init(
-      pixelFormatType: .init(rawValue: kCVPixelFormatType_32ARGB), size: .init(width: 32, height: 32)
-    ))
-    buffer.withUnsafeBuffer { pixel in
-      CVPixelBufferLockBaseAddress(pixel, [])
-      memset(CVPixelBufferGetBaseAddress(pixel), 80, CVPixelBufferGetDataSize(pixel))
-      CVPixelBufferUnlockBaseAddress(pixel, [])
-    }
-    let pixels = CVReadOnlyPixelBuffer(buffer)
-    for frame in 0 ..< 3 {
-      try await receiver.append(pixels, with: CMTime(value: Int64(frame), timescale: 10))
-    }
-    receiver.finish()
-    await writer.finishWriting()
-    try #require(writer.status == .completed)
   }
 
   private func videoPlayer(in view: NSView?) -> CaptureVideoPlayer.PlayerView? {
@@ -320,4 +307,20 @@ struct CaptureReviewEscapeTests {
     }
     try #require(condition(), "UI condition did not become true before the deadline", sourceLocation: sourceLocation)
   }
+}
+
+@MainActor
+private final class EmptyPlaybackDriver: CapturePlaybackDriver {
+  var player: AVQueuePlayer? {
+    nil
+  }
+
+  func load(_ url: URL, onTime: @escaping @MainActor (Double) -> Void) {}
+  func configure(range: CaptureTrimRange, isTrimming: Bool, onEnd: @escaping @MainActor () -> Void) {}
+  func setPlayback(rate: Float?, end: Double?) {}
+  func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void) {
+    completion()
+  }
+
+  func stop() {}
 }

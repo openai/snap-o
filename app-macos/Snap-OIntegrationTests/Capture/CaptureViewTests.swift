@@ -62,7 +62,7 @@ struct CaptureViewTests {
   @Test(.dependency(\.continuousClock, TestClock()))
   func connectButtonClearsTheSelectedConnectionFailure() async throws {
     NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     fixture.videoStartupError = CocoaError(.fileReadUnknown)
     let connection = fixture.service.attach(to: fixture.target("phone"))
     try await waitForState { connection.hasFailed }

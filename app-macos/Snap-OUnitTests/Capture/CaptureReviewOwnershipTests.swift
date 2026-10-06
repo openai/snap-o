@@ -2,9 +2,6 @@ import AppKit
 import Clocks
 import DependenciesTestSupport
 import Observation
-#if !SNAPO_STANDALONE_TESTS
-@testable import Snap_O
-#endif
 import Testing
 
 @MainActor

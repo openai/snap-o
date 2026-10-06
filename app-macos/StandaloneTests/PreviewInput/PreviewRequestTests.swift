@@ -12,7 +12,7 @@ struct PreviewRequestTests {
     let probe = PreviewRequestProbe()
     let gate = TestGate()
     probe.gate = gate
-    let fixture = try SharedLivePreviewTests.Fixture(adb: ADBService(requests: probe))
+    let fixture = try SharedPreviewTestSupport.Fixture(adb: ADBService(requests: probe))
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.focus(attachment)
     let request = Task {
@@ -48,7 +48,7 @@ struct PreviewRequestTests {
     let probe = PreviewRequestProbe()
     let gate = TestGate()
     probe.gate = gate
-    let fixture = try SharedLivePreviewTests.Fixture(adb: ADBService(requests: probe))
+    let fixture = try SharedPreviewTestSupport.Fixture(adb: ADBService(requests: probe))
     let target = fixture.target()
     let old = fixture.service.attach(to: target)
     try await fixture.ready(old)

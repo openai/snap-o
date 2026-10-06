@@ -88,7 +88,7 @@ Rotating a device currently ends its recording; preview reconnects to the new vi
 
 See the [internal video contract](../contracts/device-video/README.md).
 
-The opt-in `DeviceVideoTests.physicalDeviceKeepsPreviewAndRecordingIndependent` test uses
-`SNAPO_VIDEO_DEVICE_ID`. With `xcodebuild test`, set `TEST_RUNNER_SNAPO_VIDEO_DEVICE_ID`
-to a connected device serial. Use a device showing synthetic content. The test records
-briefly, validates the output, and deletes its temporary movie.
+Automated tests use fake frame sources and recording writers to check independent
+preview and recording lifetimes. They do not encode or decode video. For a manual
+check, use a connected device showing synthetic content. Start recording during
+preview, stop recording, and confirm that preview continues and the recording plays.

@@ -9,8 +9,8 @@ final class NativeScreenRecording: ScreenRecording {
   private let clock: AnyClock<Duration>
   private let source: any LivePreviewFrameSource
   private let url: URL
-  private var writer: AVAssetWriter?
-  private var input: AVAssetWriterInput?
+  private var writer: (any NativeRecordingWriter)?
+  private let makeWriter: @MainActor (URL, CMVideoFormatDescription, CMTime) throws -> any NativeRecordingWriter
   private var format: CMVideoFormatDescription?
   private var lastTimestamp: CMTime?
   private var lastReceivedAt: AnyClock<Duration>.Instant?
@@ -22,11 +22,16 @@ final class NativeScreenRecording: ScreenRecording {
     self.init(source: DeviceVideoSource(target: target))
   }
 
-  init(source: any LivePreviewFrameSource) {
+  init(
+    source: any LivePreviewFrameSource,
+    makeWriter: @escaping @MainActor (URL, CMVideoFormatDescription, CMTime) throws -> any NativeRecordingWriter = AVRecordingWriter
+      .init
+  ) {
     @Dependency(\.continuousClock)
     var clock
     self.clock = AnyClock(clock)
     self.source = source
+    self.makeWriter = makeWriter
     url = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(id).mp4")
   }
 
@@ -64,7 +69,7 @@ final class NativeScreenRecording: ScreenRecording {
 
   func save(to destination: URL) async throws {
     _ = await finishTask?.result
-    guard writer?.status == .completed else { throw writer?.error ?? ADBError.protocolFailure("No playable recording was received") }
+    guard writer?.isComplete == true else { throw ADBError.protocolFailure("No playable recording was received") }
     try FileManager.default.copyItem(at: url, to: destination)
     hasSavedCopy = true
   }
@@ -94,9 +99,7 @@ final class NativeScreenRecording: ScreenRecording {
           guard keyFrame, let format else { return }
           try begin(sample: sample, format: format)
         }
-        guard let input, let writer else { return }
-        guard input.isReadyForMoreMediaData else { throw ADBError.protocolFailure("Recording storage could not keep up with the device") }
-        guard input.append(sample) else { throw writer.error ?? ADBError.protocolFailure("Could not write video frame") }
+        try writer?.append(sample)
         lastTimestamp = CMSampleBufferGetPresentationTimeStamp(sample)
         lastReceivedAt = clock.now
       case .stopped(let error):
@@ -108,17 +111,7 @@ final class NativeScreenRecording: ScreenRecording {
   }
 
   private func begin(sample: CMSampleBuffer, format: CMVideoFormatDescription) throws {
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
-    input.expectsMediaDataInRealTime = true
-    guard writer.canAdd(input) else { throw ADBError.protocolFailure("Unsupported recording format") }
-    writer.add(input)
-    writer.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
-    guard writer.startWriting() else { throw writer.error ?? ADBError.protocolFailure("Could not start recording") }
-    let timestamp = CMSampleBufferGetPresentationTimeStamp(sample)
-    writer.startSession(atSourceTime: timestamp)
-    self.writer = writer
-    self.input = input
+    writer = try makeWriter(url, format, CMSampleBufferGetPresentationTimeStamp(sample))
   }
 
   private func beginFinish(error: Error?) {
@@ -127,15 +120,14 @@ final class NativeScreenRecording: ScreenRecording {
     let stoppedAt = clock.now
     finishTask = Task {
       await source.waitUntilStopped()
-      if let writer, let input {
+      if let writer {
+        var end: CMTime?
         if let lastTimestamp, let lastReceivedAt {
           let elapsed = lastReceivedAt.duration(to: stoppedAt).components
           let tail = max(1.0 / 60, Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
-          writer.endSession(atSourceTime: lastTimestamp + CMTime(seconds: tail, preferredTimescale: 1_000_000))
+          end = lastTimestamp + CMTime(seconds: tail, preferredTimescale: 1_000_000)
         }
-        input.markAsFinished()
-        await writer.finishWriting()
-        guard writer.status == .completed else { throw writer.error ?? ADBError.protocolFailure("Could not finalize recording") }
+        try await writer.finish(at: end)
       }
       if let error { throw error }
     }
@@ -143,5 +135,44 @@ final class NativeScreenRecording: ScreenRecording {
       waiter.resume()
     }
     stopWaiters.removeAll()
+  }
+}
+
+@MainActor
+protocol NativeRecordingWriter: AnyObject {
+  var isComplete: Bool { get }
+  func append(_ sample: CMSampleBuffer) throws
+  func finish(at end: CMTime?) async throws
+}
+
+@MainActor
+final class AVRecordingWriter: NativeRecordingWriter {
+  private let writer: AVAssetWriter
+  private let input: AVAssetWriterInput
+  var isComplete: Bool {
+    writer.status == .completed
+  }
+
+  init(url: URL, format: CMVideoFormatDescription, start: CMTime) throws {
+    writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
+    input.expectsMediaDataInRealTime = true
+    guard writer.canAdd(input) else { throw ADBError.protocolFailure("Unsupported recording format") }
+    writer.add(input)
+    writer.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
+    guard writer.startWriting() else { throw writer.error ?? ADBError.protocolFailure("Could not start recording") }
+    writer.startSession(atSourceTime: start)
+  }
+
+  func append(_ sample: CMSampleBuffer) throws {
+    guard input.isReadyForMoreMediaData else { throw ADBError.protocolFailure("Recording storage could not keep up with the device") }
+    guard input.append(sample) else { throw writer.error ?? ADBError.protocolFailure("Could not write video frame") }
+  }
+
+  func finish(at end: CMTime?) async throws {
+    if let end { writer.endSession(atSourceTime: end) }
+    input.markAsFinished()
+    await writer.finishWriting()
+    guard writer.status == .completed else { throw writer.error ?? ADBError.protocolFailure("Could not finalize recording") }
   }
 }

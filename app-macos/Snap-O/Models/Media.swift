@@ -1,4 +1,3 @@
-@preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -117,34 +116,4 @@ func pngSize(from data: Data) throws -> CGSize {
     throw CocoaError(.fileReadCorruptFile)
   }
   return CGSize(width: CGFloat(width), height: CGFloat(height))
-}
-
-extension Media {
-  static func video(
-    from asset: AVURLAsset,
-    url: URL,
-    capturedAt: Date,
-    densityProvider: @escaping @Sendable () async -> CGFloat?
-  ) async throws -> Media? {
-    async let densityTask = densityProvider()
-    let tracks = try await asset.load(.tracks)
-    guard let videoTrack = tracks.first(where: { $0.mediaType == .video }) else {
-      _ = await densityTask
-      return nil
-    }
-
-    async let naturalSizeTask = videoTrack.load(.naturalSize)
-    async let transformTask = videoTrack.load(.preferredTransform)
-    let (naturalSize, transform) = try await (naturalSizeTask, transformTask)
-    let density = await densityTask
-    let applied = naturalSize.applying(transform)
-    let size = CGSize(width: abs(applied.width), height: abs(applied.height))
-    let display = DisplayInfo(size: size, densityScale: density)
-
-    return Media.video(
-      url: url,
-      capturedAt: capturedAt,
-      display: display
-    )
-  }
 }

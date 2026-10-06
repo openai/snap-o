@@ -27,7 +27,7 @@ for object in "$PRODUCTS/"*.o; do
 done
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library "$@" \
   Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
-  Snap-O/Tools/ToolHTTPTransport.swift StandaloneTests/DeviceConnection/ToolConnectionTests.swift \
+  Snap-O/Tools/ToolHTTPTransport.swift Snap-O/Tools/ToolURL.swift StandaloneTests/DeviceConnection/ToolConnectionTests.swift \
   -o "$TEST_DIR/tool-connection-tests"
 run_test "$TEST_DIR/tool-connection-tests"
 
@@ -37,7 +37,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library "$@" \
   Snap-O/Device/ADB/ADBClient.swift Snap-O/Device/ADB/ADBServerSession.swift \
   Snap-O/Device/ADB/RecordingSession.swift \
   Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Device/Emulators/EmulatorConnection.swift \
-  Snap-O/Device/DeviceDiscovery.swift Snap-O/Device/ScreenshotDeadline.swift \
+  Snap-O/Device/DeviceDiscovery.swift Snap-O/Device/ADB/DeviceDiscovery+ADB.swift Snap-O/Device/ScreenshotDeadline.swift \
   Snap-O/Device/ToolDiscovery.swift Snap-O/Device/ToolServerReference.swift \
   Snap-O/Device/ToolManifest.swift Snap-O/Device/ToolFrontendBundle.swift \
   Snap-O/Device/LegacyPluginMetadata.swift Snap-O/Utilities/Logging.swift \

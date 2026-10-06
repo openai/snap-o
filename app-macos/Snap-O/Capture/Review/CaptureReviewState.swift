@@ -8,7 +8,7 @@ import Observation
 final class CaptureReviewState {
   let batch: any CaptureBatch
   let fileStore: FileStore
-  let playback = CaptureReviewPlayback()
+  let playback: CaptureReviewPlayback
   let dragExport: CaptureReviewDragExport
   let hint = PreviewHint()
   private(set) var selectedItemID: UUID?
@@ -34,12 +34,14 @@ final class CaptureReviewState {
 
   init(
     batch: any CaptureBatch, selectedDeviceID: String?, fileStore: FileStore,
-    history: CaptureHistory, dragExport: CaptureReviewDragExport = CaptureReviewDragExport()
+    history: CaptureHistory, dragExport: CaptureReviewDragExport = CaptureReviewDragExport(),
+    playback: CaptureReviewPlayback = CaptureReviewPlayback()
   ) {
     self.batch = batch
     self.fileStore = fileStore
     self.history = history
     self.dragExport = dragExport
+    self.playback = playback
     selectedItemID = batch.items.first { $0.device.id == selectedDeviceID }?.id ?? batch.items.first?.id
   }
 
@@ -49,6 +51,10 @@ final class CaptureReviewState {
             url.deletingLastPathComponent().deletingLastPathComponent().path == history.repository.root.path else { return true }
       return !deletedHistoryIDs.contains(media.id)
     }
+  }
+
+  var allowsReplacement: Bool {
+    !isSaving
   }
 
   var selectedItem: CaptureItem? {

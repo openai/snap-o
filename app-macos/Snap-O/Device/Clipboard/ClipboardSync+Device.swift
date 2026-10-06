@@ -2,7 +2,7 @@ import AppKit
 
 extension ClipboardSync {
   convenience init(
-    settings: AppSettings, pasteboard: NSPasteboard = .general,
+    settings: AppSettings, pasteboard: any TextPasteboard = NSPasteboard.general,
     maySynchronize: @escaping @MainActor () -> Bool = { true }
   ) {
     self.init(settings: settings, pasteboard: pasteboard, maySynchronize: maySynchronize) { target, synchronize in

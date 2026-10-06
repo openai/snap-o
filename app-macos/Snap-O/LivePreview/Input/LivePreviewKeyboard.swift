@@ -11,7 +11,7 @@ protocol LivePreviewKeyboardTransport: Sendable {
 final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
   var errorMessage: String?
   @ObservationIgnored private let connect: (String) async throws -> any LivePreviewKeyboardTransport
-  @ObservationIgnored private let pasteboard: NSPasteboard
+  @ObservationIgnored private let pasteboard: any TextPasteboard
   @ObservationIgnored private let target: DeviceTarget?
   @ObservationIgnored private let deviceID: String
   @ObservationIgnored private var pending: [(LivePreviewKeyboardEvent, Int)] = []
@@ -25,7 +25,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
   init(
     deviceID: String,
     target: DeviceTarget? = nil,
-    pasteboard: NSPasteboard = .general,
+    pasteboard: any TextPasteboard = NSPasteboard.general,
     connect: @escaping (String) async throws -> any LivePreviewKeyboardTransport
   ) {
     self.target = target
@@ -126,8 +126,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
           errorMessage = nil
           // A delayed device copy must not replace a newer copy in another Mac view.
           if pasteboard.changeCount == changeCount {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
+            pasteboard.replaceText(text)
           }
         case .unsupportedText:
           errorMessage = "Use Paste for characters Android can’t type."

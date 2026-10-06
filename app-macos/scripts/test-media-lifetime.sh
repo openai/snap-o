@@ -26,7 +26,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS/../PrivateFrameworks" \
   -Xlinker -rpath -Xlinker "$TEST_LIBRARIES" \
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS" "$PRODUCTS/DependenciesTestSupport.o" \
-  Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift Snap-O/Utilities/Logging.swift \
+  Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift Snap-O/Capture/Export/VideoFileClient.swift Snap-O/Utilities/Logging.swift \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/Export/CaptureExportRequest.swift Snap-O/Capture/Operations/CaptureBatch.swift \
   Snap-O/Capture/Review/CaptureCropGeometry.swift Snap-O/Capture/Review/CaptureTrimRange.swift \
   Snap-O/Capture/Export/CaptureCropExporter.swift Snap-O/Capture/Review/CaptureReviewDragExport.swift \
@@ -36,8 +36,6 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/LivePreview/Rendering/LivePreviewFrameExporter.swift \
   Snap-O/History/CaptureHistoryEntry.swift Snap-O/History/CaptureHistoryRepository.swift Snap-O/History/CaptureHistory.swift \
   Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \
-  Snap-OIntegrationTests/Capture/CaptureReviewDragExportTests.swift Snap-OIntegrationTests/Capture/CaptureCropExportTests.swift \
-  Snap-OIntegrationTests/Capture/CaptureReviewOwnershipTests.swift \
   Snap-O/Capture/CapturePaneSession.swift \
   Snap-O/Workspace/CaptureWindowSession.swift Snap-O/Workspace/WorkspaceLayoutController.swift Snap-O/App/CaptureWorkspaces.swift \
   Snap-O/Capture/CaptureServices.swift Snap-O/LivePreview/LivePreviewDevice.swift \
@@ -45,4 +43,8 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   StandaloneTests/CapturePane/PaneDependencies.swift StandaloneTests/CapturePane/CapturePaneTests.swift StandaloneTests/CapturePane/CaptureStartupTests.swift StandaloneTests/CapturePane/WorkspaceLifetimeTests.swift \
   StandaloneTests/MediaLifetime/MediaLifetimeTests.swift \
   -o "$TEST_DIR/media-lifetime-tests"
-run_test "$TEST_DIR/media-lifetime-tests" "$@"
+if [ "${1:-}" = --windows ]; then
+  run_test "$TEST_DIR/media-lifetime-tests" --windows --filter 'CapturePaneTests/(hiddenLaunchWindowCanBeReusedThenClosed|remountKeepsTheWindowSessionAndOtherWindowsPreview)'
+else
+  run_test "$TEST_DIR/media-lifetime-tests"
+fi

@@ -11,7 +11,7 @@ import Testing
 struct LivePreviewAttachmentTests {
   @Test
   func hidingAndRemountingRestartsVideoOnTheSameOwner() async throws {
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     let firstView = UUID()
     attachment.mount(firstView)
@@ -35,7 +35,7 @@ struct LivePreviewAttachmentTests {
 
   @Test
   func hidingDuringPreparationKeepsTheSameOwner() async throws {
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let gate = TestSuspension()
     fixture.preparationGate = gate
     let attachment = fixture.service.attach(to: fixture.target())
@@ -54,7 +54,7 @@ struct LivePreviewAttachmentTests {
 
   @Test
   func failedVideoIsNotRetriedByRemountingAView() async throws {
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     fixture.videoStartupError = CocoaError(.fileReadUnknown)
     let attachment = fixture.service.attach(to: fixture.target())
     try await waitForState { attachment.hasFailed }
@@ -69,7 +69,7 @@ struct LivePreviewAttachmentTests {
 
   @Test
   func repeatedCloseJoinsCleanupAndRejectsLaterMounts() async throws {
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let gate = TestSuspension()
     fixture.sourceCleanup = gate
     let attachment = fixture.service.attach(to: fixture.target())

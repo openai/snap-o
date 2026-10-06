@@ -14,7 +14,7 @@ import Testing
 struct SharedLivePreviewTests {
   @Test(arguments: [false, true])
   func hiddenPreviewStopsAndResumesWithoutFocus(hidePane: Bool) async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     attachment.setVisible(true)
     try await fixture.ready(attachment)
@@ -34,7 +34,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func visibleWindowKeepsVideoUntilItCloses() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let first = fixture.service.attach(to: target)
     let second = fixture.service.attach(to: target)
@@ -54,7 +54,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func twoWindowsShareOneOwnerAndCloseIndependently() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let first = fixture.service.attach(to: target)
     let second = fixture.service.attach(to: target)
@@ -75,7 +75,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func lastCloseAndReattachWaitForSourceCleanup() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let cleanup = TestSuspension()
     fixture.sourceCleanup = cleanup
     let target = fixture.target()
@@ -105,7 +105,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func replacementConnectionDoesNotWaitForOldConnectionCleanup() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let cleanup = TestSuspension()
     fixture.sourceCleanup = cleanup
     let old = fixture.service.attach(to: fixture.target())
@@ -123,7 +123,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func sameDeviceFocusKeepsKeyboardAndClipboardConnections() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let first = fixture.service.attach(to: target)
     let second = fixture.service.attach(to: target)
@@ -146,7 +146,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func focusWaitsForOldCopyAndRejectsItsResult() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let first = fixture.service.attach(to: target)
     let second = fixture.service.attach(to: target)
@@ -160,13 +160,13 @@ struct SharedLivePreviewTests {
     #expect(!first.acceptsInput && !second.acceptsInput)
     copy.resume()
     try await waitForState { second.acceptsInput }
-    #expect(fixture.pasteboard.string(forType: .string) != "stale selection")
+    #expect(fixture.pasteboard.text != "stale selection")
     await fixture.close()
   }
 
   @Test
   func aNewFocusRequestDoesNotWaitForAnotherDevicePreparation() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let pending = TestSuspension()
     fixture.preparationGate = pending
     let waiting = fixture.service.attach(to: fixture.target("waiting"))
@@ -185,7 +185,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func closingOldWindowDoesNotWaitForNextDevicesPreparation() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let first = fixture.service.attach(to: fixture.target("first"))
     try await fixture.focus(first)
     let pending = TestSuspension()
@@ -203,7 +203,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func leavingTextResponderKeepsWindowInputAndRejectsLateCopy() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let first = fixture.service.attach(to: fixture.target())
     try await fixture.focus(first)
     try await waitForState { fixture.keyboardConnections == 1 && fixture.clipboardConnections == 1 }
@@ -218,14 +218,14 @@ struct SharedLivePreviewTests {
     first.prepare()
     first.send(.text("after text focus"))
     try await fixture.keyboards[0].waitForEvents(2)
-    #expect(fixture.pasteboard.string(forType: .string) != "stale selection")
+    #expect(fixture.pasteboard.text != "stale selection")
     #expect(fixture.keyboardConnections == 1 && fixture.clipboardConnections == 1)
     await fixture.close()
   }
 
   @Test
   func oldKeyboardTeardownDoesNotCancelNewWindowsCopy() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let old = fixture.service.attach(to: target)
     let current = fixture.service.attach(to: target)
@@ -240,14 +240,14 @@ struct SharedLivePreviewTests {
     copy.resume()
     current.send(.text("copy finished"))
     try await fixture.keyboards[0].waitForEvents(2)
-    #expect(fixture.pasteboard.string(forType: .string) == "stale selection")
+    #expect(fixture.pasteboard.text == "stale selection")
     #expect(current.acceptsInput)
     await fixture.close()
   }
 
   @Test
   func changingDevicesWaitsForClipboardCleanupAndRejectsLateMessages() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let cleanup = TestSuspension()
     fixture.clipboardCleanup = cleanup
     let old = fixture.service.attach(to: fixture.target("old"))
@@ -262,19 +262,19 @@ struct SharedLivePreviewTests {
     #expect(!old.acceptsInput && !current.acceptsInput)
     #expect(fixture.clipboardConnections == 1)
     await fixture.clipboards[0].deliver("from old device")
-    #expect(fixture.pasteboard.string(forType: .string) != "from old device")
+    #expect(fixture.pasteboard.text != "from old device")
     cleanup.resume()
     try await waitForState { current.acceptsInput && fixture.clipboards.count == 2 }
     await fixture.clipboards[1].waitUntilReceiving()
     await fixture.clipboards[1].deliver("from current device")
-    #expect(fixture.pasteboard.string(forType: .string) == "from current device")
+    #expect(fixture.pasteboard.text == "from current device")
     #expect(fixture.clipboardConnections == 2)
     await fixture.close()
   }
 
   @Test
   func invalidationImmediatelyRejectsInputAndClosesAllUsers() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let first = fixture.service.attach(to: target)
     let second = fixture.service.attach(to: target)
@@ -295,7 +295,7 @@ struct SharedLivePreviewTests {
   func videoRecoveryKeepsHealthyInput() async throws {
     @Dependency(\.continuousClock, as: TestClock<Duration>.self)
     var clock
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.focus(attachment)
     try await waitForState { fixture.keyboardConnections == 1 && fixture.clipboardConnections == 1 }
@@ -312,7 +312,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func connectRetriesPreviewAfterAConflictingRecordingEnds() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let recording = try fixture.coordinator.acquire(target: target, for: .bugReportRecording)
     let attachment = fixture.service.attach(to: target)
@@ -332,7 +332,7 @@ struct SharedLivePreviewTests {
   func startupHandsTheSameAttachmentToOneWindow() async throws {
     @Dependency(\.continuousClock, as: TestClock<Duration>.self)
     var clock
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let device = fixture.device(fixture.target())
     let startup = StartupCapturePreparation(
       screenshots: { _ in preconditionFailure("Unexpected screenshot") },
@@ -355,7 +355,7 @@ struct SharedLivePreviewTests {
   func unusedStartupPreviewExpiresAndJoinsCleanup() async throws {
     @Dependency(\.continuousClock, as: TestClock<Duration>.self)
     var clock
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let cleanup = TestSuspension()
     fixture.sourceCleanup = cleanup
     let device = fixture.device(fixture.target())
@@ -390,7 +390,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func hiddenPaneRejectsLateViewFocusWithoutClosingSharedVideo() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let hidden = fixture.service.attach(to: target)
     let other = fixture.service.attach(to: target)
@@ -414,7 +414,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func staleViewDisappearanceCannotDisableRemountedPreview() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     let old = UUID()
     let current = UUID()
@@ -433,7 +433,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func shutdownRejectsNewAttachmentsAndClosesExistingOwners() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     try await fixture.ready(attachment)
     await fixture.service.shutdown()
@@ -445,7 +445,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func shutdownStartsOtherConnectionsCleanupWhileOneWaits() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let gate = TestSuspension()
     fixture.sourceCleanup = gate
     let first = fixture.service.attach(to: fixture.target("first"))
@@ -467,7 +467,7 @@ struct SharedLivePreviewTests {
 
   @Test
   func oldRendererCannotSendPointerAfterRemount() async throws {
-    let fixture = try Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()
     let device = fixture.device(target)
     let attachment = fixture.service.attach(to: target)
@@ -487,241 +487,5 @@ struct SharedLivePreviewTests {
     let events = await fixture.pointers[0].events
     #expect(events.count == 2)
     #expect(events.allSatisfy { $0.locations == [CGPoint(x: 2, y: 2)] })
-  }
-
-  @Observable
-  @MainActor
-  final class Fixture {
-    let adb: ADBService
-    let coordinator = CaptureCoordinator()
-    let defaults: UserDefaults
-    let suite = "SharedPreviewTests." + UUID().uuidString
-    let settings: AppSettings
-    let pasteboard = NSPasteboard.withUniqueName()
-    var owners: [DevicePreview] = []
-    var sources: [Source] = []
-    var keyboards: [Keyboard] = []
-    var pointers: [Pointer] = []
-    var clipboards: [Clipboard] = []
-    var clipboardCleanup: TestSuspension?
-    var keyboardConnections = 0
-    var clipboardConnections = 0
-    var sourceCleanup: TestSuspension?
-    var preparationGate: TestSuspension?
-    var videoStartupError: Error?
-    var makeFileDrop: (Device) -> DeviceFileDrop = { DeviceFileDrop(device: $0) }
-    @ObservationIgnored lazy var service = LivePreviewService(
-      coordinator: coordinator, adb: adb,
-      makeFileDrop: { [unowned self] in makeFileDrop($0) },
-      makePreview: { [unowned self] in makeOwner($0) }
-    )
-
-    init(adb: ADBService = ADBService()) throws {
-      self.adb = adb
-      defaults = try #require(UserDefaults(suiteName: suite))
-      settings = AppSettings(defaults: defaults)
-      settings.syncClipboard = true
-    }
-
-    func target(_ serial: String = "emulator-5554") -> DeviceTarget {
-      DeviceTarget(serial: serial, transportID: "1")
-    }
-
-    func device(_ target: DeviceTarget) -> Device {
-      Device(
-        id: target.serial, model: "Test", androidVersion: "16", vendorModel: nil,
-        manufacturer: nil, avdName: nil, connection: target
-      )
-    }
-
-    func makeOwner(_ target: DeviceTarget) -> DevicePreview {
-      let gate = preparationGate
-      let cleanup = sourceCleanup
-      let clipboardCleanup = clipboardCleanup
-      let preparation = Task {
-        try? await gate?.wait()
-        let touches = await ShowTouchesOverride.apply(target: nil, enabled: false, using: adb)
-        return DevicePreview.Preparation(touches: touches, density: 1)
-      }
-      let transport = Keyboard()
-      keyboards.append(transport)
-      let keyboard = LivePreviewKeyboard(deviceID: target.serial, target: target, pasteboard: pasteboard) { _ in
-        await MainActor.run { self.keyboardConnections += 1 }
-        return transport
-      }
-      let backend = Pointer()
-      pointers.append(backend)
-      let pointer = LivePreviewPointerInjector(makePreferredBackend: { _ in backend }, fallbackBackend: backend)
-      let owner = DevicePreview(
-        target: target, adb: adb, boot: Task {}, preparation: preparation, keyboard: keyboard, pointer: pointer,
-        makeSource: {
-          let source = Source(cleanup: cleanup)
-          self.sources.append(source)
-          return source
-        }, makeClipboard: { allowed in
-          ClipboardSync(settings: self.settings, pasteboard: self.pasteboard, maySynchronize: allowed) { _, body in
-            self.clipboardConnections += 1
-            let transport = Clipboard()
-            self.clipboards.append(transport)
-            let result: Result<Void, Error>
-            do {
-              try await body(transport)
-              result = .success(())
-            } catch {
-              result = .failure(error)
-            }
-            // Model transport cleanup that must finish even after cancellation.
-            let cleanup = Task { try? await clipboardCleanup?.wait() }
-            await cleanup.value
-            try result.get()
-          }
-        }
-      )
-      if let videoStartupError {
-        owner.video = PreviewVideo(makeSession: { throw videoStartupError }, canReconnect: { target.isValid })
-      }
-      owners.append(owner)
-      return owner
-    }
-
-    func ready(_ attachment: LivePreviewAttachment) async throws {
-      try await waitForState { attachment.preview?.inputReady == true && attachment.preview?.videoState == .streaming }
-    }
-
-    func focus(_ attachment: LivePreviewAttachment) async throws {
-      attachment.setVisible(true)
-      attachment.setFocused(true)
-      try await waitForState { attachment.acceptsInput }
-      try await ready(attachment)
-    }
-
-    func close() async {
-      await service.shutdown()
-      owners.removeAll()
-      pasteboard.releaseGlobally()
-      defaults.removePersistentDomain(forName: suite)
-    }
-  }
-
-  @Observable
-  @MainActor
-  final class Source: LivePreviewFrameSource {
-    let hasIndependentFrames = true
-    let cleanup: TestSuspension?
-    var stops = 0
-    private var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
-    private var cleanupWork: Task<Void, Never>?
-    init(cleanup: TestSuspension?) {
-      self.cleanup = cleanup
-    }
-
-    func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-      self.deliver = deliver
-      var format: CMVideoFormatDescription?
-      CMVideoFormatDescriptionCreate(
-        allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
-        width: 100, height: 200, extensions: nil, formatDescriptionOut: &format
-      )
-      if let format { deliver(.format(format)) }
-    }
-
-    func fail() {
-      deliver?(.stopped(CocoaError(.fileReadUnknown)))
-    }
-
-    func stop() {
-      stops += 1
-      deliver = nil
-      if let cleanup { cleanupWork = Task { try? await cleanup.wait() } }
-    }
-
-    func waitUntilStopped() async {
-      await cleanupWork?.value
-    }
-  }
-
-  actor Pointer: LivePreviewPointerBackend {
-    private(set) var events: [LivePreviewPointerEvent] = []
-    private let changes = TestSignal()
-    func send(_ event: LivePreviewPointerEvent) async throws {
-      events.append(event)
-      changes.signal()
-    }
-
-    func waitForEvents(_ count: Int) async {
-      while events.count < count {
-        let revision = changes.revision
-        try? await changes.wait(after: revision)
-      }
-    }
-  }
-
-  actor Clipboard: ClipboardTransport {
-    private var receiver: (@Sendable (String) async -> Void)?
-    private let changes = TestSignal()
-    func getText() async throws -> String {
-      ""
-    }
-
-    func setText(_ text: String) async throws {}
-    func receive(_ onText: @escaping @Sendable (String) async -> Void) async throws {
-      receiver = onText
-      changes.signal()
-      try await suspendUntilCancelled()
-    }
-
-    func deliver(_ text: String) async {
-      await receiver?(text)
-    }
-
-    func waitUntilReceiving() async {
-      while receiver == nil {
-        let revision = changes.revision
-        try? await changes.wait(after: revision)
-      }
-    }
-  }
-
-  final class Keyboard: LivePreviewKeyboardTransport, @unchecked Sendable {
-    private let lock = NSLock()
-    private let changes = TestSignal()
-    private var received: [LivePreviewKeyboardEvent] = []
-    private var closed = false
-    private var copyGate: TestSuspension?
-    var events: [LivePreviewKeyboardEvent] {
-      lock.withLock { received }
-    }
-
-    var isClosed: Bool {
-      lock.withLock { closed }
-    }
-
-    func holdCopy(_ gate: TestSuspension) {
-      lock.withLock { copyGate = gate }
-    }
-
-    func send(_ event: LivePreviewKeyboardEvent) async throws -> LivePreviewKeyboardResponse {
-      let gate = lock.withLock { received.append(event)
-        return copyGate
-      }
-      changes.signal()
-      if event == .copy {
-        try? await gate?.wait()
-        return .copied("stale selection")
-      }
-      return .sent
-    }
-
-    func close() {
-      lock.withLock { closed = true }
-    }
-
-    func waitForEvents(_ count: Int) async throws {
-      while true {
-        let revision = changes.revision
-        if events.count >= count { return }
-        try await changes.wait(after: revision)
-      }
-    }
   }
 }

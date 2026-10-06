@@ -1,8 +1,5 @@
 import AVFoundation
 import Foundation
-#if !SNAPO_STANDALONE_TESTS
-@testable import Snap_O
-#endif
 import Testing
 
 @MainActor

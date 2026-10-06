@@ -8,27 +8,43 @@ public final class RecordingSession: @unchecked Sendable {
   public let startedAt: Date
   public let pid: Int32
 
-  private let connection: ADBSocketConnection
+  private let closeStream: @Sendable () -> Void
   private let completionTask: Task<Duration, Error>
 
-  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, startedAt: Date, target: DeviceTarget? = nil) {
+  convenience init(
+    deviceID: String,
+    remotePath: String,
+    pid: Int32,
+    connection: ADBSocketConnection,
+    startedAt: Date,
+    target: DeviceTarget? = nil
+  ) {
+    self.init(deviceID: deviceID, remotePath: remotePath, pid: pid, startedAt: startedAt, target: target, drain: {
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        DispatchQueue.global(qos: .userInitiated).async {
+          continuation.resume(with: Result { try connection.drainToEnd() })
+        }
+      }
+    }, close: { connection.close() })
+  }
+
+  init(
+    deviceID: String, remotePath: String, pid: Int32, startedAt: Date, target: DeviceTarget? = nil,
+    drain: @escaping @Sendable () async throws -> Void, close: @escaping @Sendable () -> Void
+  ) {
     self.target = target
     self.deviceID = deviceID
     self.remotePath = remotePath
     self.pid = pid
-    self.connection = connection
+    closeStream = close
     self.startedAt = startedAt
 
     @Dependency(\.continuousClock)
     var sourceClock
     let clock = AnyClock(sourceClock)
     let started = clock.now
-    completionTask = Task.detached(priority: .userInitiated) { [connection, clock] in
-      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-        DispatchQueue.global(qos: .userInitiated).async {
-          continuation.resume(with: Result { try connection.drainToEnd() })
-        }
-      }
+    completionTask = Task.detached(priority: .userInitiated) { [clock] in
+      try await drain()
       return started.duration(to: clock.now)
     }
   }
@@ -65,6 +81,6 @@ public final class RecordingSession: @unchecked Sendable {
 
   public func close() {
     completionTask.cancel()
-    connection.close()
+    closeStream()
   }
 }

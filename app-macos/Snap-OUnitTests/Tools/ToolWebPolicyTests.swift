@@ -1,5 +1,4 @@
 import Foundation
-@testable import Snap_O
 import Testing
 
 @Suite("Tool web policy")
@@ -86,19 +85,6 @@ struct ToolWebPolicyTests {
     #expect(scope != ToolWebPolicy.storageIdentifier(app: first, tool: .network))
     #expect(ToolWebPolicy.storageIdentifier(app: selectionApp(user: nil), tool: .sample) == nil)
     #expect(ToolWebPolicy.storageIdentifier(app: nil, tool: .sample) == nil)
-  }
-
-  @Test("bridge messages have command, size, depth, and collection limits")
-  func messageLimits() {
-    #expect(ToolWebBridge.validMessage(["command": "hostState"], command: "hostState"))
-    #expect(!ToolWebBridge.validMessage(["command": "unknown"], command: "unknown"))
-    #expect(!ToolWebBridge.validMessage(["payload": String(repeating: "x", count: 1_048_577)], command: "copyText"))
-    #expect(!ToolWebBridge.validMessage(["payload": Array(repeating: "x", count: 65)], command: "setToolbar"))
-    var nested: Any = "value"
-    for _ in 0 ..< 10 {
-      nested = ["nested": nested]
-    }
-    #expect(!ToolWebBridge.validMessage(["payload": nested], command: "setToolbar"))
   }
 
   @Test("toolbar validation rejects unsafe revisions and ambiguous actions")

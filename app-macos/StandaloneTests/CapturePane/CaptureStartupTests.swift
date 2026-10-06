@@ -156,6 +156,30 @@ extension CapturePaneTests {
     await fixture.close()
   }
 
+  @Test(arguments: [SnapOCommand.capture, .record, .livepreview])
+  func commandsDuringRecordingDoNotRunLater(command: SnapOCommand) async throws {
+    let fixture = Fixture()
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    pane.startRecording()
+    let batch = try #require(pane.recording)
+    let available = fixture.devices.inventory
+    fixture.devices.inventory = DeviceInventory()
+    pane.enqueue(command)
+    #expect(pane.recording === batch)
+
+    pane.stopRecording()
+    fixture.devices.inventory = available
+    let attachments = fixture.previews.attachments.count
+    // A new command drains queued work without waiting for an observation task.
+    pane.enqueue(.capture)
+    #expect(fixture.screenshots.value.count == 1)
+    #expect(fixture.recordings.value.count == 1)
+    #expect(fixture.previews.attachments.count == attachments, "An ignored preview command must not run later")
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test
   func metadataUpdatesKeepAttachmentsAndWindowSelection() async throws {
     let fixture = Fixture()

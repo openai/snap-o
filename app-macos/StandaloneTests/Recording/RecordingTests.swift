@@ -22,6 +22,7 @@ struct RecordingTests {
   static func main() async throws {
     try await withDependencies {
       $0.context = .test
+      $0.staticRecording.readFrame = { _ in nil }
       $0.continuousClock = TestClock()
     } operation: {
       let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -131,29 +132,8 @@ struct RecordingTests {
   }
 
   static func recordingMetadataKeepsTheOriginalConnection(root: URL) async throws {
-    let video = root.appendingPathComponent("playable.mp4")
-    let writer = try AVAssetWriter(outputURL: video, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-      AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 16, AVVideoHeightKey: 16
-    ])
-    let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: nil)
-    guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-    writer.startSession(atSourceTime: .zero)
-    let buffer = try CVMutablePixelBuffer(.init(
-      pixelFormatType: .init(rawValue: kCVPixelFormatType_32BGRA), size: .init(width: 16, height: 16)
-    ))
-    try buffer.withUnsafeBuffer { pixel in
-      CVPixelBufferLockBaseAddress(pixel, [])
-      defer { CVPixelBufferUnlockBaseAddress(pixel, []) }
-      guard let bytes = CVPixelBufferGetBaseAddress(pixel) else { throw CocoaError(.fileWriteUnknown) }
-      memset(bytes, 0, CVPixelBufferGetDataSize(pixel))
-    }
-    try await receiver.append(CVReadOnlyPixelBuffer(buffer), with: .zero)
-    writer.endSession(atSourceTime: CMTime(value: 1, timescale: 1))
-    receiver.finish()
-    await writer.finishWriting()
-    guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-
+    let video = root.appendingPathComponent("placeholder.mp4")
+    try Data("valid recording".utf8).write(to: video)
     for disconnected in [false, true] {
       let target = DeviceTarget(serial: "metadata-test", transportID: "1")
       let device = Device(
@@ -161,7 +141,9 @@ struct RecordingTests {
         manufacturer: nil, avdName: nil, connection: target
       )
       let fixture = Fixture(root: root, video: video)
-      let batch = fixture.recording(for: [device], readsVideoMetadata: true)
+      let batch = withDependencies {
+        $0.videoFiles.inspect = { _ in VideoFileInfo(duration: 1, size: CGSize(width: 16, height: 16)) }
+      } operation: { fixture.recording(for: [device], readsVideoMetadata: true) }
       batch.start()
       _ = await batch.startup?.value
       if disconnected { target.invalidate() }

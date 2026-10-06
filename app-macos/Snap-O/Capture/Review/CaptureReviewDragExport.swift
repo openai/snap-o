@@ -90,10 +90,9 @@ final class CaptureReviewDragExport {
     to destination: URL
   ) async throws -> NSImage {
     _ = try await CaptureCropExporter.export(request, to: destination)
-    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
-    generator.appliesPreferredTrackTransform = true
-    generator.maximumSize = CGSize(width: 640, height: 640)
-    let image = try await generator.image(at: .zero).image
+    @Dependency(\.videoFiles)
+    var videoFiles
+    let image = try await videoFiles.thumbnail(destination, CGSize(width: 640, height: 640))
     return NSImage(cgImage: image, size: CGSize(width: image.width, height: image.height))
   }
 }

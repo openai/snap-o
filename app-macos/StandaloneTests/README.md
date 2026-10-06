@@ -18,6 +18,17 @@ Swift packages use release optimization, which slows fresh test builds.
 CI resolves locked packages during that build, then runs the generated `.xctestrun`
 file directly. The test step does not need to resolve packages again.
 
+Do not encode, decode, export, or play real video in automated tests. Test the
+settings passed to the media boundary and supply controlled results. `VideoFileClient`
+uses failing defaults in tests so an unexpected media call cannot reach macOS.
+Playback and native recording tests use fake drivers and writers. Frame-copy tests
+use a fake renderer. File ownership tests may use placeholder bytes.
+
+State tests also use an in-memory `TextPasteboard`, injected thumbnail images, and
+fake frame encoders. Recording deadline tests use a controlled stream and `TestClock`;
+they do not wait for a kernel socket timeout. Standalone scripts run their own suites,
+without repeating tests already run by an Xcode target.
+
 Test one behavior at a time. Use controlled inputs for everything outside that
 behavior, including discovery, device operations, framework results, and time.
 Use a fresh fixture for each independent failure cause. Keep assertions together
@@ -104,6 +115,10 @@ The headless target covers settings, device links and resolution, clipboard stat
 history selection, crop geometry, trim decisions, playback seek state, visibility, and
 workspace persistence. It also covers preview startup, retry and cleanup, session readiness,
 density changes, screenshot deadlines, capture conflicts, and file-command and video-packet parsing.
+Discovery parsing, app-launch commands, tool selection and web policies, review
+ownership, clipboard synchronization, thumbnail state, and recording deadlines also
+run headless. Their tests check decisions and supplied values without launching a
+device, browser, media service, or system pasteboard.
 It compiles the same production files as the app, with explicit membership
 under **Unit test sources** in the Xcode project. No source copies or new libraries are
 needed. New independent tests belong in `Snap-OUnitTests/`; add any additional production
@@ -143,7 +158,7 @@ Paths are relative to `app-macos/`:
 
 | Changed behavior | Local check |
 | --- | --- |
-| Preview pointer, keyboard and rotation behavior | `scripts/test-preview-input.sh` |
+| Preview setup, touch settings, and pending input requests | `scripts/test-preview-input.sh` |
 | Preview stream readiness, formats, and cleanup | `scripts/test-video-stream.sh` |
 | Physical video sharing and source teardown | `scripts/test-video-stream.sh` |
 | Pane selection, startup and capture transitions | `scripts/test-media-lifetime.sh` |
@@ -154,7 +169,7 @@ Paths are relative to `app-macos/`:
 | Emulator frame conversion, launch arguments, and discovery parsing | `scripts/test-emulator-preview.sh` |
 | Device discovery and tool reconnection | `scripts/test-tool-recovery.sh` |
 | Bound ADB requests, server restart safety, emulator discovery, native gRPC lifetime, and control cancellation | `scripts/test-device-connection.sh` |
-| Media source retention, real crop/trim exports, and drag cancellation | `scripts/test-media-lifetime.sh` |
+| Media source retention and drag cancellation | `scripts/test-media-lifetime.sh` |
 | Capture export file permissions | `scripts/test-capture-export.sh` |
 | Device inventory, emulator commands, and authentication policy | `StandaloneTests/DeviceManager/test.sh`, with `SNAPO_DERIVED_DATA` and `SNAPO_TEST_ADB` unset |
 
@@ -187,7 +202,7 @@ These standalone entry points also require explicit approval for local execution
 - `SNAPO_TEST_WINDOWS=1 scripts/test-preview-input.sh --filter WindowVisibilityTests`
   opens two small windows to check native cover/uncover events. The default run
   uses controlled window state and opens no windows.
-- `scripts/test-live-preview-frame-export.sh` creates test windows and sends events, except with `--ownership-only` or `--build-only`.
+- `scripts/test-live-preview-frame-export.sh` creates test windows and sends events, except with `--ownership-only`, `--frames-only`, or `--build-only`.
 - `StandaloneTests/DeviceManager/test.sh` also launches signed test apps when
   `SNAPO_DERIVED_DATA` is set. `StandaloneTests/AndroidHostSecurity/test.sh` does the same when
   given a built helper or `SNAPO_DERIVED_DATA`.
@@ -208,6 +223,7 @@ unless an approved UI check or relevant CI tests cover it.
 | Discovery retries and cooldowns | Scoped `TestClock` |
 | Tool recovery and metadata policy | Fake HTTP probe results and service change streams |
 | Browser messages and page events | Origin values, bridge commands, and the delivery queue |
+| Tool host page selection and readiness | A fake `ToolPageContainer`, without creating WebKit views |
 | Local Web Inspector actions | An object that records supported selector calls |
 | Playback scrubbing | Seek queue requests and explicit completions |
 | Recording collection and cleanup | A controlled recording loader |
@@ -270,14 +286,14 @@ The current preview checks use the shared owners. They do not run a saved copy o
 | Capture results, per-device failures, recording cleanup | `test-recording.sh` |
 | Pane selection, pending review, background finalization, window visibility | `CapturePaneTests` in `test-media-lifetime.sh` |
 | Only the displayed device has a preview attachment; thumbnails use snapshots | `CapturePaneTests` in `test-media-lifetime.sh` |
-| Thumbnail refresh, cached images, and selection changes | `LivePreviewThumbnailTests` in `test-preview-input.sh` |
+| Thumbnail refresh, cached images, and selection changes | `LivePreviewThumbnailTests` in `Snap-OUnitTests` |
 | Next-device selection, wraparound, batch order before new devices | Three-device cases in `CapturePaneTests` |
 | Startup mode, queued command order, device readiness, saved selection | `CaptureStartupTests` in `test-media-lifetime.sh` |
 | Unused windows and shutdown through pending cleanup | `WorkspaceLifetimeTests` in `test-media-lifetime.sh` |
 | Native hidden-window reuse, remount and close | `WorkspaceLifetimeTests` with `test-media-lifetime.sh --windows` |
 | Repeated termination, deadline reply and late cleanup | `AppTerminationTests` in `test-app-runtime.sh` |
 | File-drop lifetime, remount, and independent window transfers | `FileDropTests` in `test-preview-input.sh` |
-| Control actions, remount and attachment close | `EmulatorControlsTests` in `test-preview-input.sh` |
+| Control actions, remount and attachment close | `EmulatorControlsTests` in `Snap-OIntegrationTests` |
 | Pending screenshots and key commands, stale results | `PreviewRequestTests` in `test-preview-input.sh` |
 | Superseded device-open requests, late errors, close | `CapturePaneTests.closeJoinsSupersededDeviceOpen` |
 | Saving blocks new captures; old callbacks cannot replace a new review | `CapturePaneTests` |
@@ -293,7 +309,8 @@ Recording tests require independent devices and a single recording per emulator 
 `test-startup-capture.sh --connections-only` runs the current input/setup suite.
 `--sessions-only` adds the current video suite.
 `--controllers-only` and `--modes-only` run the current pane/media checks without windows.
-The default runs runtime, native window, input and video checks against current owners.
+The default runs the two window checks and the shared-video suite. CI runs runtime,
+input, and headless pane checks separately.
 The old startup, controller, mode and review test files have been removed.
 The table maps their supported workflows to checks against the current owners.
 Close waits for cancelled device-open requests; late progress and errors cannot replace the current selection.
@@ -319,18 +336,33 @@ New results stay visible while history refreshes.
 The deletion filter hides only sources confirmed missing by the current history check.
 `CaptureReviewOwnershipTests.arrivingMediaStaysVisibleWhileHistoryRefreshes` covers a result arriving after an older history snapshot.
 The legacy attachment fixture has been removed. File-drop and control tests use the shared service.
-`test-preview-lifetime.sh` now runs the command-routing and thumbnail checks only.
+Command-routing and thumbnail checks now run only in `Snap-OUnitTests`; the redundant
+`test-preview-lifetime.sh` runner was removed.
 
 ## Framework and transport boundaries
 
 Use real I/O only when that I/O is the behavior under test. Examples include ADB
-framing and connection teardown, kernel socket deadlines, video pixels and file
-formats, and view mounting or layout. Keep those tests small. Use framework
-completion callbacks or async APIs where available; video fixtures use the
-writer's async receiver rather than polling readiness.
+framing and connection teardown, kernel socket deadlines, file ownership, and view
+mounting or layout. Keep those tests small. Use framework completion callbacks
+or async APIs where available. Test video settings, timestamps, and recovery with
+controlled metadata and fake writers; do not invoke codecs or media export.
 
-The physical-device preview/recording smoke test remains opt-in through
-`SNAPO_VIDEO_DEVICE_ID`. It is separate from deterministic state coverage.
+The remaining integration checks have specific boundary requirements:
+
+| Checks | Why real I/O remains |
+| --- | --- |
+| ADB framing, socket transfer, cancellation, and socket deadlines | Verify the transport adapter against actual descriptor behavior. |
+| File retention, atomic replacement, sandbox access, and discard | Verify Snap-O preserves user files across failures. |
+| Generated Android shell commands | Verify the generated program cleans up on exit and isolates concurrent invocations. |
+| AppKit focus, Escape, menus, window mounting, and occlusion | Verify native event routing and view/window lifecycle. |
+| Frontend ZIP validation | Verify archive entry handling, traversal rejection, and expansion limits. |
+
+Keep command parsing, retry rules, selection, and result handling in unit tests even
+when nearby code needs one of these checks. Do not add a real service merely to
+produce input for a state assertion.
+
+The former physical-device video smoke test is covered by controlled shared-source
+and recording-writer tests. Device playback remains a manual check.
 
 CI runs both the Xcode test target and the standalone scripts in
 `.github/workflows/mac.yml`. The Xcode target does not include the standalone

@@ -21,7 +21,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Models/Media.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   Snap-O/Device/ADB/ADBVirtualTouchscreen.swift Snap-O/Device/ADB/DeviceKeyboardTransport.swift \
   Snap-O/Device/Clipboard/ClipboardTransport.swift Snap-O/Device/Clipboard/ClipboardSyncState.swift \
-  Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/App/AppSettings.swift \
+  Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/Device/Clipboard/DeviceClipboardProtocol.swift Snap-O/App/AppSettings.swift \
   Snap-O/Device/LivePreviewRotation.swift Snap-O/Utilities/Logging.swift \
   Snap-O/LivePreview/Input/LivePreviewPointerBackend.swift Snap-O/LivePreview/Input/LivePreviewPointerInjector.swift \
   Snap-O/LivePreview/Input/ShellLivePreviewPointerBackend.swift Snap-O/LivePreview/Input/UInputLivePreviewPointerBackend.swift \
@@ -29,21 +29,17 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/LivePreview/Input/LivePreviewKeyboard.swift Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift Snap-O/LivePreview/Rendering/LivePreviewSession.swift \
   Snap-O/LivePreview/PreviewVideo.swift Snap-O/LivePreview/Rendering/LivePreviewRenderer.swift \
-  Snap-O/LivePreview/Input/ClipboardSync.swift Snap-O/Device/ShowTouchesOverride.swift \
+  Snap-O/LivePreview/Input/TextPasteboard.swift Snap-O/LivePreview/Input/ClipboardSync.swift Snap-O/Device/ShowTouchesOverride.swift \
   Snap-O/Capture/Operations/CaptureCoordinator.swift \
   Snap-O/LivePreview/PreviewHint.swift \
   Snap-O/App/StartupCapturePreparation.swift Snap-O/Utilities/Perf.swift \
   Snap-O/LivePreview/LivePreviewDevice.swift Snap-O/LivePreview/Rendering/LivePreviewThumbnail.swift \
   Snap-O/LivePreview/Views/LivePreviewThumbnailView.swift \
-  Snap-OIntegrationTests/LivePreview/LivePreviewThumbnailTests.swift \
   Snap-O/UI/WindowVisibilityReader.swift StandaloneTests/PreviewInput/WindowVisibilityTests.swift \
   Snap-O/LivePreview/Input/DeviceFileDrop.swift Snap-O/Device/ADB/DeviceFileCommand.swift Snap-O/LivePreview/Input/EmulatorControlsController.swift \
   Snap-O/LivePreview/DevicePreview.swift Snap-O/LivePreview/LivePreviewService.swift \
-  Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift Snap-OIntegrationTests/LivePreview/PointerInjectorTests.swift \
-  Snap-OIntegrationTests/LivePreview/PointerRotationTests.swift Snap-OIntegrationTests/LivePreview/LivePreviewKeyboardTests.swift \
-  Snap-OIntegrationTests/LivePreview/SharedLivePreviewTests.swift Snap-OIntegrationTests/LivePreview/LivePreviewAttachmentTests.swift Snap-OIntegrationTests/LivePreview/LivePreviewClipboardTests.swift \
-  Snap-OIntegrationTests/Device/LivePreviewRotationTests.swift \
-  Snap-OIntegrationTests/LivePreview/EmulatorControlsTests.swift StandaloneTests/FileDrop/FileTransferProbe.swift StandaloneTests/FileDrop/FileDropTests.swift \
+  Snap-OIntegrationTests/LivePreview/SharedPreviewTestSupport.swift Snap-OIntegrationTests/AsyncTestSupport.swift Snap-OIntegrationTests/TextPasteboardDouble.swift StandaloneTests/Support/TestGate.swift \
+  StandaloneTests/FileDrop/FileTransferProbe.swift StandaloneTests/FileDrop/FileDropTests.swift \
   StandaloneTests/PreviewInput/DeviceClientDouble.swift StandaloneTests/PreviewInput/PreviewSetupTests.swift StandaloneTests/PreviewInput/PreviewRequestTests.swift StandaloneTests/PreviewInput/TouchSettingTests.swift StandaloneTests/PreviewInput/PreviewInputTests.swift \
   -o "$TEST_DIR/preview-input-tests"
 run_test "$TEST_DIR/preview-input-tests" "$@"

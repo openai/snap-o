@@ -73,7 +73,7 @@ struct EmulatorControlsTests {
     let gate = TestSuspension()
     fixture.actionGate = gate
     let owner = fixture.makeOwner()
-    let preview = try SharedLivePreviewTests.Fixture()
+    let preview = try SharedPreviewTestSupport.Fixture()
     let created = preview.service.attach(to: preview.device(fixture.target)) { _ in owner }
     let attachment = try #require(created)
     owner.appear(viewID: UUID())

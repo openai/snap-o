@@ -51,7 +51,7 @@ struct FileDropTests {
     let gate = TestGate()
     await probe.configure(gate: gate)
     let model = DeviceFileDrop(device: device(target), adb: ADBClient(probe: probe))
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     fixture.makeFileDrop = { _ in model }
     let attachment = try #require(fixture.service.attach(to: device(target)))
     let oldView = UUID()
@@ -93,7 +93,7 @@ struct FileDropTests {
     let gate = TestGate()
     await probe.configure(gate: gate)
     let model = DeviceFileDrop(device: device(target), adb: ADBClient(probe: probe))
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     fixture.makeFileDrop = { _ in model }
     let attachment = try #require(fixture.service.attach(to: device(target)))
     let url = try source()
@@ -126,7 +126,7 @@ struct FileDropTests {
     let firstDrop = DeviceFileDrop(device: device(target), adb: ADBClient(probe: firstProbe))
     let secondDrop = DeviceFileDrop(device: device(target), adb: ADBClient(probe: FileTransferProbe()))
     var drops = [firstDrop, secondDrop]
-    let fixture = try SharedLivePreviewTests.Fixture()
+    let fixture = try SharedPreviewTestSupport.Fixture()
     fixture.makeFileDrop = { _ in drops.removeFirst() }
     let first = try #require(fixture.service.attach(to: device(target)))
     let second = try #require(fixture.service.attach(to: device(target)))

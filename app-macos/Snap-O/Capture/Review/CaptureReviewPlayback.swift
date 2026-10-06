@@ -1,10 +1,20 @@
 @preconcurrency import AVFoundation
+import Dependencies
 import Observation
 
 @MainActor
 @Observable
 final class CaptureReviewPlayback {
-  let player = AVQueuePlayer()
+  var player: AVQueuePlayer? {
+    driver.player
+  }
+
+  @ObservationIgnored private let driver: any CapturePlaybackDriver
+
+  init(driver: any CapturePlaybackDriver = AVPlaybackDriver()) {
+    self.driver = driver
+  }
+
   private(set) var duration: Double = 0
   private(set) var time: Double = 0
   private(set) var wantsPlayback = true
@@ -28,10 +38,6 @@ final class CaptureReviewPlayback {
     1 / frameRate
   }
 
-  @ObservationIgnored private var asset: AVAsset?
-  @ObservationIgnored private var endObserver: NSObjectProtocol?
-  @ObservationIgnored private var looper: AVPlayerLooper?
-  @ObservationIgnored private var timeObserver: Any?
   @ObservationIgnored private var generation = UUID()
   @ObservationIgnored private var seeks = CaptureSeekQueue()
 
@@ -60,25 +66,23 @@ final class CaptureReviewPlayback {
     let token = generation
     errorMessage = nil
     wantsPlayback = true
-    let asset = AVURLAsset(url: url)
+    @Dependency(\.videoFiles)
+    var videoFiles
     do {
-      let seconds = try await asset.load(.duration).seconds
+      let info = try await videoFiles.inspect(url)
+      let seconds = info.duration
       guard seconds.isFinite, seconds > 0 else { throw CocoaError(.fileReadCorruptFile) }
-      let track = try await asset.loadTracks(withMediaType: .video).first
-      let rate = try await track?.load(.nominalFrameRate) ?? 30
+      let rate = info.frameRate
       guard !Task.isCancelled, token == generation else { return }
       duration = seconds
       frameRate = rate.isFinite && rate >= 1 ? Double(rate) : 30
-      self.asset = asset
       trimSession = CaptureTrimSession(duration: seconds, frameRate: frameRate, trim: trim)
+      driver.load(url) { [weak self] time in
+        guard let self, token == generation, !self.isScrubbing, !self.seeks.isSeeking, time.isFinite else { return }
+        self.time = max(0, min(time, duration))
+      }
       configurePlayer()
       isActive = true
-      timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
-        MainActor.assumeIsolated {
-          guard let self, token == self.generation, !self.isScrubbing, !self.seeks.isSeeking, time.seconds.isFinite else { return }
-          self.time = max(0, min(time.seconds, self.duration))
-        }
-      }
       seek(to: playbackRange.start)
       updatePlayback()
     } catch {
@@ -92,16 +96,8 @@ final class CaptureReviewPlayback {
     seeks = CaptureSeekQueue()
     isActive = false
     isScrubbing = false
-    player.pause()
+    driver.stop()
     trimSession = CaptureTrimSession()
-    asset = nil
-    if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-    endObserver = nil
-    if let timeObserver { player.removeTimeObserver(timeObserver) }
-    timeObserver = nil
-    looper?.disableLooping()
-    looper = nil
-    player.removeAllItems()
     time = 0
     duration = 0
   }
@@ -146,20 +142,11 @@ final class CaptureReviewPlayback {
   private func performPendingSeek() {
     guard let request = seeks.next() else { return }
     updatePlayback()
-    let tolerance = CMTime(seconds: request.tolerance, preferredTimescale: 60000)
-    // Finish the current decode, then jump to the latest requested position.
-    player
-      .seek(
-        to: CMTime(seconds: request.time, preferredTimescale: 60000),
-        toleranceBefore: tolerance,
-        toleranceAfter: tolerance
-      ) { [weak self] _ in
-        Task { @MainActor in
-          guard let self, self.seeks.complete(request) else { return }
-          self.performPendingSeek()
-          self.updatePlayback()
-        }
-      }
+    driver.seek(request) { [weak self] in
+      guard let self, seeks.complete(request) else { return }
+      performPendingSeek()
+      updatePlayback()
+    }
   }
 
   func stepFrame(_ direction: Int) {
@@ -169,19 +156,8 @@ final class CaptureReviewPlayback {
   }
 
   private func updatePlayback() {
-    if isPlaying, !seeks.isSeeking {
-      if isTrimming, let item = player.currentItem {
-        let end = mediaTime(trimSelection.end)
-        if item.forwardPlaybackEndTime != end { item.forwardPlaybackEndTime = end }
-      }
-      player.playImmediately(atRate: isTrimming ? 1 : speed)
-    } else {
-      player.pause()
-      // Changing the playback end during scrubbing stalls AVPlayer's pending seek.
-      if isTrimming, let item = player.currentItem, item.forwardPlaybackEndTime.isValid {
-        item.forwardPlaybackEndTime = .invalid
-      }
-    }
+    let rate: Float? = isPlaying && !seeks.isSeeking ? (isTrimming ? 1 : speed) : nil
+    driver.setPlayback(rate: rate, end: isTrimming && rate != nil ? trimSelection.end : nil)
   }
 
   func beginTrimming() {
@@ -229,39 +205,13 @@ final class CaptureReviewPlayback {
     updatePlayback()
   }
 
-  private func mediaTime(_ seconds: Double) -> CMTime {
-    CMTime(seconds: seconds, preferredTimescale: 60000)
-  }
-
   private func configurePlayer() {
-    guard let asset else { return }
-    player.pause()
     seeks = CaptureSeekQueue()
-    looper?.disableLooping()
-    looper = nil
-    if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-    endObserver = nil
-    player.removeAllItems()
-    let item = AVPlayerItem(asset: asset)
-    if isTrimming {
-      player.actionAtItemEnd = .pause
-      player.insert(item, after: nil)
-      endObserver = NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
-      ) { [weak self] _ in
-        MainActor.assumeIsolated {
-          guard let self, self.isTrimming, self.wantsPlayback, !self.isScrubbing, !self.seeks.isSeeking else { return }
-          self.wantsPlayback = false
-          self.seek(to: self.lastPreviewFrame)
-          self.updatePlayback()
-        }
-      }
-    } else {
-      player.actionAtItemEnd = .advance
-      looper = AVPlayerLooper(
-        player: player, templateItem: item,
-        timeRange: CMTimeRange(start: mediaTime(playbackRange.start), end: mediaTime(playbackRange.end))
-      )
+    driver.configure(range: playbackRange, isTrimming: isTrimming) { [weak self] in
+      guard let self, isTrimming, wantsPlayback, !self.isScrubbing, !self.seeks.isSeeking else { return }
+      wantsPlayback = false
+      seek(to: lastPreviewFrame)
+      updatePlayback()
     }
   }
 
@@ -303,5 +253,96 @@ struct CaptureSeekQueue {
     guard active == request.id else { return false }
     active = nil
     return true
+  }
+}
+
+@MainActor
+protocol CapturePlaybackDriver: AnyObject {
+  var player: AVQueuePlayer? { get }
+  func load(_ url: URL, onTime: @escaping @MainActor (Double) -> Void)
+  func configure(range: CaptureTrimRange, isTrimming: Bool, onEnd: @escaping @MainActor () -> Void)
+  func setPlayback(rate: Float?, end: Double?)
+  func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void)
+  func stop()
+}
+
+@MainActor
+final class AVPlaybackDriver: CapturePlaybackDriver {
+  let player: AVQueuePlayer? = AVQueuePlayer()
+  private var asset: AVAsset?
+  private var endObserver: NSObjectProtocol?
+  private var looper: AVPlayerLooper?
+  private var timeObserver: Any?
+
+  func load(_ url: URL, onTime: @escaping @MainActor (Double) -> Void) {
+    asset = AVURLAsset(url: url)
+    timeObserver = player?.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { time in
+      MainActor.assumeIsolated { onTime(time.seconds) }
+    }
+  }
+
+  func configure(range: CaptureTrimRange, isTrimming: Bool, onEnd: @escaping @MainActor () -> Void) {
+    guard let asset, let player else { return }
+    player.pause()
+    looper?.disableLooping()
+    looper = nil
+    if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+    endObserver = nil
+    player.removeAllItems()
+    let item = AVPlayerItem(asset: asset)
+    if isTrimming {
+      player.actionAtItemEnd = .pause
+      player.insert(item, after: nil)
+      endObserver = NotificationCenter.default.addObserver(
+        forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+      ) { _ in MainActor.assumeIsolated { onEnd() } }
+    } else {
+      player.actionAtItemEnd = .advance
+      looper = AVPlayerLooper(
+        player: player,
+        templateItem: item,
+        timeRange: CMTimeRange(start: mediaTime(range.start), end: mediaTime(range.end))
+      )
+    }
+  }
+
+  func setPlayback(rate: Float?, end: Double?) {
+    guard let player else { return }
+    if let rate {
+      if let end, let item = player.currentItem {
+        let time = mediaTime(end)
+        if item.forwardPlaybackEndTime != time { item.forwardPlaybackEndTime = time }
+      }
+      player.playImmediately(atRate: rate)
+    } else {
+      player.pause()
+      // Changing the playback end during scrubbing stalls AVPlayer's pending seek.
+      if let item = player.currentItem, item.forwardPlaybackEndTime.isValid {
+        item.forwardPlaybackEndTime = .invalid
+      }
+    }
+  }
+
+  func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void) {
+    let tolerance = mediaTime(request.tolerance)
+    player?.seek(to: mediaTime(request.time), toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in
+      Task { @MainActor in completion() }
+    }
+  }
+
+  func stop() {
+    player?.pause()
+    asset = nil
+    if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+    endObserver = nil
+    if let timeObserver { player?.removeTimeObserver(timeObserver) }
+    timeObserver = nil
+    looper?.disableLooping()
+    looper = nil
+    player?.removeAllItems()
+  }
+
+  private func mediaTime(_ seconds: Double) -> CMTime {
+    CMTime(seconds: seconds, preferredTimescale: 60000)
   }
 }

@@ -2,7 +2,7 @@
 set -eu
 
 case "${1:-}" in
-  ""|--build-only|--keyboard-only|--ownership-only) ;;
+  ""|--build-only|--keyboard-only|--ownership-only|--frames-only) ;;
   *) echo "Unknown test option: $1" >&2; exit 2 ;;
 esac
 if [ "$#" -gt 1 ]; then
@@ -25,11 +25,11 @@ swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/LivePreview/Rendering/LivePreviewFrameBuffer.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/Capture/Review/CaptureCopyConfirmation.swift \
-  Snap-O/LivePreview/Rendering/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
+  Snap-O/LivePreview/Rendering/LivePreviewView.swift Snap-O/LivePreview/Input/LivePreviewMultitouch.swift Snap-O/Utilities/Perf.swift \
   Snap-O/LivePreview/Input/LivePreviewKeyboardInput.swift Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift \
   StandaloneTests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
   -o "$TEST_DIR/frame-export-tests"
 # Compile without launching the test window when only build validation is authorized.
 if [ "${1:-}" = "--build-only" ]; then exit 0; fi
-# Export assertions run in Snap-OIntegrationTests; this checks rendering in a test window.
+# Keyboard checks use test windows; frame-copy checks use a fake renderer.
 run_test "$TEST_DIR/frame-export-tests" "$@"

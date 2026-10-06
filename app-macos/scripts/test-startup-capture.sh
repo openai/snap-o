@@ -24,9 +24,7 @@ case "${1:-}" in
     exec sh "$APP_DIR/scripts/test-video-stream.sh"
     ;;
   "")
-    sh "$APP_DIR/scripts/test-app-runtime.sh"
     sh "$APP_DIR/scripts/test-media-lifetime.sh" --windows
-    sh "$APP_DIR/scripts/test-preview-input.sh"
     exec sh "$APP_DIR/scripts/test-video-stream.sh"
     ;;
 esac

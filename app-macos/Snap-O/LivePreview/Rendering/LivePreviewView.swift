@@ -46,8 +46,9 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     !displayLayer.isHidden && renderer != nil
   }
 
+  private let frameOutput: LivePreviewFrameOutput
   private let fileStore: FileStore
-  private let frameExporter = LivePreviewFrameExporter()
+  private let frameExporter: LivePreviewFrameExporter
   private let frameBuffer = LivePreviewFrameBuffer()
   private let rendererID = UUID()
   private var renderer: LivePreviewRenderer?
@@ -65,7 +66,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private var frameDragOrigin: CGPoint?
   private var isDraggingFrame = false
 
-  init(fileStore: FileStore) {
+  init(
+    fileStore: FileStore, frameOutput: LivePreviewFrameOutput? = nil,
+    frameExporter: LivePreviewFrameExporter = LivePreviewFrameExporter()
+  ) {
+    self.frameExporter = frameExporter
+    self.frameOutput = frameOutput ?? LivePreviewFrameOutput(displayLayer.sampleBufferRenderer)
     self.fileStore = fileStore
     super.init(frame: .zero)
     configureLayerIfNeeded()
@@ -100,7 +106,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       return canSendKeyboardInput && NSPasteboard.general.string(forType: .string) != nil
     }
     if menuItem.action == #selector(copy(_:)), keyboard != nil { return canSendKeyboardInput }
-    return renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
+    return renderer != nil && frameOutput.currentFrame() != nil
   }
 
   @objc
@@ -118,11 +124,15 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func copyFrame(to pasteboard: NSPasteboard) {
-    guard let frame = exportCurrentFrame() else { return }
-    pasteboard.clearContents()
-    if pasteboard.writeObjects([frame.image]) {
-      imageCopied()
+    copyFrame { image in
+      pasteboard.clearContents()
+      return pasteboard.writeObjects([image])
     }
+  }
+
+  func copyFrame(writeImage: (NSImage) -> Bool) {
+    guard let frame = exportCurrentFrame() else { return }
+    if writeImage(frame.image) { imageCopied() }
   }
 
   @objc
@@ -253,13 +263,13 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     isDraggingFrame = false
     pointerState = PointerState()
     renderer?.session.removeRenderer(id: rendererID)
-    displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+    frameOutput.flush()
     endedLivePreviewTrace = false
   }
 
   private func enqueue(_ sample: CMSampleBuffer) {
     guard let frame = frameBuffer.copyForDisplay(sample) else { return }
-    displayLayer.sampleBufferRenderer.enqueue(frame)
+    frameOutput.enqueue(frame)
     if !endedLivePreviewTrace {
       endedLivePreviewTrace = true
       #if PERF_TRACING
@@ -511,7 +521,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   private func exportCurrentFrame() -> LivePreviewFrameExporter.Frame? {
-    guard let renderer, let pixelBuffer = displayLayer.sampleBufferRenderer.displayedPixelBuffer() else {
+    guard let renderer, let pixelBuffer = frameOutput.currentFrame() else {
       NSSound.beep()
       return nil
     }
@@ -635,34 +645,21 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 }
 
 /// Normalized positions keep the gesture independent of the preview's scale.
-struct LivePreviewMultitouch {
-  private(set) var center = CGPoint(x: 0.5, y: 0.5)
-  private var offset: CGPoint
-  private var lastPointer: CGPoint
+@MainActor
+struct LivePreviewFrameOutput {
+  var enqueue: (CMSampleBuffer) -> Void
+  var currentFrame: () -> CVPixelBuffer?
+  var flush: () -> Void
 
-  init(pointer: CGPoint) {
-    offset = CGPoint(x: pointer.x - 0.5, y: pointer.y - 0.5)
-    lastPointer = pointer
+  init(enqueue: @escaping (CMSampleBuffer) -> Void, currentFrame: @escaping () -> CVPixelBuffer?, flush: @escaping () -> Void) {
+    self.enqueue = enqueue
+    self.currentFrame = currentFrame
+    self.flush = flush
   }
 
-  var locations: [CGPoint] {
-    [
-      CGPoint(x: center.x + offset.x, y: center.y + offset.y),
-      CGPoint(x: center.x - offset.x, y: center.y - offset.y)
-    ]
-  }
-
-  mutating func move(to pointer: CGPoint, translating: Bool) {
-    let delta = CGPoint(x: pointer.x - lastPointer.x, y: pointer.y - lastPointer.y)
-    lastPointer = pointer
-    if translating {
-      center.x = min(1 - abs(offset.x), max(abs(offset.x), center.x + delta.x))
-      center.y = min(1 - abs(offset.y), max(abs(offset.y), center.y + delta.y))
-    } else {
-      let limitX = min(center.x, 1 - center.x)
-      let limitY = min(center.y, 1 - center.y)
-      offset.x = min(limitX, max(-limitX, offset.x + delta.x))
-      offset.y = min(limitY, max(-limitY, offset.y + delta.y))
-    }
+  init(_ renderer: AVSampleBufferVideoRenderer) {
+    enqueue = { renderer.enqueue($0) }
+    currentFrame = { renderer.displayedPixelBuffer() }
+    flush = { renderer.flush(removingDisplayedImage: true, completionHandler: nil) }
   }
 }

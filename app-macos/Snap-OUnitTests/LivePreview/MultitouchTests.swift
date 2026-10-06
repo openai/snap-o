@@ -1,5 +1,4 @@
 import CoreGraphics
-@testable import Snap_O
 import Testing
 
 struct MultitouchTests {

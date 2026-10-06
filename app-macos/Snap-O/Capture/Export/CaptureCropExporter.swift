@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import CoreData
+import Dependencies
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -20,12 +21,7 @@ enum CaptureCropExporter {
   }
 
   static func pixelRect(_ crop: CGRect, size: CGSize, alignment: CGFloat = 1) -> CGRect {
-    let rect = CaptureCropGeometry.frame(for: crop, in: CGRect(origin: .zero, size: size))
-    let left = max(0, floor(rect.minX / alignment) * alignment)
-    let top = max(0, floor(rect.minY / alignment) * alignment)
-    let right = min(floor(size.width / alignment) * alignment, ceil(rect.maxX / alignment) * alignment)
-    let bottom = min(floor(size.height / alignment) * alignment, ceil(rect.maxY / alignment) * alignment)
-    return CGRect(x: left, y: top, width: right - left, height: bottom - top)
+    VideoExportSettings.pixelRect(crop, size: size, alignment: alignment)
   }
 
   static func image(at url: URL, crop: CGRect) throws -> CGImage {
@@ -84,40 +80,21 @@ enum CaptureCropExporter {
   }
 
   private static func exportVideo(at source: URL, crop: CGRect, trim: CaptureTrimRange? = nil, to destination: URL) async throws -> CGSize {
-    let asset = AVURLAsset(url: source)
-    guard let track = try await asset.loadTracks(withMediaType: .video).first,
-          let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
-      throw CocoaError(.fileReadCorruptFile)
-    }
-    let naturalSize = try await track.load(.naturalSize)
-    let transform = try await track.load(.preferredTransform)
-    let oriented = CGRect(origin: .zero, size: naturalSize).applying(transform)
-    let rect = pixelRect(crop, size: oriented.size, alignment: 2)
-    let duration = try await asset.load(.duration)
+    @Dependency(\.videoFiles)
+    var videoFiles
+    let info = try await videoFiles.inspect(source)
+    let timeRange: CMTimeRange?
     if let trim {
-      guard trim.isValid(for: duration.seconds) else { throw CocoaError(.validationMissingMandatoryProperty) }
-      exporter.timeRange = CMTimeRange(
+      guard trim.isValid(for: info.duration) else { throw CocoaError(.validationMissingMandatoryProperty) }
+      timeRange = CMTimeRange(
         start: CMTime(seconds: trim.start, preferredTimescale: 60000),
         end: CMTime(seconds: trim.end, preferredTimescale: 60000)
       )
+    } else {
+      timeRange = nil
     }
-    if crop == CaptureCropGeometry.fullImage {
-      try await exporter.export(to: destination, as: .mp4)
-      return oriented.size
-    }
-    var layer = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
-    layer.setTransform(transform.concatenating(CGAffineTransform(
-      translationX: -oriented.minX - rect.minX, y: -oriented.minY - rect.minY
-    )), at: .zero)
-    let instruction = AVVideoCompositionInstruction(configuration: .init(
-      layerInstructions: [AVVideoCompositionLayerInstruction(configuration: layer)],
-      timeRange: CMTimeRange(start: .zero, duration: duration)
-    ))
-    var configuration = try await AVVideoComposition.Configuration(for: asset)
-    configuration.renderSize = rect.size
-    configuration.instructions = [instruction]
-    exporter.videoComposition = AVVideoComposition(configuration: configuration)
-    try await exporter.export(to: destination, as: .mp4)
-    return rect.size
+    let settings = VideoExportSettings(info: info, crop: crop, timeRange: timeRange)
+    try await videoFiles.export(source, settings, destination)
+    return settings.size
   }
 }

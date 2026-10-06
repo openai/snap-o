@@ -5,6 +5,13 @@ import Observation
 enum CapturePaneContent {
   case live(recording: RecordingCapture?)
   case review(CaptureReviewState)
+
+  @MainActor var allowsReplacement: Bool {
+    switch self {
+    case .live(let recording): recording == nil
+    case .review(let review): review.allowsReplacement
+    }
+  }
 }
 
 /// Owns navigation and this pane's use of previews and capture batches.
@@ -129,16 +136,20 @@ final class CapturePaneSession {
     recording?.options.recordsBugReport == true
   }
 
+  private var canChangeContent: Bool {
+    !isClosing && content.allowsReplacement
+  }
+
   var canCaptureNow: Bool {
-    !isClosing && !isRecording && review?.isSaving != true && !(devices.inventory.ready ?? []).isEmpty
+    canChangeContent && !(devices.inventory.ready ?? []).isEmpty
   }
 
   var canStartRecordingNow: Bool {
-    !isClosing && !isRecording && review?.isSaving != true && !(devices.inventory.ready ?? []).isEmpty
+    canChangeContent && !(devices.inventory.ready ?? []).isEmpty
   }
 
   var canSelectLivePreview: Bool {
-    !isClosing && !isRecording && review?.isSaving != true
+    canChangeContent
   }
 
   var currentCaptureDeviceTitle: String? {
@@ -213,7 +224,8 @@ final class CapturePaneSession {
   }
 
   func enqueue(_ command: SnapOCommand) {
-    guard !isClosing else { return }
+    // Busy-window commands are ignored, not saved for later.
+    guard canChangeContent else { return }
     pendingCommands.append(command)
     if hasStarted { update() }
   }
@@ -296,7 +308,7 @@ final class CapturePaneSession {
   }
 
   func returnToLive(from expected: CaptureReviewState, selecting deviceID: String? = nil) {
-    guard !isClosing, review === expected, !expected.isSaving else { return }
+    guard canChangeContent, review === expected else { return }
     let preferred = deviceID ?? expected.selectedItem?.device.id ?? selectedPreviewDeviceID
     let available = devices.inventory.connected ?? []
     selectedPreviewDeviceID = preferredDeviceID(

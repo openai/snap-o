@@ -1,5 +1,6 @@
 @preconcurrency import AVKit
 import CoreGraphics
+import Dependencies
 import Foundation
 import Observation
 
@@ -10,6 +11,8 @@ private struct RecordingLifecycleError: LocalizedError {
 @Observable
 @MainActor
 final class RecordingCapture: CaptureBatch {
+  @Dependency(\.videoFiles)
+  @ObservationIgnored private var videoFiles
   private enum StopStatus {
     case recording
     case confirmed
@@ -294,20 +297,17 @@ final class RecordingCapture: CaptureBatch {
   private func loadRecording(at url: URL, device: Device, capturedAt: Date) async throws -> CaptureMedia {
     if let recordingLoader { return try await recordingLoader(url, device, capturedAt) }
     let invalidRecording = RecordingLifecycleError(errorDescription: "No playable recording was received.")
-    let asset = AVURLAsset(url: url)
-    let (duration, isPlayable) = try await asset.load(.duration, .isPlayable)
-    guard isPlayable, duration.seconds > 0 else { throw invalidRecording }
-    let adb = adb
-    guard let media = try await Media.video(
-      from: asset,
+    let info = try await videoFiles.inspect(url)
+    guard info.isPlayable, info.duration > 0 else { throw invalidRecording }
+    var density: CGFloat?
+    if let target = try? device.requireConnection() {
+      let value = try? await adb.exec().bound(to: target).withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
+      density = value.map { CGFloat($0) }
+    }
+    return CaptureMedia(device: device, media: .video(
       url: url,
       capturedAt: capturedAt,
-      densityProvider: {
-        guard let target = try? device.requireConnection() else { return nil }
-        let density = try? await adb.exec().bound(to: target).withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
-        return density.map { CGFloat($0) }
-      }
-    ) else { throw invalidRecording }
-    return CaptureMedia(device: device, media: media)
+      display: DisplayInfo(size: info.displayedSize, densityScale: density)
+    ))
   }
 }

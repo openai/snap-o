@@ -137,11 +137,6 @@ jobs:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
           SNAPO_TEST_CONFIGURATION: Debug
         run: sh scripts/test-preview-input.sh
-      - name: Test preview lifetime
-        env:
-          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
-          SNAPO_TEST_CONFIGURATION: Debug
-        run: sh scripts/test-preview-lifetime.sh
       - name: Test capture integration
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data

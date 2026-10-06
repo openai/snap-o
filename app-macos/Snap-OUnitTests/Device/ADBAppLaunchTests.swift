@@ -1,4 +1,3 @@
-@testable import Snap_O
 import Testing
 
 @Suite("ADB app launch")

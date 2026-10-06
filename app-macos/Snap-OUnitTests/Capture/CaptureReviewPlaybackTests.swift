@@ -1,3 +1,5 @@
+import AVFoundation
+import Dependencies
 import Foundation
 import Testing
 
@@ -6,6 +8,59 @@ struct CaptureReviewPlaybackTests {
   @MainActor
   func formatsTimestamp(input: (Double, String)) {
     #expect(CaptureReviewPlayback.timestamp(input.0) == input.1)
+  }
+
+  @Test
+  @MainActor
+  func hiddenPaneStaysPausedWhenTheWindowBecomesVisible() async {
+    let driver = PlaybackSpy()
+    await withDependencies {
+      $0.videoFiles.inspect = { _ in VideoFileInfo(duration: 3, size: CGSize(width: 64, height: 32)) }
+    } operation: {
+      let playback = CaptureReviewPlayback(driver: driver)
+      await playback.load(URL(filePath: "/unused.mp4"))
+      playback.setWindowVisible(true)
+      #expect(driver.rate == 1)
+      playback.setPaneVisible(false)
+      playback.setWindowVisible(true)
+      #expect(driver.rate == nil)
+      #expect(playback.wantsPlayback)
+      playback.setPaneVisible(true)
+      #expect(driver.rate == 1)
+      playback.stop()
+      #expect(driver.rate == nil)
+    }
+  }
+
+  @Test
+  @MainActor
+  func trimmingPassesBoundsAndRestoresPlayback() async {
+    let driver = PlaybackSpy()
+    await withDependencies {
+      $0.videoFiles.inspect = { _ in VideoFileInfo(duration: 3, size: CGSize(width: 64, height: 32), frameRate: 30) }
+    } operation: {
+      let playback = CaptureReviewPlayback(driver: driver)
+      await playback.load(URL(filePath: "/unused.mp4"))
+      playback.setWindowVisible(true)
+      playback.setSpeed(2)
+      playback.seek(to: 0.5)
+      playback.beginTrimming()
+      #expect(driver.trimming && driver.rate == nil)
+      playback.setTrimStart(1)
+      playback.setTrimEnd(2)
+      playback.togglePlayback()
+      #expect(driver.rate == 1 && driver.end == 2)
+      playback.cancelTrimming()
+      #expect(!driver.trimming && driver.rate == 2)
+      #expect(driver.position == 0.5)
+      playback.beginTrimming()
+      playback.setTrimStart(1)
+      playback.setTrimEnd(2)
+      #expect(playback.confirmTrim() == CaptureTrimRange(start: 1, end: 2))
+      #expect(driver.range == CaptureTrimRange(start: 1, end: 2))
+      #expect(driver.rate == nil)
+      playback.stop()
+    }
   }
 
   @Test
@@ -61,5 +116,37 @@ struct CaptureReviewPlaybackTests {
     #expect(seeks.isSeeking)
     let finishedCurrent = seeks.complete(current)
     #expect(finishedCurrent)
+  }
+}
+
+@MainActor
+private final class PlaybackSpy: CapturePlaybackDriver {
+  var player: AVQueuePlayer? {
+    nil
+  }
+
+  var rate: Float?
+  var end: Double?
+  var position = 0.0
+  var range = CaptureTrimRange(start: 0, end: 0)
+  var trimming = false
+  func load(_ url: URL, onTime: @escaping @MainActor (Double) -> Void) {}
+  func configure(range: CaptureTrimRange, isTrimming: Bool, onEnd: @escaping @MainActor () -> Void) {
+    self.range = range
+    trimming = isTrimming
+  }
+
+  func setPlayback(rate: Float?, end: Double?) {
+    self.rate = rate
+    self.end = end
+  }
+
+  func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void) {
+    position = request.time
+    completion()
+  }
+
+  func stop() {
+    rate = nil
   }
 }

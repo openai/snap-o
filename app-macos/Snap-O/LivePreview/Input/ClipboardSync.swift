@@ -7,7 +7,7 @@ import Observation
 final class ClipboardSync {
   private(set) var isUnavailable = false
   private let settings: AppSettings
-  private let pasteboard: NSPasteboard
+  private let pasteboard: any TextPasteboard
   private let maySynchronize: @MainActor () -> Bool
   @Dependency(\.continuousClock)
   @ObservationIgnored private var clock
@@ -21,7 +21,7 @@ final class ClipboardSync {
 
   init(
     settings: AppSettings,
-    pasteboard: NSPasteboard = .general,
+    pasteboard: any TextPasteboard = NSPasteboard.general,
     maySynchronize: @escaping @MainActor () -> Bool = { true },
     connect: @escaping @MainActor (
       DeviceTarget, @escaping @MainActor (any ClipboardTransport) async throws -> Void
@@ -106,20 +106,19 @@ final class ClipboardSync {
   private func hostText() -> String? {
     let changeCount = pasteboard.changeCount
     guard state.changeCount != changeCount else { return nil }
-    return state.hostText(pasteboard.string(forType: .string), changeCount: changeCount)
+    return state.hostText(pasteboard.text, changeCount: changeCount)
   }
 
   func receive(_ text: String) {
     guard isActive, maySynchronize() else { return }
     guard state.shouldReceive(text, hostChangeCount: pasteboard.changeCount) else { return }
-    pasteboard.clearContents()
-    pasteboard.setString(text, forType: .string)
+    pasteboard.replaceText(text)
     state.received(text, changeCount: pasteboard.changeCount)
   }
 
   func synchronizeInitialClipboard(with previousText: String) -> String? {
     guard isActive, maySynchronize() else { return nil }
-    let hasHostItems = pasteboard.pasteboardItems?.isEmpty == false
+    let hasHostItems = pasteboard.hasItems
     let text = hostText()
     if hasHostItems {
       // The stream can repeat this snapshot; it must not replace unsupported Mac contents either.

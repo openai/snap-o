@@ -476,8 +476,8 @@ struct CapturePaneTests {
     await fixture.close()
   }
 
-  @Test
-  func savingReviewRejectsReplacementUntilSaveCompletes() async throws {
+  @Test(arguments: [SnapOCommand.capture, .record, .livepreview])
+  func savingReviewRejectsReplacementUntilSaveCompletes(command: SnapOCommand) async throws {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
@@ -488,6 +488,9 @@ struct CapturePaneTests {
     pane.takeScreenshot()
     pane.startRecording()
     pane.returnToLive(from: review)
+    let available = fixture.devices.inventory
+    fixture.devices.inventory = DeviceInventory()
+    pane.enqueue(command)
     #expect(pane.review === review)
     #expect(fixture.screenshots.value.count == 1 && fixture.recordings.value.isEmpty)
     let batch = try #require(fixture.screenshots.value.first)
@@ -497,8 +500,12 @@ struct CapturePaneTests {
     batch.isComplete = true
     await #expect(throws: (any Error).self) { try await save.value }
     #expect(pane.review === review, "A failed save keeps review available")
-    pane.takeScreenshot()
+    fixture.devices.inventory = available
+    let attachments = fixture.previews.attachments.count
+    pane.enqueue(.capture)
     #expect(pane.review !== review && fixture.screenshots.value.count == 2)
+    #expect(fixture.recordings.value.isEmpty)
+    #expect(fixture.previews.attachments.count == attachments, "An ignored preview command must not run later")
     await pane.close()
     await fixture.close()
   }

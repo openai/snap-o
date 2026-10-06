@@ -5,12 +5,15 @@ import hashlib
 import json
 import os
 import pathlib
+import queue
+import threading
 import py_compile
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from test_network import snapo
 
@@ -113,81 +116,85 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         self.path = pathlib.Path(self.directory.name) / "prototype.py"
         self.commands = asyncio.Queue()
         self.logs = asyncio.Queue()
-        self.connected = asyncio.get_running_loop().create_future()
-        self.server = await asyncio.start_server(self.accept, "127.0.0.1", 0)
-        self.peer_task = None
-        self.writer = None
+        self.events = queue.Queue()
+        self.watch_ticks = asyncio.Queue()
         self.runner_task = None
+        self.stream = None
+        self.loop = asyncio.get_running_loop()
+        owner = self
+
+        class FakeResponse:
+            def __init__(self, open_socket, path, method="GET", body=None):
+                if path == "/interception":
+                    owner.assertEqual(method, "POST")
+                    command = "routes"
+                    self.response = mock.Mock(status=201)
+                    self.response.getheader.return_value = "/interception/runner-one"
+                    owner.stream = self
+                elif path == "/interception/runner-one/routes":
+                    owner.assertEqual(method, "PUT")
+                    command = "routes"
+                else:
+                    owner.assertEqual(method, "POST")
+                    owner.assertTrue(path.startswith("/interception/runner-one/exchanges/"))
+                    body = {**body, "exchangeId": path.split("/")[-1]}
+                    command = "decision"
+                self.closed = threading.Event()
+                owner.loop.call_soon_threadsafe(owner.commands.put_nowait, {"method": command, "params": body})
+
+            def read_json(self):
+                return {}
+
+            def read_event(self):
+                event = owner.events.get()
+                if isinstance(event, Exception):
+                    raise event
+                return event
+
+            def close(self):
+                if not self.closed.is_set():
+                    self.closed.set()
+                    if self is owner.stream:
+                        owner.events.put(snapo.SnapOError("Disconnected"))
+
+        sleep = asyncio.sleep
+
+        async def controlled_sleep(delay, *args, **kwargs):
+            if delay == 0.5:
+                await self.watch_ticks.get()
+            else:
+                await sleep(delay, *args, **kwargs)
+
+        for patcher in (
+            mock.patch.object(snapo, "HTTPResponse", FakeResponse),
+            mock.patch.object(snapo, "NetworkSSE", FakeResponse),
+            mock.patch.object(snapo.asyncio, "sleep", controlled_sleep),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     async def asyncTearDown(self):
         if self.runner_task:
             self.runner_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, ConnectionError):
                 await self.runner_task
-        if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
-        if self.peer_task:
-            await self.peer_task
-        self.server.close()
-        await self.server.wait_closed()
         self.directory.cleanup()
 
-    async def accept(self, reader, writer):
-        try:
-            head = (await reader.readuntil(b"\r\n\r\n")).decode()
-            lines = head.split("\r\n")
-            method, target, _ = lines[0].split()
-            path = target.split("?")[0]
-            headers = dict(line.split(": ", 1) for line in lines[1:] if line)
-            body = json.loads(await reader.readexactly(int(headers["Content-Length"])))
-            if path == "/interception":
-                self.assertEqual(method, "POST")
-                self.peer_task = asyncio.current_task()
-                self.writer = writer
-                writer.write(b"HTTP/1.1 201 Created\r\nLocation: /interception/runner-one\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
-                await writer.drain()
-                await self.commands.put({"method": "routes", "params": body})
-                self.connected.set_result(True)
-                await reader.read()
-            else:
-                self.assertTrue(path.startswith("/interception/runner-one/"))
-                if path.endswith("/routes"):
-                    self.assertEqual(method, "PUT")
-                    command = "routes"
-                else:
-                    self.assertEqual(method, "POST")
-                    self.assertEqual(path.split("/")[3], "exchanges")
-                    self.assertEqual(len(path.split("/")), 5)
-                    body["exchangeId"] = path.split("/")[-1]
-                    self.assertIn(body["phase"], ("request", "response"))
-                    command = "decision"
-                await self.commands.put({"method": command, "params": body})
-                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
-                await writer.drain()
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
     async def send(self, message, event="message"):
-        payload = f"event: {event}\ndata: ".encode() + json.dumps(message).encode() + b"\n\n"
-        self.writer.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")
-        await self.writer.drain()
+        self.events.put({"event": event, "data": message})
 
     async def start(self, source, watch=False, timeout=30):
         self.path.write_text(source)
         routes, digest = load_routes(self.path)
-        port = self.server.sockets[0].getsockname()[1]
-        factory = lambda timeout: snapo.LocalAbstractSocket(port=port, timeout=timeout)
+        factory = mock.Mock(side_effect=AssertionError("Handler tests must not open sockets"))
         self.runner = Runner(factory, self.path, routes, digest, timeout, watch, self.logs.put_nowait)
         self.runner_task = asyncio.create_task(self.runner.run())
-        await self.connected
         enable = await self.next_command("routes")
-        await asyncio.wait_for(self.logs.get(), 2)
+        await self.logs.get()
         return {route["path"]: route["id"] for route in enable["routes"]}
 
     async def next_command(self, method):
-        command = await asyncio.wait_for(self.commands.get(), 2)
+        command = await self.commands.get()
         self.assertEqual(method, command["method"])
         return command["params"]
 
@@ -229,10 +236,9 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         routes = await self.start('from snapo_network import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
         await self.request("one", routes["/api/profile"])
         await self.next_command("decision")
-        self.writer.close()
-        await self.writer.wait_closed()
+        self.stream.close()
         with self.assertRaises(snapo.SnapOError):
-            await asyncio.wait_for(self.runner_task, 2)
+            await self.runner_task
         self.runner_task = None
         self.assertEqual(self.runner._calls, {})
         self.assertEqual(self.runner._tasks, {})
@@ -346,10 +352,12 @@ async def profile(call):
 '''
         routes = await self.start(original, watch=True)
         self.path.write_text("broken syntax!!!")
-        self.assertIn("Reload failed", await asyncio.wait_for(self.logs.get(), 2))
+        self.watch_ticks.put_nowait(None)
+        self.assertIn("Reload failed", await self.logs.get())
         await self.request("old", routes["/api/profile"])
         self.assertEqual({"version": "old"}, self.decoded(await self.next_command("decision")))
         self.path.write_text(original.replace('"old"', '"new"'))
+        self.watch_ticks.put_nowait(None)
         enabled = await self.next_command("routes")
         await self.request("new", enabled["routes"][0]["id"])
         self.assertEqual({"version": "new"}, self.decoded(await self.next_command("decision")))

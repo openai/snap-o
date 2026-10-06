@@ -1,22 +1,16 @@
 import AppKit
 @preconcurrency import AVFoundation
-#if !SNAPO_STANDALONE_TESTS
-@testable import Snap_O
-#endif
 import SwiftUI
 import Testing
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
 @MainActor
 struct LivePreviewThumbnailTests {
-  @Test(arguments: [CGSize(width: 320, height: 640), CGSize(width: 640, height: 320)])
-  func refreshDownsamplesAndKeepsTheCachedImageOnFailure(size: CGSize) async throws {
-    let thumbnail = LivePreviewThumbnail()
-    let png = try makePNG(size: size)
+  @Test
+  func refreshKeepsTheCachedImageOnFailure() async throws {
+    let thumbnail = try makeThumbnail()
+    let png = Data([1])
     await thumbnail.refresh(pixelSize: CGSize(width: 96, height: 160)) { png }
     let cached = try #require(thumbnail.image)
-    let expectedHeight = max(160, 96 * size.height / size.width)
-    #expect(cached.width == Int(expectedHeight * size.width / size.height) && cached.height == Int(expectedHeight))
 
     await thumbnail.refresh(pixelSize: CGSize(width: 96, height: 160)) {
       #expect(thumbnail.isLoading)
@@ -30,8 +24,8 @@ struct LivePreviewThumbnailTests {
 
   @Test
   func cancelledAndSupersededRefreshesCannotReplaceTheImage() async throws {
-    let thumbnail = LivePreviewThumbnail()
-    let png = try makePNG()
+    let thumbnail = try makeThumbnail()
+    let png = Data([1])
     let pending = TestValue<CheckedContinuation<Data, Never>?>(nil)
     let stale = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 192, height: 320)) {
@@ -62,8 +56,8 @@ struct LivePreviewThumbnailTests {
 
   @Test
   func refreshPolicyRunsOncePerAppearanceAndSkipsTheSelectedDevice() async throws {
-    let thumbnail = LivePreviewThumbnail()
-    let png = try makePNG()
+    let thumbnail = try makeThumbnail()
+    let png = Data([1])
     var requests = 0
     let selected = LivePreviewThumbnailRefresh()
     for isSelected in [true, true] {
@@ -113,7 +107,7 @@ struct LivePreviewThumbnailTests {
 
   @Test
   func cachedLiveFramePreventsAnOlderScreenshotFromReplacingIt() async throws {
-    let thumbnail = LivePreviewThumbnail()
+    let thumbnail = try makeThumbnail()
     let pending = TestValue<CheckedContinuation<Data, Never>?>(nil)
     let refresh = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 80, height: 80)) {
@@ -123,18 +117,27 @@ struct LivePreviewThumbnailTests {
     try await waitForState { pending.value != nil }
     try thumbnail.cacheLiveFrame(makePixelBuffer(width: 64, height: 32))
     let cached = try #require(thumbnail.image)
-    try pending.value?.resume(returning: makePNG())
+    try pending.value?.resume(returning: Data([1]))
     await refresh.value
     #expect(thumbnail.image === cached)
   }
 
   @Test
-  func cachingLiveFrameDownsamplesToFillThumbnail() throws {
-    let thumbnail = LivePreviewThumbnail()
-    thumbnail.pixelSize = CGSize(width: 80, height: 80)
-    try thumbnail.cacheLiveFrame(makePixelBuffer(width: 320, height: 160))
-    let image = try #require(thumbnail.image)
-    #expect(CGSize(width: image.width, height: image.height) == CGSize(width: 160, height: 80))
+  func imageSizingFillsTheThumbnailWithoutUpscalingFrames() {
+    let target = CGSize(width: 96, height: 160)
+    #expect(LivePreviewThumbnail.snapshotPixelLimit(source: CGSize(width: 320, height: 640), orientation: 1, target: target) == 192)
+    #expect(LivePreviewThumbnail.snapshotPixelLimit(source: CGSize(width: 640, height: 320), orientation: 1, target: target) == 320)
+    #expect(LivePreviewThumbnail.snapshotPixelLimit(source: CGSize(width: 640, height: 320), orientation: 6, target: target) == 192)
+    #expect(LivePreviewThumbnail.frameScale(source: CGSize(width: 320, height: 160), target: CGSize(width: 80, height: 80)) == 0.5)
+    #expect(LivePreviewThumbnail.frameScale(source: CGSize(width: 40, height: 40), target: target) == 1)
+  }
+
+  private func makeThumbnail() throws -> LivePreviewThumbnail {
+    let image = try #require(CGContext(
+      data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )?.makeImage())
+    return LivePreviewThumbnail(snapshotImage: { data, _ in data == Data([1]) ? image : nil }, frameImage: { _, _ in image })
   }
 
   private func makePixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
@@ -145,15 +148,5 @@ struct LivePreviewThumbnailTests {
     )
     try #require(status == kCVReturnSuccess)
     return try #require(buffer)
-  }
-
-  private func makePNG(size: CGSize = CGSize(width: 320, height: 640)) throws -> Data {
-    let bitmap = try #require(NSBitmapImageRep(
-      bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
-      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-    ))
-    memset(bitmap.bitmapData, 255, bitmap.bytesPerRow * bitmap.pixelsHigh)
-    return try #require(bitmap.representation(using: .png, properties: [:]))
   }
 }

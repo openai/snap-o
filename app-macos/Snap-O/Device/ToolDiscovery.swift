@@ -146,38 +146,6 @@ public enum ToolDiscovery {
     }.sorted { $0.reference.identifier < $1.reference.identifier }
   }
 
-  public static func discover(
-    on devices: [Device],
-    using adb: ADBClient
-  ) async throws -> [DiscoveredPluginSocket] {
-    try await withThrowingTaskGroup(of: Result<[DiscoveredPluginSocket], Error>.self) { group in
-      for device in devices {
-        let deviceID = device.id
-        group.addTask {
-          do {
-            let target = try device.requireConnection()
-            let output = try await adb.bound(to: target).runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand)
-            return .success(Self.sockets(inProcNetUnix: output, deviceID: deviceID))
-          } catch {
-            return .failure(error)
-          }
-        }
-      }
-      var sockets: [DiscoveredPluginSocket] = []
-      var failure: Error?
-      for try await result in group {
-        switch result {
-        case .success(let discovered): sockets.append(contentsOf: discovered)
-        case .failure(let error): failure = error
-        }
-      }
-      try Task.checkCancellation()
-      // Keep healthy tools visible, but report an empty result only when every device was scanned.
-      if sockets.isEmpty, let failure { throw failure }
-      return sockets.sorted { $0.reference.identifier < $1.reference.identifier }
-    }
-  }
-
   public static func processes(from endpoints: [ToolEndpoint]) -> [InspectableProcess] {
     Dictionary(grouping: endpoints, by: \.processID).map { id, endpoints in
       let ordered = endpoints.sorted {

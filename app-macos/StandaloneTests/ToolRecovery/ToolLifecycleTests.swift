@@ -103,11 +103,11 @@ struct ToolLifecycleTests {
     let service = ToolService(adbService: adbService, deviceManager: devices)
     let model = ToolHostModel(service: service, preferences: preferences())
     try await ToolRecoveryTests.eventually { await frontend.waitCount == 1 }
-    guard let original = model.webContainer else { preconditionFailure("Missing original page") }
+    guard let original = model.webContainer as? ToolWebContainer else { preconditionFailure("Missing original page") }
     let pageCleanup = TestGate()
     original.cleanupGate = pageCleanup
     model.retryFrontend()
-    guard let replacement = model.webContainer else { preconditionFailure("Missing replacement page") }
+    guard let replacement = model.webContainer as? ToolWebContainer else { preconditionFailure("Missing replacement page") }
     precondition(original !== replacement && original.isStopped)
     let cleanup = model.stop()
     precondition(cleanup == model.stop(), "Repeated model stop shares one cleanup task")
@@ -133,8 +133,8 @@ struct ToolLifecycleTests {
     let devices = await configure(adbService)
     let service = ToolService(adbService: adbService, deviceManager: devices)
     let model = ToolHostModel(service: service, preferences: preferences())
-    try await ToolRecoveryTests.eventually { model.webContainer?.didStart == true }
-    guard let page = model.webContainer else { preconditionFailure("Missing tool page") }
+    try await ToolRecoveryTests.eventually { (model.webContainer as? ToolWebContainer)?.didStart == true }
+    guard let page = model.webContainer as? ToolWebContainer else { preconditionFailure("Missing tool page") }
     let binding = TestGate()
     await adbService.setExecutionGate(binding)
     page.pageReadinessChangedHandler?(true)
@@ -165,7 +165,7 @@ struct ToolLifecycleTests {
     let session = ToolSession(adbService: adbService, deviceManager: devices)
     session.startIfNeeded()
     try await ToolRecoveryTests.eventually { await frontend.waitCount == 1 }
-    guard let page = session.model?.webContainer else { preconditionFailure("Missing session page") }
+    guard let page = session.model?.webContainer as? ToolWebContainer else { preconditionFailure("Missing session page") }
     let firstFinished = TestValue(false)
     let first = await startTestTask {
       await session.stop()

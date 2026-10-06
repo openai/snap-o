@@ -51,23 +51,6 @@ struct LivePreviewThumbnailView: View {
   }
 }
 
-@MainActor
-final class LivePreviewThumbnailRefresh {
-  private var didCheckInitialThumbnail = false
-
-  func run(
-    thumbnail: LivePreviewThumbnail,
-    isSelected: Bool,
-    pixelSize: CGSize,
-    capture: () async throws -> Data
-  ) async {
-    thumbnail.pixelSize = pixelSize
-    guard !isSelected, !didCheckInitialThumbnail else { return }
-    didCheckInitialThumbnail = true
-    await thumbnail.refresh(pixelSize: pixelSize, load: capture)
-  }
-}
-
 private struct LivePreviewThumbnailMirror: NSViewRepresentable {
   let thumbnail: LivePreviewThumbnail
 

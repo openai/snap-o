@@ -6,6 +6,7 @@ import Observation
 @testable import Snap_O
 import Synchronization
 import Testing
+import WebKit
 
 @Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
 @MainActor
@@ -70,7 +71,7 @@ struct ToolHostObservationTests {
     }
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults)
+    let host = ToolHostModel(service: service, preferences: defaults, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
 
     #expect(host.preferredPluginID == (restoreSelection ? .network : nil))
@@ -106,7 +107,7 @@ struct ToolHostObservationTests {
     }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
     try await waitForState { host.webContainer != nil }
     let previous = try #require(host.webContainer)
@@ -150,7 +151,7 @@ struct ToolHostObservationTests {
     }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
     try await waitForState { host.webContainer != nil }
     let firstURL = try #require(URL(string: "http://127.0.0.1:5173/"))
@@ -193,7 +194,7 @@ struct ToolHostObservationTests {
     }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
 
     #expect(host.presentation == .findingApps)
@@ -243,7 +244,7 @@ struct ToolHostObservationTests {
     }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
     let applySnapshot = appTool.stateChanged
     appTool.stateChanged = { snapshot in
@@ -296,7 +297,7 @@ struct ToolHostObservationTests {
     }, openApp: { _ in })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
-    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
     defer { host.stop() }
     try await waitForState { host.webContainer != nil }
     let network = try #require(host.webContainer)
@@ -321,7 +322,26 @@ struct ToolHostObservationTests {
         appID: nil, server: nil, processIdentity: nil, storageIdentifier: UUID(),
         packageRevision: nil, frontend: nil, developmentURL: nil, compatibility: .unknown
       ),
-      container: ToolWebContainer(bridge: ToolWebBridge(), storageIdentifier: nil)
+      container: FakeToolPage()
     )
   }
+}
+
+@MainActor
+private final class FakeToolPage: ToolPageContainer {
+  var webView: WKWebView {
+    preconditionFailure("Model tests must not request a native view")
+  }
+
+  var pageReadinessChangedHandler: ((Bool) -> Void)?
+  var pageLoadFailedHandler: ((String) -> Void)?
+  func start(frontend: ToolFrontendBundle?) {}
+  func setServer(_ endpoint: ToolHTTPService.Endpoint?) {}
+  func sendPageEvent(name: String, payload: some Encodable) {}
+  func stop() {}
+  func finishStopping() async {}
+  func closeNativeColorPanel() {}
+  #if DEBUG
+  func showWebInspector() {}
+  #endif
 }

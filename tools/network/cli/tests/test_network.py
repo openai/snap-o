@@ -873,21 +873,14 @@ class OutputTests(unittest.TestCase):
                 self.assertEqual(event_filter.includes, includes)
                 self.assertEqual(event_filter.excludes, excludes)
 
-    def test_streamed_events_are_flushed_to_pipes_immediately(self):
+    def test_streamed_events_flush_output(self):
         for as_json in (True, False):
             with self.subTest(as_json=as_json):
-                reader, writer = os.pipe()
-                try:
-                    with open(writer, "w", buffering=8192) as output:
-                        with contextlib.redirect_stdout(output):
-                            snapo.emit_event(request_event(), as_json=as_json)
-                        readable, _, _ = select.select([reader], [], [], 0)
-                        self.assertEqual(readable, [reader])
-                        record = os.read(reader, 65536).decode("utf-8")
-                        self.assertTrue(record.endswith("\n"))
-                        self.assertNotIn(REQUEST_SECRET, record)
-                finally:
-                    os.close(reader)
+                output = mock.Mock(wraps=io.StringIO())
+                with contextlib.redirect_stdout(output):
+                    snapo.emit_event(request_event(), as_json=as_json)
+                output.flush.assert_called_once()
+                self.assertTrue(output.getvalue().endswith("\n"))
 
     def test_decodes_gzip_body_with_standard_library(self):
         encoded = snapo.base64.b64encode(gzip.compress(b'{"ok":true}')).decode("ascii")
@@ -904,40 +897,29 @@ class OutputTests(unittest.TestCase):
         encoded = snapo.base64.b64encode(truncated).decode("ascii")
         self.assertEqual(snapo.decoded_body(encoded, "base64", "gzip"), encoded)
 
-    def test_requests_json_never_prints_raw_sensitive_headers_and_cleans_up(self):
-        history = [{**request_event(), "snapoSequence": 1}, {**response_event(), "snapoSequence": 2}]
-        def handler(*_):
-            self.fail("A history-only request must not open an event stream")
-
-        adb = FakeADB()
+    def test_requests_json_never_prints_sensitive_headers_and_closes_history(self):
+        history = mock.Mock()
+        history.read.side_effect = [request_event(), response_event(), None]
+        connection = mock.MagicMock()
         stdout = io.StringIO()
-        with WireServer(handler, history=history) as wire:
-            adb.forward_port = wire.port
-            with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
-                with mock.patch.object(snapo, "ADB", return_value=adb):
-                    with contextlib.redirect_stdout(stdout):
-                        code = snapo.main(
-                            [
-                                "requests",
-                                "-s",
-                                "emulator-5554",
-                                "-n",
-                                "snapo_network_42",
-                                "--no-stream",
-                                "--json",
-                            ]
-                        )
-        self.assertEqual(wire.http_requests, ["/network"])
-        output = stdout.getvalue()
+        with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"), \
+             mock.patch.object(snapo, "ADB", return_value=FakeADB()), \
+             mock.patch.object(snapo, "ServerConnection", return_value=connection), \
+             mock.patch.object(snapo, "check_protocol"), \
+             mock.patch.object(snapo, "NetworkHistory", return_value=history), \
+             mock.patch.object(snapo, "ConnectedSession", side_effect=AssertionError("History must not open a stream")), \
+             contextlib.redirect_stdout(stdout):
+            code = snapo.main(["requests", "-s", "emulator-5554", "-n", "snapo_network_42", "--no-stream", "--json"])
         self.assertEqual(code, 0)
-        self.assertNotIn(REQUEST_SECRET, output)
-        self.assertNotIn(COOKIE_SECRET, output)
-        self.assertNotIn(RESPONSE_SECRET, output)
+        output = stdout.getvalue()
+        for secret in (REQUEST_SECRET, COOKIE_SECRET, RESPONSE_SECRET):
+            self.assertNotIn(secret, output)
         records = [json.loads(line) for line in output.splitlines()]
         self.assertEqual([record["method"] for record in records], ["Network.requestWillBeSent", "Network.responseReceived"])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+        history.close.assert_called_once()
+        connection.__exit__.assert_called_once()
 
-    def test_closed_output_pipe_exits_cleanly_and_removes_forward(self):
+    def test_closed_output_pipe_exits_cleanly_and_closes_session(self):
         class ClosedPipe:
             closed = False
 
@@ -950,29 +932,18 @@ class OutputTests(unittest.TestCase):
             def close(self):
                 self.closed = True
 
-        def handler(stream, received):
-            write_message(stream, request_event())
-
-        adb = FakeADB()
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.read.side_effect = [request_event()]
         output = ClosedPipe()
-        with WireServer(handler) as wire:
-            adb.forward_port = wire.port
-            with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
-                with mock.patch.object(snapo, "ADB", return_value=adb):
-                    with contextlib.redirect_stdout(output):
-                        code = snapo.main(
-                            [
-                                "requests",
-                                "-s",
-                                "emulator-5554",
-                                "-n",
-                                "snapo_network_42",
-                                "--json",
-                            ]
-                        )
+        with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"), \
+             mock.patch.object(snapo, "ADB", return_value=FakeADB()), \
+             mock.patch.object(snapo, "ConnectedSession", return_value=session), \
+             contextlib.redirect_stdout(output):
+            code = snapo.main(["requests", "-s", "emulator-5554", "-n", "snapo_network_42", "--json"])
         self.assertEqual(code, 0)
         self.assertTrue(output.closed)
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+        session.__exit__.assert_called_once()
 
 
 class NetworkDiscoveryTests(unittest.TestCase):

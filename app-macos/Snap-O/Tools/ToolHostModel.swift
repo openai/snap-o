@@ -27,7 +27,7 @@ final class ToolHostModel {
     activePage?.isReady ?? false
   }
 
-  var webContainer: ToolWebContainer? {
+  var webContainer: (any ToolPageContainer)? {
     activePage?.container
   }
 
@@ -92,14 +92,14 @@ final class ToolHostModel {
   @MainActor
   final class Page {
     let identity: PageIdentity
-    let container: ToolWebContainer
+    let container: any ToolPageContainer
     var isReady = false
     var error: String?
     var endpointID: UUID?
     var connection = ToolConnectionState()
     var toolbar = ToolToolbar(revision: 0, actions: [])
 
-    init(identity: PageIdentity, container: ToolWebContainer) {
+    init(identity: PageIdentity, container: any ToolPageContainer) {
       self.identity = identity
       self.container = container
     }
@@ -115,7 +115,15 @@ final class ToolHostModel {
   @ObservationIgnored private let appTool: AppToolModel
   @ObservationIgnored private let preferences: UserDefaults
 
-  init(service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil) {
+  @ObservationIgnored private let makeContainer: @MainActor (ToolWebBridge, UUID?, URL?) -> any ToolPageContainer
+
+  init(
+    service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil,
+    makeContainer: @escaping @MainActor (ToolWebBridge, UUID?, URL?) -> any ToolPageContainer = {
+      ToolWebContainer(bridge: $0, storageIdentifier: $1, developmentURL: $2)
+    }
+  ) {
+    self.makeContainer = makeContainer
     self.service = service
     self.preferences = preferences
     let appTool = appTool ?? AppToolModel(
@@ -299,10 +307,7 @@ final class ToolHostModel {
     let metadata = appTool.snapshot.pageState(for: kind).selectedApp?.metadata
     removePage(kind: kind)
     let bridge = ToolWebBridge()
-    let container = ToolWebContainer(
-      bridge: bridge,
-      storageIdentifier: identity.storageIdentifier, developmentURL: identity.developmentURL
-    )
+    let container = makeContainer(bridge, identity.storageIdentifier, identity.developmentURL)
     bridge.isActiveHandler = { [weak self, weak container] in
       guard let self, let container else { return false }
       return !isStopped && activePage?.container === container

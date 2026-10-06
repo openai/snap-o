@@ -54,33 +54,4 @@ public enum DeviceDiscovery {
         return String(fields[0])
       }
   }
-
-  public static func processName(
-    deviceID: String,
-    using adb: ADBClient,
-    pid: Int
-  ) async -> String? {
-    guard pid > 0,
-          let output = try? await adb.runDiscoveryShellString(
-            deviceID: deviceID,
-            command: "cat /proc/\(pid)/cmdline 2>/dev/null"
-          )
-    else {
-      return nil
-    }
-    return processName(inCmdline: output)
-  }
-
-  public static func androidUserID(
-    deviceID: String,
-    using adb: ADBClient,
-    pid: Int
-  ) async -> Int? {
-    guard pid > 0,
-          let output = try? await adb.runDiscoveryShellString(
-            deviceID: deviceID,
-            command: "cat /proc/\(pid)/status 2>/dev/null"
-          ) else { return nil }
-    return androidUserID(inProcStatus: output)
-  }
 }
