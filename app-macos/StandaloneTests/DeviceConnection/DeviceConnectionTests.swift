@@ -4,12 +4,23 @@ import Foundation
 @main
 struct DeviceConnectionTests {
   static func main() throws {
+    try closedPeerMakesWritesThrow()
     try selectionUsesTransportIdentity()
     try staleTargetCannotOpenAnotherSocket()
     try replacementSurvivesOldCleanup()
     try missingIdentityDoesNotFallBackToSerial()
     try selectionRejectsAnotherDevice()
     print("Device connection tests passed")
+  }
+
+  private static func closedPeerMakesWritesThrow() throws {
+    let pair = try sockets()
+    defer { pair.connection.close() }
+    precondition(Darwin.close(pair.peer) == 0)
+    do {
+      try pair.connection.writeFully(Data("request".utf8))
+      preconditionFailure("Writing to a closed peer must throw")
+    } catch ADBError.serverUnavailable {}
   }
 
   private static func selectionUsesTransportIdentity() throws {

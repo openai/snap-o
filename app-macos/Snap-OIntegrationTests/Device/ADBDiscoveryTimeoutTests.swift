@@ -370,8 +370,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     let connection = ADBSocketConnection(connectedSocket: descriptors[0])
     let peer = ADBSocketConnection(connectedSocket: descriptors[1])
     let descriptor = descriptors[1]
-    var noSigPipe: Int32 = 1
-    _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
     try lock.withLock {
       guard !isClosed else {
         connection.close()

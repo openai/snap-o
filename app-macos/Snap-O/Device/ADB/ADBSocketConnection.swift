@@ -49,12 +49,15 @@ public final class ADBSocketConnection {
   private var lineBuffer = Data()
   private var isSkippingOversizedLine = false
 
-  public init() throws {
-    socketDescriptor = try Self.openSocket()
+  public convenience init() throws {
+    try self.init(connectedSocket: Self.openSocket())
   }
 
   init(connectedSocket: Int32) {
     socketDescriptor = connectedSocket
+    // A closed peer must cause a write error, not terminate the process.
+    var noSigPipe: Int32 = 1
+    _ = setsockopt(connectedSocket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
   }
 
   deinit {
@@ -518,11 +521,6 @@ private extension ADBSocketConnection {
   static func openSocket() throws -> Int32 {
     let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
     guard descriptor >= 0 else { throw makeSocketError(errno, context: "socket") }
-
-    var noSigPipe: Int32 = 1
-    withUnsafePointer(to: &noSigPipe) {
-      _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, $0, socklen_t(MemoryLayout<Int32>.size))
-    }
 
     var address = sockaddr_in()
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)

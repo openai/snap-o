@@ -320,11 +320,6 @@ private final class FakeToolADB: @unchecked Sendable {
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
       throw POSIXError(.EIO)
     }
-    // Match production sockets: cancellation must fail writes, not terminate the test process.
-    var noSigPipe: Int32 = 1
-    for descriptor in descriptors {
-      #expect(setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size)) == 0)
-    }
     let client = ADBSocketConnection(connectedSocket: descriptors[0])
     let peer = ADBSocketConnection(connectedSocket: descriptors[1])
     let plan = lock.withLock { () -> Plan in
