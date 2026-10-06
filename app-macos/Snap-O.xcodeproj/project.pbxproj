@@ -100,6 +100,8 @@
 		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
 		F50B81AAA1D1077348E9EB63 /* Snap-O/History/CaptureHistoryRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F025FA39F5A77AA6366FA /* Snap-O/History/CaptureHistoryRepository.swift */; };
 		EEA100012F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
+		FB0D01A399848C83E2764232 /* AndroidHostService/EmulatorDisplayReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E2C64D296CEE09BB0E970E /* AndroidHostService/EmulatorDisplayReader.swift */; };
+		31BA8818C084E955055B41F3 /* AndroidHostService/EmulatorCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F73EF67F4086318A6E64C812 /* AndroidHostService/EmulatorCommand.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -219,6 +221,8 @@
 		FB28313D7E375AD998C891C2 /* Snap-O/Device/DeviceDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/DeviceDiscovery.swift"; sourceTree = SOURCE_ROOT; };
 		FE2353E286207136EAC220A1 /* Snap-O/LivePreview/Rendering/LivePreviewFrameExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/LivePreview/Rendering/LivePreviewFrameExporter.swift"; sourceTree = SOURCE_ROOT; };
 		FEF47D30E8DBEDD7C7B9766E /* Snap-O/Device/AndroidHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/AndroidHostServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
+		01E2C64D296CEE09BB0E970E /* AndroidHostService/EmulatorDisplayReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AndroidHostService/EmulatorDisplayReader.swift"; sourceTree = SOURCE_ROOT; };
+		F73EF67F4086318A6E64C812 /* AndroidHostService/EmulatorCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AndroidHostService/EmulatorCommand.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -342,6 +346,8 @@
 		E41000102F70000100C0FFEE /* Unit test sources */ = {
 			isa = PBXGroup;
 			children = (
+				F73EF67F4086318A6E64C812 /* AndroidHostService/EmulatorCommand.swift */,
+				01E2C64D296CEE09BB0E970E /* AndroidHostService/EmulatorDisplayReader.swift */,
 				9295A399E14AC0E9EA19B00B /* Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift */,
 				787242C5E4B166E78354B977 /* Snap-O/LivePreview/Input/LivePreviewKeyboard.swift */,
 				5F277D0DD60623DFAAF0619E /* Snap-O/Tools/ToolSelection.swift */,
@@ -695,6 +701,8 @@
 				E6CEB6188E189E7D2E5F7775 /* Snap-O/Device/ADB/ADBServerSession.swift in Sources */,
 				17A819277071FB9ACE595666 /* Snap-O/Device/ADB/ADBClient.swift in Sources */,
 				D36902819C629DEC6C76BD7F /* Snap-O/Device/ADB/ADBConnection.swift in Sources */,
+				31BA8818C084E955055B41F3 /* AndroidHostService/EmulatorCommand.swift in Sources */,
+				FB0D01A399848C83E2764232 /* AndroidHostService/EmulatorDisplayReader.swift in Sources */,
 				1A57AF375056F29BDA0BDD9E /* Snap-O/Device/DeviceDiscovery.swift in Sources */,
 				ADCEFF93D668F8112FD27156 /* Snap-O/Device/ToolDiscovery.swift in Sources */,
 				C4C05733E3937A87353FFDE7 /* Snap-O/Device/ToolServerReference.swift in Sources */,

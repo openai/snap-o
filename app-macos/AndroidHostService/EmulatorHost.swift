@@ -51,7 +51,7 @@ final class EmulatorHost {
         return directory
       }
     }
-    throw AndroidHostServiceError(message: "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk.")
+    throw AndroidHostServiceError(message: "Android SDK not found. Install the Android SDK and try again.")
   }
 
   func controls(serial: String, native: EmulatorNativeConnection, display: any EmulatorDisplayProvider) throws -> EmulatorControls {
