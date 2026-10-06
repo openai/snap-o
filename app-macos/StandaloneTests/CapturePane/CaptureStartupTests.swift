@@ -2,6 +2,40 @@ import Foundation
 import Testing
 
 extension CapturePaneTests {
+  @Test(arguments: [false, true])
+  func recordingWaitsForReadyDevices(readinessKnown: Bool) async throws {
+    let fixture = Fixture()
+    fixture.devices.inventory.ready = readinessKnown ? [] : nil
+    let pane = fixture.pane()
+    await fixture.start(pane)
+
+    #expect(!pane.canStartRecordingNow)
+    pane.launch(.startRecording)
+    #expect(fixture.recordings.value.isEmpty)
+    pane.enqueue(.record)
+    #expect(fixture.recordings.value.isEmpty)
+
+    fixture.devices.inventory.ready = fixture.devices.inventory.connected
+    try await waitForState { pane.recording != nil }
+    #expect(fixture.recordings.value.count == 1, "The queued command must survive the wait for boot")
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: [false, true])
+  func recordingIncludesOnlyReadyDevices(queued: Bool) async throws {
+    let fixture = Fixture()
+    fixture.devices.inventory.ready = fixture.devices.inventory.connected?.filter { $0.id == "A" }
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    #expect(pane.canStartRecordingNow)
+    if queued { pane.enqueue(.record) } else { pane.launch(.startRecording) }
+    let batch = try #require(pane.recording)
+    #expect(batch.items.map(\.device.id) == ["A"])
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test(arguments: [StartupCaptureMode.screenshot, .livePreview], [nil, SnapOCommand.capture, .record, .livepreview])
   func startupCommandTakesPriorityWithoutDuplicateCapture(mode: StartupCaptureMode, command: SnapOCommand?) async throws {
     let fixture = Fixture()

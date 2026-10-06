@@ -134,7 +134,7 @@ final class CapturePaneSession {
   }
 
   var canStartRecordingNow: Bool {
-    !isClosing && !isRecording && review?.isSaving != true && hasDevices
+    !isClosing && !isRecording && review?.isSaving != true && !(devices.inventory.ready ?? []).isEmpty
   }
 
   var canSelectLivePreview: Bool {
@@ -219,7 +219,10 @@ final class CapturePaneSession {
   }
 
   private func canRun(_ command: SnapOCommand) -> Bool {
-    command == .capture ? !(devices.inventory.ready ?? []).isEmpty : hasDevices
+    switch command {
+    case .capture, .record: !(devices.inventory.ready ?? []).isEmpty
+    case .livepreview: hasDevices
+    }
   }
 
   private func perform(_ command: SnapOCommand) {
@@ -257,7 +260,7 @@ final class CapturePaneSession {
   func startRecording() {
     guard canStartRecordingNow else { return }
     openDevice(nil)
-    let batch = services.recording(devices.inventory.connected ?? [], RecordingOptions(
+    let batch = services.recording(devices.inventory.ready ?? [], RecordingOptions(
       recordsBugReport: AppSettings.shared.recordAsBugReport,
       showsTouches: AppSettings.shared.showTouchesDuringCapture
     ))
