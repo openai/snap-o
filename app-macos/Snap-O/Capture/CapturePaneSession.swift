@@ -417,6 +417,11 @@ final class CapturePaneSession {
   }
 
   func showLivePreview(deviceID: String) async {
+    guard !isClosing else { return }
+    if isRecording {
+      selectDevice(id: deviceID)
+      return
+    }
     guard canSelectLivePreview else { return }
     needsInitialCapture = false
     if let review { returnToLive(from: review, selecting: deviceID) }

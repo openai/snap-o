@@ -28,6 +28,8 @@ swiftc_for_tests -swift-version 6 -parse-as-library -target arm64-apple-macosx26
   "$APP_DIR/Snap-O/Device/Emulators/EmulatorConnection.swift" \
   "$APP_DIR/Snap-O/DeviceManager/DeviceManagerEntry.swift" \
   "$APP_DIR/Snap-O/DeviceManager/DeviceManager.swift" \
+  "$APP_DIR/Snap-O/DeviceManager/DeviceOpenResolver.swift" \
+  "$APP_DIR/Snap-O/Models/DeviceOpenRequest.swift" \
   "$APP_DIR/Snap-OIntegrationTests/AsyncTestSupport.swift" \
   "$APP_DIR/StandaloneTests/Support/TestGate.swift" \
   "$APP_DIR/StandaloneTests/DeviceManager/DeviceInventoryFakes.swift" \

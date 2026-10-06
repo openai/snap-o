@@ -28,6 +28,25 @@ struct CapturePaneTests {
     await fixture.close()
   }
 
+  @Test(arguments: ["B", "C"])
+  func deviceOpenDuringRecordingUsesOnlyRecordingTargets(requestedDevice: String) async throws {
+    let fixture = Fixture(deviceIDs: ["A", "B", "C"])
+    fixture.devices.inventory.ready = try Array(#require(fixture.devices.inventory.connected).prefix(2))
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    pane.startRecording()
+    let batch = try #require(pane.recording)
+
+    pane.openDevice(.serial(requestedDevice))
+    try await waitForState { pane.deviceOpenRequest == nil }
+
+    #expect(pane.selectedPreviewDeviceID == (requestedDevice == "B" ? "B" : "A"))
+    #expect(pane.recording === batch)
+    #expect(batch.closeCount == 0)
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test
   func switchingPreviewReleasesOnlyThisWindowsAttachment() async throws {
     let fixture = Fixture()
