@@ -155,7 +155,10 @@ final class RecordingCapture: CaptureBatch {
 @Observable
 @MainActor
 final class ToolSession {
-  init(adbService: ADBService? = nil, deviceManager: DeviceManager? = nil) {}
+  init(
+    adbService: ADBService? = nil, deviceManager: DeviceManager? = nil,
+    configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] }
+  ) {}
   private(set) var starts = 0
   private(set) var isVisible = false
   private(set) var isClosed = false
