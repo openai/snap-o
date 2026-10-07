@@ -21,7 +21,7 @@ struct DeviceVideoPacketTests {
     #expect(failure.localizedDescription.contains("-2147479551"))
   }
 
-  @Test(arguments: [Data([3, 0, 0, 0, 0, 0, 0]), Data([3, 10, 0, 0, 0, 0, 0]), Data([3, 5, 2, 0, 0, 0, 0])])
+  @Test(arguments: [Data([3, 0, 0, 0, 0, 0, 0]), Data([3, 11, 0, 0, 0, 0, 0]), Data([3, 5, 2, 0, 0, 0, 0])])
   func rejectsInvalidFailureFields(bytes: Data) {
     #expect(throws: (any Error).self) { try packet(bytes) }
   }
@@ -37,6 +37,42 @@ struct DeviceVideoPacketTests {
       let end = min(offset + count, bytes.count)
       defer { offset = end }
       return bytes.subdata(in: offset ..< end)
+    }
+  }
+
+  private let redPixels = Data([120, 1, 251, 207, 192, 240, 255, 63, 18, 6, 0, 67, 204, 7, 249])
+
+  private func rgbaPacket(_ payload: Data, width: UInt32 = 2, height: UInt32 = 2) -> Data {
+    var bytes = Data([4])
+    for value in [width, height, 0, 123, UInt32(payload.count)] {
+      withUnsafeBytes(of: value.bigEndian) { bytes.append(contentsOf: $0) }
+    }
+    bytes.append(payload)
+    return bytes
+  }
+
+  @Test
+  func decompressesRGBAWithoutChangingPixels() throws {
+    guard case .rgba(let width, let height, let timestamp, let pixels) = try packet(rgbaPacket(redPixels)) else {
+      Issue.record("Expected an RGBA frame")
+      return
+    }
+    #expect(width == 2 && height == 2 && timestamp == 123)
+    #expect(pixels == Data(Array(repeating: [UInt8(255), 0, 0, 255], count: 4).flatMap(\.self)))
+  }
+
+  @Test
+  func rejectsInvalidCompressedRGBA() {
+    var corrupt = redPixels
+    corrupt[corrupt.count - 1] ^= 1
+    for payload in [Data(redPixels.dropLast()), redPixels + Data([0]), corrupt, Data()] {
+      #expect(throws: (any Error).self) { try packet(rgbaPacket(payload)) }
+    }
+    #expect(throws: (any Error).self) { try packet(rgbaPacket(redPixels, width: 3)) }
+    #expect(throws: (any Error).self) { try packet(rgbaPacket(redPixels, width: 8192, height: 8192)) }
+    let complete = rgbaPacket(redPixels)
+    for length in 0 ..< complete.count {
+      #expect(throws: (any Error).self) { try packet(Data(complete.prefix(length))) }
     }
   }
 

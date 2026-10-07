@@ -12,7 +12,7 @@ protocol ADBConnection: AnyObject, Sendable {
 /// Simulates blocking device I/O; no real ADB server or helper is used.
 final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
   private let condition = NSCondition()
-  private var bytes = Data([0x53, 0x4E, 0x56, 0x31])
+  private var bytes = Data([1, 4, 0, 0, 0, 0x53, 0x4E, 0x56, 0x31])
   private var closed = false
   private var mayExit = true
   private var reads = 0
@@ -43,6 +43,8 @@ final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
 
   func append(_ data: Data) {
     condition.withLock {
+      bytes.append(1)
+      withUnsafeBytes(of: UInt32(data.count).littleEndian) { bytes.append(contentsOf: $0) }
       bytes.append(data)
       condition.broadcast()
     }
@@ -62,10 +64,12 @@ final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
 
   func sendTransport(to deviceID: String) throws {}
   func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
-    nil
+    precondition(command.hasPrefix("shell,v2,raw:"))
+    return nil
   }
 
   func writeFully(_ bytes: Data) throws {
+    precondition(bytes == Data([0, 1, 0, 0, 0, 1]), "Keyframe requests must be shell-v2 stdin packets")
     condition.withLock { writes += 1 }
     testChanges.signal()
   }

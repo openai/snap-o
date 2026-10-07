@@ -33,6 +33,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   -Xlinker -rpath -Xlinker "$TEST_LIBRARIES" \
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS" "$PRODUCTS/DependenciesTestSupport.o" \
   Snap-O/Device/Device.swift Snap-O/Models/Media.swift \
+  Snap-O/Device/ADB/ADBShellV2Stream.swift \
   Snap-O/Device/AndroidHostServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorGRPCConnection.swift \
   Snap-O/Device/Emulators/EmulatorGRPCConnection+Device.swift \

@@ -2,10 +2,10 @@
 import Dependencies
 import Foundation
 
-/// Owns one physical device encoder and its socket.
+/// Owns one device capture session and its socket.
 @MainActor
 final class DeviceVideoConnection: LivePreviewFrameSource {
-  let hasIndependentFrames = false
+  private(set) var hasIndependentFrames = false
   private let target: DeviceTarget
   private let clock: AnyClock<Duration>
   private var hasStopped = false
@@ -42,7 +42,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
 
   func requestKeyFrame() {
     guard isReady, !hasStopped, let connection else { return }
-    commands.async { try? connection.writeFully(Data([1])) }
+    commands.async { try? connection.writeFully(ADBShellV2Stream.standardInput(Data([1]))) }
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
@@ -71,7 +71,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
         trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
         (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
           chmod 444 "$directory/helper.jar" || exit 1
-        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" 2>/dev/null
+        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-if-waydroid 2>/dev/null
         """
         let connection = try await ADBClient().bound(to: target).makeConnection()
         socket = connection
@@ -79,21 +79,41 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
           return
         }
         try Task.checkCancellation()
+        var stream = ADBShellV2Stream()
         try connection.withRequestTimeout(.seconds(8)) {
           try connection.sendTransport(to: deviceID)
-          _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
-          try DeviceVideoPacket.validateHeader(Self.readExactly(4, from: connection))
+          _ = try connection.sendHostCommand("shell,v2,raw:" + command, expectsResponse: false)
+          try DeviceVideoPacket.validateHeader(stream.readExactly(4, read: connection.readChunk))
         }
         await self?.markReady()
         var builder = DeviceVideoSampleBuilder()
+        let rgbaBuilder = EmulatorPreviewFrameBuilder()
+        var displaySize: (width: Int, height: Int)?
+        var rgbaSize: (width: Int, height: Int)?
         while !Task.isCancelled {
-          let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
+          let packet = try DeviceVideoPacket.read { try stream.readExactly($0, read: connection.readChunk) }
           switch packet {
           case .failure(let error):
             throw error
-          case .display(_, _, let density, _):
+          case .display(let width, let height, let density, _):
             builder.reset()
+            displaySize = (width, height)
+            rgbaSize = nil
             await self?.receive(.density(CGFloat(density) / 160))
+          case .rgba(let width, let height, let timestamp, let pixels):
+            guard displaySize?.width == width, displaySize?.height == height else {
+              throw ADBError.protocolFailure("RGBA frame does not match the device display")
+            }
+            guard let sample = try rgbaBuilder.makeSample(
+              rgba: pixels, width: width, height: height, timestamp: UInt64(timestamp)
+            ) else { continue }
+            await self?.useIndependentFrames()
+            if rgbaSize?.width != width || rgbaSize?.height != height,
+               let format = CMSampleBufferGetFormatDescription(sample) {
+              await self?.receive(.format(format))
+              rgbaSize = (width, height)
+            }
+            await self?.receive(.sample(sample, isKeyFrame: true))
           case .frame(let flags, let timestamp, let data):
             let oldFormat = builder.format
             let sample = try builder.sample(data: data, timestamp: timestamp, flags: flags)
@@ -114,6 +134,10 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     isReady = true
   }
 
+  private func useIndependentFrames() {
+    hasIndependentFrames = true
+  }
+
   private func install(_ connection: any ADBConnection) -> Bool {
     guard !hasStopped else { return false }
     self.connection = connection
@@ -126,16 +150,5 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     let receiver = deliver
     if case .stopped = event { stop() }
     receiver?(event)
-  }
-
-  private nonisolated static func readExactly(_ count: Int, from connection: any ADBConnection) throws -> Data {
-    var bytes = Data()
-    while bytes.count < count {
-      guard let chunk = try connection.readChunk(maxLength: count - bytes.count), !chunk.isEmpty else {
-        throw ADBError.protocolFailure("Device video disconnected")
-      }
-      bytes.append(chunk)
-    }
-    return bytes
   }
 }

@@ -6,7 +6,8 @@ Emulators continue using their existing gRPC clipboard service.
 Keyboard input uses the helper on both emulators and physical devices.
 
 Each session creates a private temporary directory under `/data/local/tmp`, writes a read-only JAR,
-and starts it over a bidirectional ADB `exec` connection. The helper removes its JAR and directory
+and starts it over a bidirectional ADB connection: shell v2 for video, `exec` for clipboard and keyboard.
+The helper removes its JAR and directory
 after Android loads it; the launch script also cleans up failed starts. Closing the connection
 ends the helper. There is no network listener or persistent service.
 
@@ -69,6 +70,9 @@ See the [internal keyboard contract](../contracts/device-keyboard/README.md).
 
 Physical-device preview and normal recording share one hardware AVC encoder per device.
 The Mac decodes preview frames and writes the original compressed samples to MP4.
+Waydroid uses an experimental `ImageReader` path with lossless, zlib-compressed RGBA frames.
+It bypasses the device video encoder and targets about 30 fps. The Mac converts these frames
+for preview and encodes H.264 when recording. This path currently supports frames up to 16 MiB.
 Each consumer owns a subscription. Closing a preview does not stop its recording.
 The final subscription closes the ADB connection and ends the helper.
 Emulators retain gRPC preview and Android file recording. Bug-report recordings retain
@@ -94,6 +98,6 @@ Rotating a device currently ends its recording; preview reconnects to the new vi
 See the [internal video contract](../contracts/device-video/README.md).
 
 Automated tests use fake frame sources and recording writers to check independent
-preview and recording lifetimes. They do not encode or decode video. For a manual
+preview and recording lifetimes. An RGBA recording test also encodes and decodes a synthetic frame. For a manual
 check, use a connected device showing synthetic content. Start recording during
 preview, stop recording, and confirm that preview continues and the recording plays.

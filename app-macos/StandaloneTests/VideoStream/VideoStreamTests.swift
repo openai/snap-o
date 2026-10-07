@@ -1,3 +1,4 @@
+import AVFoundation
 import Clocks
 import Dependencies
 import Foundation
@@ -20,6 +21,7 @@ struct VideoStreamTests {
       try await deadlineJoinsTransportCleanup()
       await sessionWaitersJoinCleanup()
       await structuredFailureStopsPreview()
+      await rgbaSubscribersReceiveRenderedAndCachedFrames()
       await recordingWaitersJoinSourceCleanup()
       try await emulatorSubscribersShareStartupAndFinalCleanup()
       try await emulatorCancellationJoinsEndpointLookup()
@@ -59,13 +61,66 @@ struct VideoStreamTests {
     return probe
   }
 
+  static func rgbaSubscribersReceiveRenderedAndCachedFrames() async {
+    let target = target()
+    let socket = ADBSocketConnection()
+    _ = prepare(target, socket)
+    let hub = DeviceVideoHub()
+    let first = DeviceVideoSource(target: target, hub: hub)
+    let received = TestValue(false)
+    first.start {
+      if case .sample(let sample, let keyFrame) = $0 {
+        precondition(keyFrame)
+        guard let pixels = CMSampleBufferGetImageBuffer(sample) else { preconditionFailure("Missing pixel buffer") }
+        CVPixelBufferLockBaseAddress(pixels, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+        guard let address = CVPixelBufferGetBaseAddress(pixels) else { preconditionFailure("Missing pixel data") }
+        let bytes = address.assumingMemoryBound(to: UInt8.self)
+        precondition(Array(UnsafeBufferPointer(start: bytes, count: 4)) == [0, 0, 255, 255])
+        received.value = true
+      }
+    }
+    await waitForReads(socket)
+    var packet = Data([1])
+    for value in [UInt32(2), 2, 160, 0] {
+      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
+    }
+    packet.append(4)
+    for value in [UInt32(2), 2, 0, 123, 15] {
+      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
+    }
+    packet.append(contentsOf: [120, 1, 251, 207, 192, 240, 255, 63, 18, 6, 0, 67, 204, 7, 249])
+    socket.append(packet)
+    await waitForObservedTestState { received.value }
+    precondition(first.hasIndependentFrames)
+    let second = DeviceVideoSource(target: target, hub: hub)
+    let replayed = TestValue(false)
+    second.start { if case .sample = $0 { replayed.value = true } }
+    await waitForObservedTestState { replayed.value }
+    let recorder = DeviceVideoSource(target: target, hub: hub, replaysLastFrame: false)
+    let fresh = TestValue(false)
+    recorder.start { if case .sample = $0 { fresh.value = true } }
+    precondition(!fresh.value, "Recording must wait for a fresh timestamp")
+    socket.append(Data(packet.dropFirst(17)))
+    await waitForObservedTestState { fresh.value }
+    recorder.stop()
+    await recorder.waitUntilStopped()
+    first.stop()
+    await first.waitUntilStopped()
+    precondition(!socket.isClosed)
+    second.stop()
+    await second.waitUntilStopped()
+    precondition(socket.isClosed)
+  }
+
   static func assertOpened(_ expected: Int, probe: VideoConnectionProbe) async {
     let opened = await probe.opened
     precondition(opened == expected)
   }
 
   static func waitForReads(_ socket: ADBSocketConnection) async {
-    await waitForActorTestState { socket.readCount >= 2 }
+    // The shell header and video magic are read before waiting for the first video packet.
+    await waitForActorTestState { socket.readCount >= 3 }
   }
 
   static func requestsKeyFrameOnlyForJoinedConsumers() async {

@@ -1,11 +1,15 @@
 package com.openai.snapo.video;
 
 import android.graphics.Rect;
+import android.graphics.PixelFormat;
 import android.hardware.display.VirtualDisplay;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
 import android.view.Surface;
@@ -18,8 +22,9 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.Deflater;
 
-/** A session-scoped AVC stream under the ADB shell identity. */
+/** A session-scoped display stream under the ADB shell identity. */
 public final class Main {
     private static final int MAGIC = 0x534e5631;
     private static final int MAX_PACKET = 16 * 1024 * 1024;
@@ -29,7 +34,7 @@ public final class Main {
 
     private enum Stage {
         SETUP(1), DISPLAY(2), ENCODER(3), CAPABILITIES(4), CONFIGURATION(5),
-        INPUT_SURFACE(6), MIRROR(7), START(8), STREAM(9);
+        INPUT_SURFACE(6), MIRROR(7), START(8), STREAM(9), CAPTURE(10);
 
         final int code;
 
@@ -43,7 +48,11 @@ public final class Main {
         try {
             output.writeInt(MAGIC);
             output.flush();
-            if (args.length != 1) throw new IllegalArgumentException("Expected temporary directory");
+            if (args.length < 1 || args.length > 2
+                    || (args.length == 2 && !args[1].equals("rgba-if-waydroid"))) {
+                throw new IllegalArgumentException("Invalid video arguments");
+            }
+            boolean rgba = args.length == 2 && Build.DEVICE.startsWith("waydroid_");
             File directory = new File(args[0]);
             if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
                 throw new IOException("Cannot remove temporary helper");
@@ -67,7 +76,10 @@ public final class Main {
             stage = Stage.DISPLAY;
             Class<?> globalClass = Class.forName("android.hardware.display.DisplayManagerGlobal");
             Object global = globalClass.getMethod("getInstance").invoke(null);
-            while (true) capture(global);
+            while (true) {
+                if (rgba) captureRGBA(global);
+                else capture(global);
+            }
         } catch (Exception error) {
             reportFailure(error);
             System.exit(1);
@@ -100,6 +112,86 @@ public final class Main {
 
     private static int field(Object info, String name) throws Exception {
         return info.getClass().getField(name).getInt(info);
+    }
+
+    private static void captureRGBA(Object global) throws Exception {
+        stage = Stage.DISPLAY;
+        Object info = displayInfo(global);
+        int width = field(info, "logicalWidth");
+        int height = field(info, "logicalHeight");
+        int rotation = field(info, "rotation");
+        stage = Stage.CAPTURE;
+        long byteCount = (long) width * height * 4;
+        if (width < 2 || height < 2 || width > 8192 || height > 8192
+                || byteCount > MAX_PACKET) throw new IOException("Invalid capture size");
+        byte[] pixels = new byte[(int) byteCount];
+        byte[] compressed = new byte[(int) byteCount + (int) byteCount / 1000 + 64];
+        Deflater deflater = new Deflater(1);
+        try (ImageReader reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)) {
+            stage = Stage.MIRROR;
+            try (AutoCloseable mirror = mirror(reader.getSurface(), width, height, info)) {
+                output.writeByte(1);
+                output.writeInt(width);
+                output.writeInt(height);
+                output.writeInt(field(info, "logicalDensityDpi"));
+                output.writeInt(rotation);
+                output.flush();
+                long nextFrame = 0;
+                long nextDisplayCheck = 0;
+                long lastTimestamp = 0;
+                boolean hasFrame = false;
+                while (true) {
+                    stage = Stage.CAPTURE;
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now >= nextDisplayCheck) {
+                        Object current = displayInfo(global);
+                        if (field(current, "logicalWidth") != width || field(current, "logicalHeight") != height
+                                || field(current, "rotation") != rotation) return;
+                        nextDisplayCheck = now + 250;
+                    }
+                    boolean send = hasFrame && keyFrameRequested.getAndSet(false);
+                    long timestamp = System.nanoTime() / 1000;
+                    if (now >= nextFrame) {
+                        try (Image image = reader.acquireLatestImage()) {
+                            if (image != null) {
+                                if (image.getWidth() != width || image.getHeight() != height) return;
+                                Image.Plane plane = image.getPlanes()[0];
+                                if (plane.getPixelStride() != 4) throw new IOException("Unsupported pixel layout");
+                                ByteBuffer buffer = plane.getBuffer();
+                                int base = buffer.position();
+                                for (int y = 0; y < height; y++) {
+                                    buffer.position(base + y * plane.getRowStride());
+                                    buffer.get(pixels, y * width * 4, width * 4);
+                                }
+                                timestamp = image.getTimestamp() / 1000;
+                                hasFrame = true;
+                                send = true;
+                                nextFrame = now + 34;
+                            }
+                        }
+                    }
+                    if (send) {
+                        deflater.reset();
+                        deflater.setInput(pixels);
+                        deflater.finish();
+                        int count = deflater.deflate(compressed);
+                        if (!deflater.finished() || count > MAX_PACKET) throw new IOException("Capture packet too large");
+                        // A requested repeat must not move recording timestamps backwards.
+                        lastTimestamp = Math.max(lastTimestamp + 1, timestamp);
+                        output.writeByte(4);
+                        output.writeInt(width);
+                        output.writeInt(height);
+                        output.writeLong(lastTimestamp);
+                        output.writeInt(count);
+                        output.write(compressed, 0, count);
+                        output.flush();
+                    }
+                    android.os.SystemClock.sleep(2);
+                }
+            }
+        } finally {
+            deflater.end();
+        }
     }
 
     private static Object displayInfo(Object global) throws Exception {
