@@ -8,9 +8,13 @@ struct ADBServerSnapshot {
 
 /// Owns discovery for all servers. Device operations remain bound to their targets.
 actor ADBService: DeviceTracking {
-  private let trackers: [(ADBServerID, any DeviceTracking)]
+  private var trackers: [(ADBServerID, any DeviceTracking)]
   private var servers: [ADBServerID: ADBServerSnapshot]
-  private var tasks: [Task<Void, Never>] = []
+  private var tasks: [ADBServerID: Task<Void, Never>] = [:]
+  private var generations: [ADBServerID: UUID] = [:]
+  private var revisions: [ADBServerID: UUID] = [:]
+  private var retiring: [UUID: Task<Void, Never>] = [:]
+  private var hasStarted = false
   private var shutdownTask: Task<Void, Never>?
   private var observers: [UUID: AsyncStream<[ADBServerSnapshot]>.Continuation] = [:]
 
@@ -25,28 +29,66 @@ actor ADBService: DeviceTracking {
   }
 
   func startTracking() {
-    guard tasks.isEmpty, shutdownTask == nil else { return }
+    guard !hasStarted, shutdownTask == nil else { return }
+    hasStarted = true
     for (id, tracker) in trackers {
-      tasks.append(Task {
-        await tracker.startTracking()
-        await withTaskGroup(of: Void.self) { group in
-          group.addTask {
-            for await devices in await tracker.previewDeviceStream() {
-              await self.update(id, connected: devices)
-            }
-          }
-          group.addTask {
-            for await devices in await tracker.deviceStream() {
-              await self.update(id, ready: devices)
-            }
-          }
-          group.addTask {
-            for await state in await tracker.serverStateStream() {
-              await self.update(id, state: state)
-            }
+      start(id, tracker: tracker)
+    }
+  }
+
+  private func start(_ id: ADBServerID, tracker: any DeviceTracking) {
+    let generation = UUID()
+    generations[id] = generation
+    tasks[id] = Task {
+      await tracker.startTracking()
+      await withTaskGroup(of: Void.self) { group in
+        group.addTask {
+          for await devices in await tracker.previewDeviceStream() {
+            await self.update(id, generation: generation, connected: devices)
           }
         }
-      })
+        group.addTask {
+          for await devices in await tracker.deviceStream() {
+            await self.update(id, generation: generation, ready: devices)
+          }
+        }
+        group.addTask {
+          for await state in await tracker.serverStateStream() {
+            await self.update(id, generation: generation, state: state)
+          }
+        }
+      }
+    }
+  }
+
+  /// Join the old owner before reusing a profile ID. Other servers keep their sessions.
+  func replaceRemote(_ id: ADBServerID, tracker: (any DeviceTracking)?) async throws {
+    guard case .remote = id, shutdownTask == nil else { throw CancellationError() }
+    let revision = UUID()
+    revisions[id] = revision
+    let old = trackers.first { $0.0 == id }?.1
+    trackers.removeAll { $0.0 == id }
+    generations[id] = nil
+    servers[id] = nil
+    let observer = tasks.removeValue(forKey: id)
+    observer?.cancel()
+    publish()
+    if let old {
+      let retirementID = UUID()
+      let cleanup = Task {
+        await old.stopTracking()
+        await observer?.value
+      }
+      retiring[retirementID] = cleanup
+      await cleanup.value
+      retiring[retirementID] = nil
+    }
+    guard shutdownTask == nil, !Task.isCancelled, revisions[id] == revision else { throw CancellationError() }
+    if let tracker {
+      trackers.append((id, tracker))
+      servers[id] = ADBServerSnapshot(id: id)
+      if hasStarted { start(id, tracker: tracker) }
+      publish()
     }
   }
 
@@ -67,20 +109,20 @@ actor ADBService: DeviceTracking {
     trackers.compactMap { servers[$0.0] }
   }
 
-  private func update(_ id: ADBServerID, connected: [Device]) {
-    guard shutdownTask == nil else { return }
+  private func update(_ id: ADBServerID, generation: UUID, connected: [Device]) {
+    guard shutdownTask == nil, generations[id] == generation else { return }
     servers[id]?.inventory.connected = connected
     publish()
   }
 
-  private func update(_ id: ADBServerID, ready: [Device]) {
-    guard shutdownTask == nil else { return }
+  private func update(_ id: ADBServerID, generation: UUID, ready: [Device]) {
+    guard shutdownTask == nil, generations[id] == generation else { return }
     servers[id]?.inventory.ready = ready
     publish()
   }
 
-  private func update(_ id: ADBServerID, state: ADBServerState) {
-    guard shutdownTask == nil else { return }
+  private func update(_ id: ADBServerID, generation: UUID, state: ADBServerState) {
+    guard shutdownTask == nil, generations[id] == generation else { return }
     servers[id]?.state = state
     publish()
   }
@@ -146,7 +188,8 @@ actor ADBService: DeviceTracking {
     if let shutdownTask { await shutdownTask.value
       return
     }
-    let pending = tasks
+    let pending = Array(tasks.values)
+    let closing = Array(retiring.values)
     for task in pending {
       task.cancel()
     }
@@ -160,7 +203,7 @@ actor ADBService: DeviceTracking {
           group.addTask { await tracker.stopTracking() }
         }
       }
-      for task in pending {
+      for task in pending + closing {
         await task.value
       }
     }

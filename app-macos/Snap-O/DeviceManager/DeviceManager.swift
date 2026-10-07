@@ -51,6 +51,7 @@ final class DeviceManager {
     )
   }
 
+  private var remoteServerLabels: [ADBServerID: String]
   @ObservationIgnored private let deviceTracker: any DeviceTracking
   @ObservationIgnored private let adb: ADBService
   @ObservationIgnored private let client: AndroidHostClient
@@ -59,10 +60,25 @@ final class DeviceManager {
   private var bootConnections: [EmulatorConnection] = []
   private var inventoryConnections: [EmulatorConnection] = []
 
-  init(adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient = AndroidHostClient()) {
+  init(
+    adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient = AndroidHostClient(),
+    remoteServerLabels: [ADBServerID: String] = [:]
+  ) {
     self.adb = adb
     self.deviceTracker = deviceTracker
     self.client = client
+    self.remoteServerLabels = remoteServerLabels
+  }
+
+  func updateRemoteServerLabels(_ labels: [ADBServerID: String]) {
+    remoteServerLabels = labels
+  }
+
+  func remoteServerLabel(for entry: DeviceManagerEntry) -> String? {
+    guard case .connected(let device) = entry,
+          case .remote = device.identity.serverID,
+          let server = remoteServerLabels[device.identity.serverID] else { return nil }
+    return server
   }
 
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {

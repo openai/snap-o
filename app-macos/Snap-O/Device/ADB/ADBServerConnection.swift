@@ -1,14 +1,50 @@
 import Foundation
 
-struct RemoteADBServer {
+struct RemoteADBServer: Codable, Equatable, Identifiable {
   let id: UUID
-  let ssh: SSHConfiguration
+  var connection: Connection
+
+  enum Connection: Codable, Equatable {
+    case ssh(SSHConfiguration)
+
+    private enum Kind: String, Codable { case ssh }
+    private enum CodingKeys: String, CodingKey { case type, ssh }
+
+    init(from decoder: any Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      switch try values.decode(Kind.self, forKey: .type) {
+      case .ssh: self = try .ssh(values.decode(SSHConfiguration.self, forKey: .ssh))
+      }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+      var values = encoder.container(keyedBy: CodingKeys.self)
+      switch self {
+      case .ssh(let configuration):
+        try values.encode(Kind.ssh, forKey: .type)
+        try values.encode(configuration, forKey: .ssh)
+      }
+    }
+
+    var displayAddress: String {
+      switch self {
+      case .ssh(let configuration): configuration.displayAddress
+      }
+    }
+
+    func validate() throws {
+      switch self {
+      case .ssh(let configuration): try configuration.validate()
+      }
+    }
+  }
 }
 
 /// Owns the tunnel used by one tracker. The tracker alone schedules retries.
 @MainActor
 final class ADBServerConnection {
-  private let configuration: RemoteADBServer
+  private let serverID: UUID
+  private let configuration: SSHConfiguration
   private let openTunnel: (String, SSHConfiguration) async throws -> ADBTunnelHandle
   private let socketFactory: (String) -> (@Sendable () throws -> FileHandle)
   private let closeTunnel: (String) async -> Void
@@ -18,12 +54,13 @@ final class ADBServerConnection {
   private var closing: Task<Void, Never>?
 
   init(
-    configuration: RemoteADBServer,
+    serverID: UUID, configuration: SSHConfiguration,
     openTunnel: @escaping (String, SSHConfiguration) async throws -> ADBTunnelHandle,
     socketFactory: @escaping (String) -> (@Sendable () throws -> FileHandle),
     closeTunnel: @escaping (String) async -> Void,
     disconnect: @escaping () -> Void
   ) {
+    self.serverID = serverID
     self.configuration = configuration
     self.openTunnel = openTunnel
     self.socketFactory = socketFactory
@@ -37,7 +74,7 @@ final class ADBServerConnection {
     precondition(tunnelID == nil)
     let id = UUID().uuidString
     tunnelID = id
-    let task = Task { try await openTunnel(id, configuration.ssh) }
+    let task = Task { try await openTunnel(id, configuration) }
     startup = task
     do {
       let tunnel = try await withTaskCancellationHandler { try await task.value } onCancel: {
@@ -51,7 +88,7 @@ final class ADBServerConnection {
       try Task.checkCancellation()
       guard tunnel.id == id else { throw ADBError.protocolFailure("Unexpected ADB tunnel reply") }
       let openSocket = socketFactory(id)
-      return ADBClient(serverID: .remote(configuration.id)) {
+      return ADBClient(serverID: .remote(serverID)) {
         try ADBSocketConnection(fileHandle: openSocket())
       }
     } catch {

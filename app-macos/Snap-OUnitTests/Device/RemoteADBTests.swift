@@ -77,6 +77,102 @@ struct RemoteADBTests {
     #expect(await iterator.next() == nil)
   }
 
+  @Test
+  func replacingRemoteKeepsLocalAndRejectsChangesAfterShutdown() async throws {
+    let local = Tracker()
+    let old = Tracker()
+    let replacement = Tracker()
+    let service = ADBService(trackers: [(.local, local), (serverID, old)])
+    await service.startTracking()
+    try await service.replaceRemote(serverID, tracker: replacement)
+    #expect(await old.stopped)
+    #expect(await local.stopped == false)
+    #expect(await replacement.stopped == false)
+    try await service.replaceRemote(serverID, tracker: nil)
+    #expect(await replacement.stopped)
+    #expect(await local.stopped == false)
+    await service.stopTracking()
+    await #expect(throws: (any Error).self) { try await service.replaceRemote(serverID, tracker: Tracker()) }
+    await #expect(throws: (any Error).self) { try await service.replaceRemote(.local, tracker: nil) }
+  }
+
+  @Test(arguments: [
+    SSHConfiguration(destination: "test-host"),
+    SSHConfiguration(destination: "user@test-host", port: 2222, adbPort: 5038)
+  ])
+  func typedSSHProfilesPreserveIdentityAndSettings(configuration: SSHConfiguration) throws {
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(configuration))
+    let encoded = try JSONEncoder().encode(profile)
+    let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    let connection = try #require(object["connection"] as? [String: Any])
+    #expect(connection["type"] as? String == "ssh")
+    #expect(try JSONDecoder().decode(RemoteADBServer.self, from: encoded) == profile)
+    #expect(profile.connection.displayAddress == configuration.displayAddress)
+  }
+
+  @Test(arguments: [
+    #"{"type":"future","ssh":{"destination":"test-host","adbPort":5037}}"#,
+    #"{"type":"ssh"}"#,
+    "null"
+  ])
+  func invalidTypedConnectionsAreRejected(connection: String) {
+    let data = Data("""
+    {"id":"8FA7AA18-BEC2-40AA-89D4-B8709B677D20","connection":\(connection)}
+    """.utf8)
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(RemoteADBServer.self, from: data)
+    }
+  }
+
+  @MainActor
+  @Test
+  func savedServersStartEmptyAndPreserveIdentityPortsAndExplicitEmptyList() throws {
+    let name = "snapo-server-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    let store = ADBServerStore(defaults: defaults)
+    #expect(try store.load().isEmpty)
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "user@test-host", port: 2222, adbPort: 5038)))
+    try store.save([profile])
+    #expect(try store.load() == [profile])
+    #expect(throws: (any Error).self) { try store.save([profile, profile]) }
+    #expect(try store.load() == [profile])
+    try store.save([])
+    #expect(try store.load().isEmpty)
+  }
+
+  @MainActor
+  @Test
+  func editingServersPersistsLabelsAndRejectsDuplicatesAndShutdownChanges() async throws {
+    let name = "snapo-server-model-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    let store = ADBServerStore(defaults: defaults)
+    let service = ADBService(trackers: [(.local, Tracker())])
+    let labels = TestValue([ADBServerID: String]())
+    let makeTracker: (RemoteADBServer) -> any DeviceTracking = { _ in Tracker() }
+    let model = ADBServers(service: service, store: store, profiles: [], makeTracker: makeTracker) {
+      labels.value = $0
+    }
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "test-host", port: 2222)))
+    await service.startTracking()
+    try await model.save(profile)
+    #expect(try store.load() == [profile])
+    #expect(labels.value[.remote(profile.id)] == "test-host (SSH 2222)")
+    await #expect(throws: (any Error).self) {
+      try await model.save(RemoteADBServer(id: UUID(), connection: profile.connection))
+    }
+    #expect(model.profiles == [profile])
+    try await model.remove(profile)
+    #expect(try store.load().isEmpty)
+    #expect(labels.value.isEmpty)
+    model.beginShutdown()
+    await #expect(throws: (any Error).self) { try await model.save(profile) }
+    #expect(try store.load().isEmpty)
+    await model.stop()
+    await service.stopTracking()
+  }
+
   @MainActor
   @Test
   func lateTunnelReplyIsClosedAfterCancellation() async throws {
@@ -85,7 +181,7 @@ struct RemoteADBTests {
     let closed = TestValue([String]())
     let finished = TestValue(false)
     let owner = ADBServerConnection(
-      configuration: RemoteADBServer(id: UUID(), ssh: SSHConfiguration(destination: "test-host")),
+      serverID: UUID(), configuration: SSHConfiguration(destination: "test-host"),
       openTunnel: { id, _ in
         started.value = true
         // Deliberately ignore cancellation like a late XPC reply.

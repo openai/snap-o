@@ -55,6 +55,13 @@ struct SnapOApp: App {
     .windowResizability(.contentMinSize)
     .commandsRemoved()
 
+    Window("ADB Servers", id: "adb-servers") {
+      ADBServersWindow(servers: runtime.adbServers)
+    }
+    .defaultSize(width: 580, height: 380)
+    .windowResizability(.contentMinSize)
+    .commandsRemoved()
+
     Window("Capture History", id: "capture-history") {
       CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
         .modifier(WorkspaceWindowLauncher())

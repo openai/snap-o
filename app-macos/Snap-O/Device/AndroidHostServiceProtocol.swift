@@ -264,6 +264,13 @@ struct SSHConfiguration: Codable, Equatable {
   var port: UInt16?
   var adbPort: UInt16 = 5037
 
+  var displayAddress: String {
+    var ports: [String] = []
+    if let port, port != 22 { ports.append("SSH \(port)") }
+    if adbPort != 5037 { ports.append("ADB \(adbPort)") }
+    return destination + (ports.isEmpty ? "" : " (" + ports.joined(separator: ", ") + ")")
+  }
+
   func validate() throws {
     guard !destination.isEmpty, destination.utf8.count <= 512,
           !destination.hasPrefix("-"),

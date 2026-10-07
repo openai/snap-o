@@ -150,7 +150,8 @@ final class DeviceManager {
   }
 
   private let probe = RuntimeTestEnvironment.probe
-  init(adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient) {}
+  init(adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient, remoteServerLabels: [ADBServerID: String] = [:]) {}
+  func updateRemoteServerLabels(_ labels: [ADBServerID: String]) {}
   func start() {}
   func shutdown() -> Task<Void, Never> {
     if let shutdownTask { return shutdownTask }
@@ -277,4 +278,54 @@ final class CaptureWorkspaces {
   func beginShutdown() -> Task<Void, Never> {
     Task { await probe.finish(.workspaces) }
   }
+}
+
+struct SSHConfiguration {
+  var displayAddress: String {
+    "test-server"
+  }
+}
+
+struct RemoteADBServer {
+  let id: UUID
+  let connection: Connection
+
+  enum Connection {
+    case ssh(SSHConfiguration)
+
+    var displayAddress: String {
+      switch self {
+      case .ssh(let configuration): configuration.displayAddress
+      }
+    }
+  }
+}
+
+struct ADBServerStore {
+  let defaults: UserDefaults
+  func load() throws -> [RemoteADBServer] {
+    []
+  }
+}
+
+@MainActor
+enum ADBServerConnection {
+  static func tracker(for profile: RemoteADBServer) -> any DeviceTracking {
+    DeviceTracker(connect: { ADBClient() }, recoverADBServer: {})
+  }
+}
+
+@MainActor
+final class ADBServers {
+  init(
+    service: ADBService,
+    store: ADBServerStore,
+    profiles: [RemoteADBServer],
+    error: String?,
+    makeTracker: (RemoteADBServer) -> any DeviceTracking,
+    updateLabels: ([ADBServerID: String]) -> Void
+  ) {}
+  func start() {}
+  func beginShutdown() {}
+  func stop() async {}
 }

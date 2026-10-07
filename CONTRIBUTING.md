@@ -103,10 +103,15 @@ xcodebuild -project Snap-O.xcodeproj -scheme Snap-OUnitTests -destination 'platf
 
 ### Testing remote ADB servers
 
-Development builds currently configure one SSH server in `AppRuntime`, alongside
-local ADB on port 5037. The remote server must already run ADB on its loopback
-port 5037 and have a connected device. Change the temporary `RemoteADBServer`
-configuration when testing another host; Release builds use only local ADB.
+Use **Device → ADB Servers…** or **Manage Servers…** in Device Manager to add,
+edit, or remove SSH servers. Profiles are saved locally and always reconnect
+when Snap-O starts. The remote server must already run ADB on its loopback
+address and have a connected device. SSH uses the configured destination and
+optional port; the remote ADB port defaults to 5037.
+
+All builds start with no remote profiles. Add servers through the ADB Servers
+window. Removing a server keeps it removed after relaunch. Saved profiles identify
+their connection type.
 
 Snap-O reads the existing SSH configuration and uses noninteractive authentication.
 Its host helper owns a separate SSH connection and forwards ADB through a private
@@ -115,8 +120,7 @@ local TCP port exposes the remote ADB server.
 It reconnects after failures and closes its forward when Snap-O quits. Existing
 SSH sessions and manually created forwards are unaffected.
 
-The temporary `adbServerPort` preference is no longer used. Device selection and
-tool references distinguish devices from different servers, even with identical
+Device selection and tool references distinguish devices from different servers, even with identical
 serials. Device links may specify `server=local` or the configured remote server's
 UUID alongside `serial`. Serial-only links require an unambiguous match.
 

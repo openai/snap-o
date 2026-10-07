@@ -6,6 +6,7 @@ import Observation
 final class AppRuntime {
   let deviceManager: DeviceManager
   let adbService: ADBService
+  let adbServers: ADBServers
   private let deviceTracker: any DeviceTracking
   let fileStore: FileStore
   private let captureServices: CaptureServices
@@ -38,31 +39,25 @@ final class AppRuntime {
     let localTracker = DeviceTracker(connect: { ADBClient() }, recoverADBServer: {
       try await hostClient.ensureADBServerRunning()
     })
-    var trackers: [(ADBServerID, any DeviceTracking)] = [(.local, localTracker)]
-    #if DEBUG
-    // Temporary testing configuration; replace with saved profiles when adding the server editor.
-    let remote = RemoteADBServer(
-      id: UUID(uuid: (0xF0, 0xEB, 0x33, 0xDE, 0xA1, 0x50, 0x43, 0xBD, 0xB1, 0x34, 0xC2, 0x23, 0x1A, 0x08, 0x3B, 0x6D)),
-      ssh: SSHConfiguration(destination: "android-devbox-b")
-    )
-    let tunnelHost = AndroidHostClient()
-    let connection = ADBServerConnection(
-      configuration: remote,
-      openTunnel: { try await tunnelHost.openADBTunnel(id: $0, configuration: $1) },
-      socketFactory: { tunnelHost.tunnelSocketFactory(id: $0) },
-      closeTunnel: { await tunnelHost.closeADBTunnel(id: $0) },
-      disconnect: { tunnelHost.close() }
-    )
-    let remoteTracker = DeviceTracker(
-      connect: { try await connection.client() },
-      disconnect: { await connection.close() },
-      retriesWithBackoff: true
-    )
-    trackers.append((.remote(remote.id), remoteTracker))
-    #endif
+    let serverStore = ADBServerStore(defaults: .standard)
+    let profiles: [RemoteADBServer]
+    var serverError: String?
+    do { profiles = try serverStore.load() } catch {
+      profiles = []
+      serverError = "Could not load saved ADB servers. " + error.localizedDescription
+    }
+    let trackers: [(ADBServerID, any DeviceTracking)] = [(.local, localTracker)]
+      + profiles.map { (.remote($0.id), ADBServerConnection.tracker(for: $0)) }
+    let remoteServerLabels = Dictionary(uniqueKeysWithValues: profiles.map { (ADBServerID.remote($0.id), $0.connection.displayAddress) })
     let adbService = ADBService(trackers: trackers)
     let deviceTracker = adbService
-    let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker, client: hostClient)
+    let deviceManager = DeviceManager(
+      adb: adbService, deviceTracker: deviceTracker, client: hostClient, remoteServerLabels: remoteServerLabels
+    )
+    adbServers = ADBServers(
+      service: adbService, store: serverStore, profiles: profiles, error: serverError,
+      makeTracker: ADBServerConnection.tracker
+    ) { deviceManager.updateRemoteServerLabels($0) }
     let captureHistory = CaptureHistory()
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
     let fileStore = FileStore(frameExportHandler: recordFrame)
@@ -115,6 +110,7 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
+    adbServers.start()
     deviceManager.start()
     let manager = deviceManager
     startupTask = Task.immediate { [weak self] in
@@ -151,6 +147,7 @@ final class AppRuntime {
       return
     }
 
+    adbServers.beginShutdown()
     pendingCleanup = Set(Cleanup.allCases)
     captureCoordinator.beginShutdown()
     fileStore.beginShutdown()
@@ -191,6 +188,7 @@ final class AppRuntime {
       await captureCoordinator.waitUntilIdle()
       finishCleanup(.reservations)
       // Keep device connections open until captures and previews have restored their settings.
+      await adbServers.stop()
       await deviceTracker.stopTracking()
       finishCleanup(.deviceTracker)
       Perf.step(.appShutdown, "device tracking stopped")

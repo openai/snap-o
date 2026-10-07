@@ -59,8 +59,9 @@ final class ADBTunnelHost: @unchecked Sendable {
 private final class SSHADBTunnel: @unchecked Sendable {
   private let lock = NSLock()
   private let process = Process()
+  private var processExit: (any SSHChildProcess)?
   private let errors = Pipe()
-  private var command: Process?
+  private var command: (any SSHChildProcess)?
   private var closed = false
   private var diagnostics = Data()
   private let directory = URL(fileURLWithPath: "/tmp").appending(path: "snapo-ssh-" + UUID().uuidString)
@@ -79,12 +80,16 @@ private final class SSHADBTunnel: @unchecked Sendable {
       process.standardError = errors
       errors.fileHandleForReading.readabilityHandler = { [weak self] handle in
         let data = handle.availableData
+        guard !data.isEmpty else {
+          handle.readabilityHandler = nil
+          return
+        }
         self?.lock.withLock {
           self?.diagnostics.append(data)
           if let count = self?.diagnostics.count, count > 8192 { self?.diagnostics.removeFirst(count - 8192) }
         }
       }
-      try process.run()
+      processExit = try NativeSSHChildProcess(process: process)
     }
     let deadline = ContinuousClock.now + .seconds(15)
     while !FileManager.default.fileExists(atPath: controlPath) {
@@ -101,7 +106,7 @@ private final class SSHADBTunnel: @unchecked Sendable {
   private func forward(configuration: SSHConfiguration) throws -> Bool {
     let child = Process()
     let output = Pipe()
-    try lock.withLock {
+    let exited = try lock.withLock {
       guard !closed, process.isRunning else { throw CancellationError() }
       child.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
       child.arguments = [
@@ -120,8 +125,9 @@ private final class SSHADBTunnel: @unchecked Sendable {
       child.standardInput = FileHandle.nullDevice
       child.standardOutput = FileHandle.nullDevice
       child.standardError = output
-      command = child
-      try child.run()
+      let exited = try NativeSSHChildProcess(process: child)
+      command = exited
+      return exited
     }
     let deadline = ContinuousClock.now + .seconds(5)
     while child.isRunning {
@@ -129,7 +135,7 @@ private final class SSHADBTunnel: @unchecked Sendable {
       guard ContinuousClock.now < deadline else { throw failure("SSH forwarding timed out.") }
       Thread.sleep(forTimeInterval: 0.02)
     }
-    child.waitUntilExit()
+    _ = exited.waitForExit(until: .distantFuture)
     let data = output.fileHandleForReading.readDataToEndOfFile()
     lock.withLock {
       command = nil
@@ -156,29 +162,18 @@ private final class SSHADBTunnel: @unchecked Sendable {
   }
 
   func close() {
-    let children: [Process]? = lock.withLock {
+    let children: [any SSHChildProcess]? = lock.withLock {
       guard !closed else { return nil }
       closed = true
-      return [process, command].compactMap(\.self).filter(\.isRunning)
+      return [processExit, command].compactMap(\.self)
     }
     guard let children else { return }
-    for child in children {
-      child.terminate()
+    SSHProcessShutdown.stop(children) {
+      errors.fileHandleForReading.readabilityHandler = nil
+      try? errors.fileHandleForReading.close()
+      try? errors.fileHandleForWriting.close()
+      try? FileManager.default.removeItem(at: directory)
     }
-    let deadline = ContinuousClock.now + .seconds(2)
-    while children.contains(where: \.isRunning), ContinuousClock.now < deadline {
-      Thread.sleep(forTimeInterval: 0.02)
-    }
-    for child in children where child.isRunning {
-      kill(child.processIdentifier, SIGKILL)
-    }
-    for child in children {
-      child.waitUntilExit()
-    }
-    errors.fileHandleForReading.readabilityHandler = nil
-    try? errors.fileHandleForReading.close()
-    try? errors.fileHandleForWriting.close()
-    try? FileManager.default.removeItem(at: directory)
   }
 
   static func arguments(_ configuration: SSHConfiguration, controlPath: String) -> [String] {
