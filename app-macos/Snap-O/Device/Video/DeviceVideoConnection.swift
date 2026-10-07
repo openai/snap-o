@@ -71,7 +71,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
         trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
         (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
           chmod 444 "$directory/helper.jar" || exit 1
-        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-if-waydroid 2>/dev/null
+        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-fallback 2>/dev/null
         """
         let connection = try await ADBClient().bound(to: target).makeConnection()
         socket = connection

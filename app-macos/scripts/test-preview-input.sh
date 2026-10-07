@@ -23,8 +23,10 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/Clipboard/ClipboardTransport.swift Snap-O/Device/Clipboard/ClipboardSyncState.swift \
   Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/Device/Clipboard/DeviceClipboardProtocol.swift Snap-O/App/AppSettings.swift \
   Snap-O/Device/LivePreviewRotation.swift Snap-O/Utilities/Logging.swift \
+  Snap-O/Device/Video/DeviceVideoPacket.swift \
   Snap-O/LivePreview/Input/LivePreviewPointerBackend.swift Snap-O/LivePreview/Input/LivePreviewPointerInjector.swift \
-  Snap-O/LivePreview/Input/ShellLivePreviewPointerBackend.swift Snap-O/LivePreview/Input/UInputLivePreviewPointerBackend.swift \
+  Snap-O/LivePreview/Input/InputManagerLivePreviewPointerBackend.swift \
+  Snap-O/Device/ADB/DevicePointerTransport.swift Snap-O/Device/ADB/DevicePointerProtocol.swift Snap-O/Device/ADB/ADBShellV2Stream.swift Snap-O/LivePreview/Input/UInputLivePreviewPointerBackend.swift \
   Snap-O/Device/ADB/LivePreviewKeyboard+Device.swift \
   Snap-O/LivePreview/Input/LivePreviewKeyboard.swift Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift Snap-O/LivePreview/Rendering/LivePreviewSession.swift \

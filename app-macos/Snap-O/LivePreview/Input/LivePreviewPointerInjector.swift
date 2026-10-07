@@ -16,7 +16,7 @@ actor LivePreviewPointerInjector {
   }
 
   private let makePreferredBackend: PreferredBackendFactory
-  private let fallbackBackend: any LivePreviewPointerBackend
+  private let makeFallbackBackend: @Sendable (DeviceTarget) -> any LivePreviewPointerBackend
   private let clock: AnyClock<Duration>
   private var sessions: [DeviceTarget: Entry] = [:]
   private var cleanups: [DeviceTarget: Cleanup] = [:]
@@ -27,16 +27,20 @@ actor LivePreviewPointerInjector {
       makePreferredBackend: { target in
         try await UInputLivePreviewPointerBackend.start(adb: adb, target: target)
       },
-      fallbackBackend: ShellLivePreviewPointerBackend(adb: adb)
+      makeFallbackBackend: { target in
+        InputManagerLivePreviewPointerBackend(target: target) {
+          try await DevicePointerTransport.connect(target: target)
+        }
+      }
     )
   }
 
   init(
     makePreferredBackend: @escaping PreferredBackendFactory,
-    fallbackBackend: any LivePreviewPointerBackend
+    makeFallbackBackend: @escaping @Sendable (DeviceTarget) -> any LivePreviewPointerBackend
   ) {
     self.makePreferredBackend = makePreferredBackend
-    self.fallbackBackend = fallbackBackend
+    self.makeFallbackBackend = makeFallbackBackend
     @Dependency(\.continuousClock)
     var clock
     self.clock = AnyClock(clock)
@@ -69,7 +73,7 @@ actor LivePreviewPointerInjector {
         Task { await self?.stopDevice(target) }
       }
       let session = LivePreviewPointerSession(
-        target: target, makeBackend: makePreferredBackend, fallback: fallbackBackend, clock: clock
+        target: target, makeBackend: makePreferredBackend, fallback: makeFallbackBackend(target), clock: clock
       )
       sessions[target] = Entry(session: session, invalidationHandler: handler)
       return session
@@ -100,7 +104,6 @@ actor LivePreviewPointerInjector {
     for (target, entry) in entries {
       target.removeInvalidationHandler(entry.invalidationHandler)
     }
-    let fallback = fallbackBackend
     let task = Task {
       await withTaskGroup(of: Void.self) { group in
         for entry in entries.values {
@@ -110,7 +113,6 @@ actor LivePreviewPointerInjector {
           group.addTask { await cleanup.task.value }
         }
       }
-      await fallback.stop()
     }
     shutdownTask = task
     await task.value
@@ -176,7 +178,7 @@ private actor LivePreviewPointerSession {
         guard !isStopping, target.isValid else { return }
         state = .fallback
         SnapOLog.ui.info(
-          "uinput unavailable for \(target.serial, privacy: .private); using shell input: \(error.localizedDescription, privacy: .public)"
+          "uinput unavailable for \(target.serial, privacy: .private); using InputManager: \(error.localizedDescription, privacy: .public)"
         )
       }
     }
@@ -266,6 +268,7 @@ private actor LivePreviewPointerSession {
     state = nil
     let task = Task {
       await backend?.stop()
+      await fallback.stop()
       for work in pending {
         await work.value
       }
@@ -360,10 +363,7 @@ private actor LivePreviewPointerSession {
       guard !isStopping else { return }
       route = .preferred(backend)
     case .preparing, .fallback:
-      guard event.locations.count == 1 else { route = .discarded
-        return
-      }
-      // Keep the route even when the reply fails: Android may have received Down.
+      // Keep the route even when sending fails: Android may have received Down.
       route = .fallback
       try await fallback.send(event)
     }

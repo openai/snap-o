@@ -237,6 +237,10 @@ print_android_protocol_declarations() {
     print_protocol_declaration "$1" 'Device keyboard helper version' \
       'static final int VERSION[[:space:]]*=' 'device-helper/src/com/openai/snapo/clipboard/Keyboard.java'
   fi
+  if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/pointer/Main.java" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device pointer helper version' \
+      'static final int VERSION[[:space:]]*=' 'device-helper/src/com/openai/snapo/pointer/Main.java'
+  fi
   print_protocol_declaration "$1" 'Android Network protocol version' \
     'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"|protocolVersion[[:space:]]*=[[:space:]]*[0-9]+' \
     'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
@@ -287,6 +291,10 @@ print_client_protocol_declarations() {
   if git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device keyboard client version' \
       'static let version:[[:space:]]*UInt32[[:space:]]*=' 'app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift'
+  fi
+  if git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/ADB/DevicePointerProtocol.swift" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device pointer client version' \
+      'static let version:[[:space:]]*UInt32[[:space:]]*=' 'app-macos/Snap-O/Device/ADB/DevicePointerProtocol.swift'
   fi
   local swift_network_path='snapo-app-mac/SnapODeviceClient/Sources/SnapODeviceClient/NetworkProtocol.swift'
   if git -C "$SNAPO_DIR" cat-file -e "$1:$swift_network_path" 2>/dev/null; then

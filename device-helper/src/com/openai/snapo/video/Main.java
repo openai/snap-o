@@ -9,7 +9,6 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.Bundle;
-import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
 import android.view.Surface;
@@ -49,10 +48,11 @@ public final class Main {
             output.writeInt(MAGIC);
             output.flush();
             if (args.length < 1 || args.length > 2
-                    || (args.length == 2 && !args[1].equals("rgba-if-waydroid"))) {
+                    || (args.length == 2 && !args[1].equals("rgba-fallback"))) {
                 throw new IllegalArgumentException("Invalid video arguments");
             }
-            boolean rgba = args.length == 2 && Build.DEVICE.startsWith("waydroid_");
+            boolean allowFallback = args.length == 2;
+            boolean rgba = false;
             File directory = new File(args[0]);
             if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
                 throw new IOException("Cannot remove temporary helper");
@@ -77,13 +77,40 @@ public final class Main {
             Class<?> globalClass = Class.forName("android.hardware.display.DisplayManagerGlobal");
             Object global = globalClass.getMethod("getInstance").invoke(null);
             while (true) {
-                if (rgba) captureRGBA(global);
-                else capture(global);
+                if (rgba) {
+                    captureRGBA(global);
+                } else {
+                    try {
+                        capture(global);
+                    } catch (Exception error) {
+                        if (!allowFallback || !isUnsupportedEncoder(error)) throw error;
+                        // Keep this session on ImageReader, including after display changes.
+                        rgba = true;
+                    }
+                }
             }
         } catch (Exception error) {
             reportFailure(error);
             System.exit(1);
         }
+    }
+
+    private static boolean isUnsupportedEncoder(Exception error) {
+        if (stage != Stage.ENCODER && stage != Stage.CAPABILITIES && stage != Stage.CONFIGURATION
+                && stage != Stage.INPUT_SURFACE && stage != Stage.START) return false;
+        Throwable cause = error;
+        while (cause instanceof InvocationTargetException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (cause instanceof MediaCodec.CodecException) {
+            MediaCodec.CodecException codec = (MediaCodec.CodecException) cause;
+            return !codec.isTransient() && !codec.isRecoverable()
+                    && codec.getErrorCode() != MediaCodec.CodecException.ERROR_INSUFFICIENT_RESOURCE
+                    && codec.getErrorCode() != MediaCodec.CodecException.ERROR_RECLAIMED;
+        }
+        if (stage == Stage.ENCODER && cause instanceof IOException) return true;
+        return (stage == Stage.ENCODER || stage == Stage.CAPABILITIES || stage == Stage.CONFIGURATION)
+                && cause instanceof IllegalArgumentException;
     }
 
     private static void reportFailure(Exception error) {

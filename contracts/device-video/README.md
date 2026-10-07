@@ -8,9 +8,13 @@ Shell v2 is available from Android 7 (API 24), the helper's minimum API level.
 The Mac unwraps stdout packets and wraps control bytes in stdin packets. Shell packet lengths
 are little-endian. Stderr is discarded; exit status or a truncated packet ends the stream.
 Shell packet boundaries are independent of the video packets below.
-The first argument is the temporary helper directory. An optional `rgba-if-waydroid` argument
-selects compressed RGBA on devices whose Android device name starts with `waydroid_`.
-Other devices continue using AVC. The helper removes its JAR and directory
+The first argument is the temporary helper directory. An optional `rgba-fallback` argument
+allows compressed RGBA if AVC encoder startup fails. Every device tries AVC first.
+Fallback handles missing encoders, unsupported capabilities or configuration, and permanent
+codec failures during encoder startup. Resource exhaustion, reclaimed codecs, transient or
+recoverable codec errors, and display, mirror, transport, or streaming failures do not trigger it.
+Once selected, RGBA remains active for the session, including display changes.
+The helper removes its JAR and directory
 before streaming. Stdout contains only this binary protocol, including structured failures.
 Framework exception messages are never sent because they can contain private display metadata.
 
@@ -35,7 +39,7 @@ The error packet contains no strings or captured content. It may follow the head
 Packet 3 is an additive terminal diagnostic; the version remains 1. Existing clients reject it
 as an unknown packet and stop the stream. New clients still handle older helpers that close
 without a failure packet. The bundled helper and Mac client ship together.
-Packet 4 is opt-in through the new argument; callers passing only a directory still receive AVC.
+Packet 4 is opt-in through `rgba-fallback`; callers passing only a directory still receive AVC or a failure.
 The Mac client and bundled helper must be updated together to use this argument.
 
 Dimensions must be 2–8192, density 1–4096, and rotation 0–3. Payloads are at most 16 MiB.

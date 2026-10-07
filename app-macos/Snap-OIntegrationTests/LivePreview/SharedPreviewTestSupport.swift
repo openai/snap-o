@@ -72,7 +72,7 @@ enum SharedPreviewTestSupport {
       }
       let backend = Pointer()
       pointers.append(backend)
-      let pointer = LivePreviewPointerInjector(makePreferredBackend: { _ in backend }, fallbackBackend: backend)
+      let pointer = LivePreviewPointerInjector(makePreferredBackend: { _ in backend }, makeFallbackBackend: { _ in backend })
       let owner = DevicePreview(
         target: target, adb: adb, boot: Task {}, preparation: preparation, keyboard: keyboard, pointer: pointer,
         makeSource: {

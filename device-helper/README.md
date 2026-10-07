@@ -1,12 +1,12 @@
 # Device helper
 
-Snap-O bundles `snapo-device-helper.jar` for clipboard sync, keyboard input, and physical-device video.
+Snap-O bundles `snapo-device-helper.jar` for clipboard sync, keyboard and pointer input, and physical-device video.
 It runs through `app_process` as the ADB shell. No APK, root access, or app dependency is required.
 Emulators continue using their existing gRPC clipboard service.
 Keyboard input uses the helper on both emulators and physical devices.
 
 Each session creates a private temporary directory under `/data/local/tmp`, writes a read-only JAR,
-and starts it over a bidirectional ADB connection: shell v2 for video, `exec` for clipboard and keyboard.
+and starts it over a bidirectional ADB connection: shell v2 for video and pointer input, `exec` for clipboard and keyboard.
 The helper removes its JAR and directory
 after Android loads it; the launch script also cleans up failed starts. Closing the connection
 ends the helper. There is no network listener or persistent service.
@@ -68,12 +68,29 @@ Validate typing, deletion, selection, Unicode paste, and copy with clipboard syn
 Verify that changing focus or devices discards queued input. Use synthetic text only.
 See the [internal keyboard contract](../contracts/device-keyboard/README.md).
 
+## Pointer input
+
+Snap-O prefers a persistent `uinput` virtual touchscreen. When it is unavailable,
+pointer input uses a persistent helper calling Android's `InputManager`.
+Mouse input also uses this helper. Touch and mouse events remain ordered within
+each source; queued moves are coalesced. There is no network acknowledgment per move.
+The helper supports up to ten contacts and cancels held contacts on disconnect.
+A failed stream never replays a partial gesture on a new connection.
+
+Android's native Show touches dots require the `uinput` path. InputManager injection
+bypasses that visualization; enabling Show input touches will not add dots to these events.
+The fallback does not draw its own overlay.
+
+See the [internal pointer contract](../contracts/device-pointer/README.md).
+
 ## Device video
 
 Physical-device preview and normal recording share one hardware AVC encoder per device.
 The Mac decodes preview frames and writes the original compressed samples to MP4.
-Waydroid uses an experimental `ImageReader` path with lossless, zlib-compressed RGBA frames.
-It bypasses the device video encoder and targets about 30 fps. The Mac converts these frames
+Every device tries AVC first. Missing or unsupported encoders and permanent codec startup failures
+fall back to an experimental `ImageReader` path with lossless, zlib-compressed RGBA frames.
+Transient, recoverable, resource, display, and transport failures do not select the fallback.
+ImageReader bypasses the device video encoder and targets about 30 fps. The Mac converts these frames
 for preview and encodes H.264 when recording. This path currently supports frames up to 16 MiB.
 Each consumer owns a subscription. Closing a preview does not stop its recording.
 The final subscription closes the ADB connection and ends the helper.
