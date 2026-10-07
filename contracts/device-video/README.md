@@ -5,15 +5,29 @@ It does not change Network, Tweaks, keyboard, or clipboard protocol versions.
 
 The Mac starts `com.openai.snapo.video.Main` through ADB `exec` and `app_process`.
 The sole argument is the temporary helper directory. The helper removes its JAR and directory
-before streaming. Diagnostics use stderr; stdout contains only this binary protocol.
+before streaming. Stdout contains only this binary protocol, including structured failures.
+Framework exception messages are never sent because they can contain private display metadata.
 
-All integers are unsigned and big-endian. Timestamps must fit a signed 64-bit integer.
+All integers are big-endian and unsigned except the signed codec error.
+Timestamps must fit a signed 64-bit integer.
 The stream starts with four bytes: `53 4e 56 31` (`SNV1`). Unknown versions are rejected.
 
 | Packet | Layout after the one-byte type |
 | --- | --- |
 | `1`: display | width, height, density DPI, rotation; four 32-bit integers |
 | `2`: AVC access unit | flags: 32 bits; presentation timestamp in microseconds: 64 bits; payload length: 32 bits; payload bytes |
+| `3`: failure | stage: 8 bits; retryable: 8 bits (0 or 1); codec error: signed 32 bits (0 if unavailable) |
+
+Failure stages are setup (1), display lookup (2), encoder selection (3), capabilities (4),
+configuration (5), input surface (6), display mirror (7), encoder start (8), and streaming (9).
+A failure ends the stream. The Mac shows its stage and stops automatic retries when retryable is 0.
+Codec failures are retryable only when Android marks them transient or recoverable.
+Other display-lookup and streaming failures may retry; other startup failures require an explicit retry.
+The error packet contains no strings or captured content. It may follow the header immediately.
+
+Packet 3 is an additive terminal diagnostic; the version remains 1. Existing clients reject it
+as an unknown packet and stop the stream. New clients still handle older helpers that close
+without a failure packet. The bundled helper and Mac client ship together.
 
 Dimensions must be 2–8192, density 1–4096, and rotation 0–3. Payloads are at most 16 MiB.
 Flags are MediaCodec's keyframe (1), codec configuration (2), and end-of-stream (4) bits.
@@ -21,6 +35,9 @@ Payloads use AVC Annex B start codes. A display packet and codec configuration p
 Each output buffer is one access unit. The Mac preserves encoder timestamps and converts
 NAL start codes to lengths for Core Media. It does not infer frame boundaries or frame rate.
 A display change restarts the encoder and emits new display metadata and configuration.
+The helper caps its 16 Mbps and 60 fps targets to the selected encoder's advertised limits.
+It requires support for the display size, Surface input, and a Baseline AVC profile.
+Unsupported configurations fail before encoding; this protocol does not resize the display.
 
 The reverse channel accepts single-byte commands: `1` requests a keyframe; `2` stops.
 A keyframe request also reattaches the display mirror so an idle screen submits a fresh image.

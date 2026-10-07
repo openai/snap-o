@@ -76,10 +76,15 @@ Android's overlay writer and temporarily stop preview.
 
 Video uses a separate helper process and connection from keyboard and clipboard input.
 It captures the main display at its current resolution, targeting 16 Mbps and 60 fps.
+Bitrate and frame rate are capped to the encoder's advertised limits. The helper checks
+display size, Surface input, and Baseline AVC support before configuring the encoder.
 Actual frame rate and quality depend on the device encoder and transport.
 The helper uses framework display-mirroring APIs under the shell identity. These APIs
 vary across Android versions and vendors; validate supported devices before release.
 It never captures protected surfaces or bypasses Android's secure-content restrictions.
+Failures report the capture stage and numeric codec error without framework exception text.
+Unsupported configurations stop automatic retries. Transient or recoverable codec failures
+retain the Mac client's bounded retry behavior.
 
 The Mac requests a keyframe when a recording joins an existing preview. Packet timestamps
 come from the encoder. Slow storage fails the recording instead of silently dropping frames.

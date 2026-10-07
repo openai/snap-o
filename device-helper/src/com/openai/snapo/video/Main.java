@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,18 +25,30 @@ public final class Main {
     private static final int MAX_PACKET = 16 * 1024 * 1024;
     private static final AtomicBoolean keyFrameRequested = new AtomicBoolean();
     private static final DataOutputStream output = new DataOutputStream(new FileOutputStream(FileDescriptor.out));
+    private static Stage stage = Stage.SETUP;
+
+    private enum Stage {
+        SETUP(1), DISPLAY(2), ENCODER(3), CAPABILITIES(4), CONFIGURATION(5),
+        INPUT_SURFACE(6), MIRROR(7), START(8), STREAM(9);
+
+        final int code;
+
+        Stage(int code) {
+            this.code = code;
+        }
+    }
 
     public static void main(String[] args) {
         System.setOut(System.err);
         try {
+            output.writeInt(MAGIC);
+            output.flush();
             if (args.length != 1) throw new IllegalArgumentException("Expected temporary directory");
             File directory = new File(args[0]);
             if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
                 throw new IOException("Cannot remove temporary helper");
             }
             Looper.prepare();
-            output.writeInt(MAGIC);
-            output.flush();
             Thread controls = new Thread(() -> {
                 try {
                     int command;
@@ -51,13 +64,37 @@ public final class Main {
             }, "snapo-video-controls");
             controls.setDaemon(true);
             controls.start();
+            stage = Stage.DISPLAY;
             Class<?> globalClass = Class.forName("android.hardware.display.DisplayManagerGlobal");
             Object global = globalClass.getMethod("getInstance").invoke(null);
             while (true) capture(global);
         } catch (Exception error) {
-            // Exception messages from framework services can contain private display metadata.
-            System.err.println("Snap-O video capture failed: " + error.getClass().getSimpleName());
+            reportFailure(error);
             System.exit(1);
+        }
+    }
+
+    private static void reportFailure(Exception error) {
+        Throwable cause = error;
+        while (cause instanceof InvocationTargetException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        int codecError = 0;
+        boolean retryable = stage == Stage.DISPLAY || stage == Stage.STREAM;
+        if (cause instanceof MediaCodec.CodecException) {
+            MediaCodec.CodecException codec = (MediaCodec.CodecException) cause;
+            codecError = codec.getErrorCode();
+            retryable = codec.isTransient() || codec.isRecoverable();
+        }
+        // Framework exception messages can contain private display metadata.
+        try {
+            output.writeByte(3);
+            output.writeByte(stage.code);
+            output.writeByte(retryable ? 1 : 0);
+            output.writeInt(codecError);
+            output.flush();
+        } catch (IOException disconnected) {
+            // A disconnected client cannot receive the failure packet.
         }
     }
 
@@ -72,31 +109,30 @@ public final class Main {
     }
 
     private static void capture(Object global) throws Exception {
+        stage = Stage.DISPLAY;
         Object info = displayInfo(global);
         int width = field(info, "logicalWidth") & ~1;
         int height = field(info, "logicalHeight") & ~1;
         int rotation = field(info, "rotation");
         if (width < 2 || height < 2 || width > 8192 || height > 8192) throw new IOException("Invalid display size");
+        stage = Stage.ENCODER;
         MediaCodec encoder = MediaCodec.createEncoderByType("video/avc");
         Surface surface = null;
         AutoCloseable mirror = null;
         boolean started = false;
         try {
-            MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
-            format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-            format.setInteger(MediaFormat.KEY_BIT_RATE, 16_000_000);
-            format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
-            format.setFloat("max-fps-to-encoder", 60);
-            // Baseline excludes reordered frames, so presentation timestamps also define decode order.
-            format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-            format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000);
-            format.setInteger(MediaFormat.KEY_PRIORITY, 0);
+            stage = Stage.CAPABILITIES;
+            MediaFormat format = createFormat(encoder.getCodecInfo(), width, height);
+            stage = Stage.CONFIGURATION;
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            stage = Stage.INPUT_SURFACE;
             surface = encoder.createInputSurface();
+            stage = Stage.MIRROR;
             mirror = mirror(surface, width, height, info);
+            stage = Stage.START;
             encoder.start();
             started = true;
+            stage = Stage.STREAM;
             output.writeByte(1);
             output.writeInt(width);
             output.writeInt(height);
@@ -151,6 +187,43 @@ public final class Main {
             encoder.release();
             if (surface != null) surface.release();
         }
+    }
+
+    private static MediaFormat createFormat(MediaCodecInfo info, int width, int height) {
+        MediaCodecInfo.CodecCapabilities capabilities = info.getCapabilitiesForType("video/avc");
+        MediaCodecInfo.VideoCapabilities video = capabilities.getVideoCapabilities();
+        boolean surfaceInput = false;
+        for (int color : capabilities.colorFormats) {
+            if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) surfaceInput = true;
+        }
+        if (!surfaceInput || video == null || !video.isSizeSupported(width, height)) {
+            throw new IllegalArgumentException("Unsupported video input");
+        }
+        int profile = 0;
+        for (MediaCodecInfo.CodecProfileLevel level : capabilities.profileLevels) {
+            if (level.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline) {
+                profile = level.profile;
+                break;
+            }
+            if (level.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileConstrainedBaseline) profile = level.profile;
+        }
+        if (profile == 0) throw new IllegalArgumentException("Baseline AVC is unavailable");
+        int frameRate = (int) Math.floor(video.getSupportedFrameRatesFor(width, height).clamp(60.0));
+        if (frameRate < 1 || !video.areSizeAndRateSupported(width, height, frameRate)) {
+            throw new IllegalArgumentException("Unsupported video frame rate");
+        }
+        MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, video.getBitrateRange().clamp(16_000_000));
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
+        format.setFloat("max-fps-to-encoder", frameRate);
+        // Baseline excludes reordered frames, so presentation timestamps also define decode order.
+        format.setInteger(MediaFormat.KEY_PROFILE, profile);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+        format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000);
+        format.setInteger(MediaFormat.KEY_PRIORITY, 0);
+        if (!capabilities.isFormatSupported(format)) throw new IllegalArgumentException("Unsupported video format");
+        return format;
     }
 
     private static AutoCloseable mirror(Surface surface, int width, int height, Object info) throws Exception {

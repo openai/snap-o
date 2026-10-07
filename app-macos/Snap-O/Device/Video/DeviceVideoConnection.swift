@@ -89,6 +89,8 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
         while !Task.isCancelled {
           let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
           switch packet {
+          case .failure(let error):
+            throw error
           case .display(_, _, let density, _):
             builder.reset()
             await self?.receive(.density(CGFloat(density) / 160))

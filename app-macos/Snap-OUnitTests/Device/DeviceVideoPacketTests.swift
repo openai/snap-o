@@ -9,6 +9,37 @@ struct DeviceVideoPacketTests {
     #expect(throws: (any Error).self) { try DeviceVideoPacket.validateHeader(Data([0x53, 0x4E, 0x56])) }
   }
 
+  @Test(arguments: DeviceVideoFailure.Stage.allCases, [false, true])
+  func readsStructuredFailure(stage: DeviceVideoFailure.Stage, retryable: Bool) throws {
+    let bytes = Data([3, stage.rawValue, retryable ? 1 : 0, 0x80, 0, 0x10, 1])
+    guard case .failure(let failure) = try packet(bytes) else {
+      Issue.record("Expected a video failure")
+      return
+    }
+    #expect(failure == DeviceVideoFailure(stage: stage, retryable: retryable, codecError: -2_147_479_551))
+    #expect(failure.localizedDescription.contains(stage.action))
+    #expect(failure.localizedDescription.contains("-2147479551"))
+  }
+
+  @Test(arguments: [Data([3, 0, 0, 0, 0, 0, 0]), Data([3, 10, 0, 0, 0, 0, 0]), Data([3, 5, 2, 0, 0, 0, 0])])
+  func rejectsInvalidFailureFields(bytes: Data) {
+    #expect(throws: (any Error).self) { try packet(bytes) }
+  }
+
+  @Test(arguments: 0 ..< 7)
+  func rejectsTruncatedFailure(length: Int) {
+    #expect(throws: (any Error).self) { try packet(Data([3, 5, 0, 0, 0, 0, 0].prefix(length))) }
+  }
+
+  private func packet(_ bytes: Data) throws -> DeviceVideoPacket {
+    var offset = 0
+    return try DeviceVideoPacket.read { count in
+      let end = min(offset + count, bytes.count)
+      defer { offset = end }
+      return bytes.subdata(in: offset ..< end)
+    }
+  }
+
   @Test
   func rejectsOversizedPacketsBeforeReadingTheirPayload() throws {
     var bytes = Data([2, 0, 0, 0, 1])

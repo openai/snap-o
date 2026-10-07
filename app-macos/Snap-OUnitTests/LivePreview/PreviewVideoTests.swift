@@ -9,6 +9,60 @@ import Testing
 @MainActor
 @Suite(.dependency(\.continuousClock, TestClock()))
 struct PreviewVideoTests {
+  @Test(arguments: [false, true])
+  func permanentCodecFailureStopsRetries(reachesStreaming: Bool) async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let source = Source()
+    let attempts = TestValue(0)
+    let failure = DeviceVideoFailure(stage: .configuration, retryable: false, codecError: -2_147_479_551)
+    let video = PreviewVideo {
+      attempts.value += 1
+      return LivePreviewSession(deviceID: "test", densityScale: nil, source: source)
+    } canReconnect: { true }
+    video.start()
+    try await waitForState { source.starts == 1 }
+    if reachesStreaming {
+      try source.becomeReady()
+      try await waitForState { video.phase == .streaming }
+    }
+    source.deliver?(.stopped(failure))
+    try await waitForState { video.phase == .failed(failure.localizedDescription) }
+    #expect(video.session == nil)
+    video.setActive(false)
+    video.setActive(true)
+    await clock.advance(by: .seconds(30))
+    #expect(attempts.value == 1)
+    video.retry()
+    try await waitForState { attempts.value == 2 }
+    await video.close()
+    try await clock.checkSuspension()
+  }
+
+  @Test
+  func transientCodecFailureCanRecover() async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let source = Source()
+    let recovered = Source()
+    let attempts = TestValue(0)
+    let video = PreviewVideo {
+      attempts.value += 1
+      return LivePreviewSession(deviceID: "test", densityScale: nil, source: attempts.value == 1 ? source : recovered)
+    } canReconnect: { true }
+    video.start()
+    try await waitForState { source.starts == 1 }
+    source.deliver?(.stopped(DeviceVideoFailure(stage: .configuration, retryable: true, codecError: 1100)))
+    try await waitForState { video.phase == .waitingToReconnect }
+    await clock.advance(by: .milliseconds(500))
+    try await waitForState { recovered.starts == 1 }
+    try recovered.becomeReady()
+    try await waitForState { video.phase == .streaming }
+    #expect(attempts.value == 2)
+    await video.close()
+    try await clock.checkSuspension()
+  }
+
   @Test
   func quickUncoverWaitsForHiddenStreamCleanup() async throws {
     let cleanup = TestSuspension()

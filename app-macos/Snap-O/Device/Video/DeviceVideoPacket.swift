@@ -5,6 +5,7 @@ import Foundation
 enum DeviceVideoPacket {
   case display(width: Int, height: Int, density: Int, rotation: Int)
   case frame(flags: UInt32, timestamp: Int64, data: Data)
+  case failure(DeviceVideoFailure)
 
   static let magic: UInt32 = 0x534E_5631
 
@@ -18,7 +19,9 @@ enum DeviceVideoPacket {
 
   static func read(from readBytes: (Int) throws -> Data) throws -> Self {
     func number(_ count: Int) throws -> UInt64 {
-      try readBytes(count).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+      let bytes = try readBytes(count)
+      guard bytes.count == count else { throw ADBError.protocolFailure("Truncated video packet") }
+      return bytes.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
     }
     switch try number(1) {
     case 1:
@@ -39,9 +42,49 @@ enum DeviceVideoPacket {
         throw ADBError.protocolFailure("Invalid video packet")
       }
       return try .frame(flags: flags, timestamp: Int64(timestamp), data: readBytes(count))
+    case 3:
+      let stage = try UInt8(number(1))
+      let retryable = try number(1)
+      let code = try UInt32(number(4))
+      guard let stage = DeviceVideoFailure.Stage(rawValue: stage), retryable <= 1 else {
+        throw ADBError.protocolFailure("Invalid video failure packet")
+      }
+      return .failure(DeviceVideoFailure(stage: stage, retryable: retryable == 1, codecError: Int32(bitPattern: code)))
     default:
       throw ADBError.protocolFailure("Unknown video packet")
     }
+  }
+}
+
+/// Fixed protocol fields keep framework messages and display metadata off the wire.
+struct DeviceVideoFailure: LocalizedError, Equatable {
+  enum Stage: UInt8, CaseIterable {
+    case setup = 1, display, encoder, capabilities, configuration, inputSurface, mirror, start, stream
+
+    var action: String {
+      switch self {
+      case .setup: "start the device helper"
+      case .display: "read the device display"
+      case .encoder: "open an H.264 encoder"
+      case .capabilities: "find a supported video configuration"
+      case .configuration: "configure the video encoder"
+      case .inputSurface: "create the encoder input surface"
+      case .mirror: "mirror the device display"
+      case .start: "start the video encoder"
+      case .stream: "encode the device display"
+      }
+    }
+  }
+
+  let stage: Stage
+  let retryable: Bool
+  /// Zero means that Android did not provide a codec error code.
+  let codecError: Int32
+
+  var errorDescription: String? {
+    var message = "Could not \(stage.action) on this device."
+    if codecError != 0 { message += " Codec error: \(codecError)." }
+    return message
   }
 }
 

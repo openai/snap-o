@@ -19,6 +19,7 @@ struct VideoStreamTests {
       await replacementConnectionDoesNotWaitForOldTarget()
       try await deadlineJoinsTransportCleanup()
       await sessionWaitersJoinCleanup()
+      await structuredFailureStopsPreview()
       await recordingWaitersJoinSourceCleanup()
       try await emulatorSubscribersShareStartupAndFinalCleanup()
       try await emulatorCancellationJoinsEndpointLookup()
@@ -31,6 +32,25 @@ struct VideoStreamTests {
 
   static func target(_ serial: String = "test-device") -> DeviceTarget {
     DeviceTarget(serial: serial, transportID: "1")
+  }
+
+  static func structuredFailureStopsPreview() async {
+    let target = target()
+    let socket = ADBSocketConnection()
+    let probe = prepare(target, socket)
+    let hub = DeviceVideoHub()
+    let video = PreviewVideo {
+      LivePreviewSession(deviceID: target.serial, densityScale: nil, source: DeviceVideoSource(target: target, hub: hub))
+    } canReconnect: { true }
+    video.start()
+    await waitForReads(socket)
+    socket.append(Data([3, 5, 0, 0x80, 0, 0x10, 1]))
+    let failure = DeviceVideoFailure(stage: .configuration, retryable: false, codecError: -2_147_479_551)
+    await waitForObservedTestState { video.phase == .failed(failure.localizedDescription) }
+    precondition(video.session == nil)
+    await video.close()
+    await assertOpened(1, probe: probe)
+    precondition(socket.isClosed)
   }
 
   static func prepare(_ target: DeviceTarget, _ sockets: ADBSocketConnection..., startup: TestGate? = nil) -> VideoConnectionProbe {
