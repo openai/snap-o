@@ -23,7 +23,7 @@ social:
 
 # Snap-O
 
-A fast, tidy macOS app for Android developers: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.
+A fast, tidy macOS app for Android developers: capture screenshots and recordings, and inspect network traffic from local or remote Android devices and emulators.
 {.lead}
 
 Requires macOS 26+ and Android Platform Tools (`adb`).
