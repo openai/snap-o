@@ -47,6 +47,9 @@ struct EmulatorGRPCConnectionTests {
           preconditionFailure("A disconnected operation must not reconnect to the listener")
         } catch let error as RPCError {
           precondition(error.code == .unavailable)
+        } catch let error as RuntimeError {
+          // The client may finish stopping before the request reaches the closed transport.
+          precondition(error.code == .clientIsStopped)
         }
         precondition(peers.count == 1, "The listener stayed available but must not receive a replacement connection")
       }
