@@ -282,6 +282,89 @@ struct RemoteADBTests {
     await service.stopTracking()
   }
 
+  @Test
+  func olderSavedServersDefaultToEnabled() throws {
+    let data = Data("""
+    {"id":"8FA7AA18-BEC2-40AA-89D4-B8709B677D20",
+     "connection":{"type":"ssh","ssh":{"destination":"test-host","adbPort":5037}}}
+    """.utf8)
+    #expect(try JSONDecoder().decode(RemoteADBServer.self, from: data).isEnabled)
+  }
+
+  @MainActor
+  @Test
+  func disconnectPersistsAndEditingStaysDisconnectedUntilReconnect() async throws {
+    let name = "snapo-server-toggle-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    let store = ADBServerStore(defaults: defaults)
+    let local = Tracker()
+    let remote = Tracker()
+    let replacement = Tracker()
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "test-host")))
+    let service = ADBService(trackers: [(.local, local), (.remote(profile.id), remote)])
+    var creations = 0
+    let model = ADBServers(service: service, store: store, profiles: [profile], makeTracker: { _ in
+      creations += 1
+      return replacement
+    }, updateLabels: { _ in })
+    await service.startTracking()
+    try await model.setEnabled(false, for: profile)
+    #expect(await remote.stopped)
+    #expect(await local.stopped == false)
+    #expect(creations == 0)
+    var disabled = try #require(store.load().first)
+    #expect(!disabled.isEnabled)
+    #expect(disabled.id == profile.id)
+    #expect(model.profiles == [disabled])
+    disabled.connection = .ssh(SSHConfiguration(destination: "edited-host"))
+    try await model.save(disabled)
+    #expect(creations == 0)
+    #expect(try store.load() == [disabled])
+    var snapshots = await service.snapshots().makeAsyncIterator()
+    #expect(await snapshots.next()?.map(\.id) == [.local])
+    try await model.setEnabled(true, for: profile)
+    #expect(creations == 1)
+    let enabled = try #require(store.load().first)
+    #expect(enabled.isEnabled)
+    #expect(enabled.connection == disabled.connection)
+    var reconnected = await service.snapshots().makeAsyncIterator()
+    #expect(await reconnected.next()?.map(\.id) == [.local, .remote(profile.id)])
+    try await model.setEnabled(true, for: enabled)
+    #expect(creations == 1)
+    await model.stop()
+    await service.stopTracking()
+    #expect(await replacement.stopped)
+  }
+
+  @MainActor
+  @Test
+  func disconnectReportsTheUpdatingServerUntilCleanupFinishes() async throws {
+    let name = "snapo-server-progress-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    let cleanup = TestSuspension()
+    let remote = Tracker(stopSuspension: cleanup)
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "test-host")))
+    let service = ADBService(trackers: [(.remote(profile.id), remote)])
+    let model = ADBServers(
+      service: service, store: ADBServerStore(defaults: defaults), profiles: [profile],
+      makeTracker: { _ in Tracker() }, updateLabels: { _ in }
+    )
+    await service.startTracking()
+    let disconnect = Task { try await model.setEnabled(false, for: profile) }
+    await cleanup.waitUntilStarted()
+    #expect(model.updatingServerID == profile.id)
+    #expect(model.isUpdating)
+    #expect(model.profiles.first?.isEnabled == false)
+    cleanup.resume()
+    try await disconnect.value
+    #expect(model.updatingServerID == nil)
+    #expect(!model.isUpdating)
+    await model.stop()
+    await service.stopTracking()
+  }
+
   @MainActor
   @Test
   func lateTunnelReplyIsClosedAfterCancellation() async throws {
@@ -409,6 +492,12 @@ struct RemoteADBTests {
     let ready = AsyncStream<[Device]>.makeStream()
     let state = AsyncStream<ADBServerState>.makeStream()
     var stopped = false
+    let stopSuspension: TestSuspension?
+
+    init(stopSuspension: TestSuspension? = nil) {
+      self.stopSuspension = stopSuspension
+    }
+
     func startTracking() {}
     func retryADBServer() {}
     func previewDeviceStream() -> AsyncStream<[Device]> {
@@ -431,7 +520,8 @@ struct RemoteADBTests {
       ready.continuation.yield(devices)
     }
 
-    func stopTracking() {
+    func stopTracking() async {
+      try? await stopSuspension?.wait()
       stopped = true
       connected.continuation.finish()
       ready.continuation.finish()

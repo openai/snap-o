@@ -47,7 +47,7 @@ final class AppRuntime {
       serverError = "Could not load saved ADB servers. " + error.localizedDescription
     }
     let trackers: [(ADBServerID, any DeviceTracking)] = [(.local, localTracker)]
-      + profiles.map { (.remote($0.id), ADBServerConnection.tracker(for: $0)) }
+      + profiles.filter(\.isEnabled).map { (.remote($0.id), ADBServerConnection.tracker(for: $0)) }
     let remoteServerLabels = Dictionary(uniqueKeysWithValues: profiles.map { (ADBServerID.remote($0.id), $0.connection.displayAddress) })
     let adbService = ADBService(trackers: trackers)
     let deviceTracker = adbService

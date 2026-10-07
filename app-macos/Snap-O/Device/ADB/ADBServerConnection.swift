@@ -3,6 +3,22 @@ import Foundation
 struct RemoteADBServer: Codable, Equatable, Identifiable {
   let id: UUID
   var connection: Connection
+  var isEnabled: Bool
+
+  init(id: UUID, connection: Connection, isEnabled: Bool = true) {
+    self.id = id
+    self.connection = connection
+    self.isEnabled = isEnabled
+  }
+
+  private enum CodingKeys: String, CodingKey { case id, connection, isEnabled }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    connection = try values.decode(Connection.self, forKey: .connection)
+    isEnabled = try values.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+  }
 
   enum Connection: Codable, Equatable {
     case ssh(SSHConfiguration)

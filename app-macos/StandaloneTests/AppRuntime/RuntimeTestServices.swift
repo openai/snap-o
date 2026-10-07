@@ -287,6 +287,7 @@ struct SSHConfiguration {
 }
 
 struct RemoteADBServer {
+  var isEnabled = true
   let id: UUID
   let connection: Connection
 
