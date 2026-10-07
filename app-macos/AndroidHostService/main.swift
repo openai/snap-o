@@ -1,4 +1,5 @@
 import Foundation
+import XPC
 
 final class AndroidHostResources: @unchecked Sendable {
   let worker = DispatchQueue(label: "com.openai.snapo.emulators")
@@ -51,7 +52,14 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     connection.exportedInterface = AndroidHostInterface.make()
     let client = AndroidHostService(resources: resources)
     connection.exportedObject = client
-    connection.invalidationHandler = { Task { await client.tunnels.closeAll() } }
+    connection.invalidationHandler = {
+      // Acquire before starting the task to prevent idle exit while cleanup is pending.
+      xpc_transaction_begin()
+      Task {
+        defer { xpc_transaction_end() }
+        await client.tunnels.closeAll()
+      }
+    }
     connection.resume()
     return true
   }
