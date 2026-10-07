@@ -145,6 +145,85 @@ struct ToolServerSelectionTests {
     await model.stop().value
   }
 
+  @Test
+  func firstPublicationContainsPushedDiscovery() async throws {
+    let suite = "ToolServerSelectionTests.\(UUID().uuidString)"
+    let preferences = try #require(UserDefaults(suiteName: suite))
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let (updates, updateContinuation) = AsyncStream<Void>.makeStream()
+    let (snapshots, snapshotContinuation) = AsyncStream<AppToolSnapshot>.makeStream()
+    defer {
+      updateContinuation.finish()
+      snapshotContinuation.finish()
+    }
+    var publications = snapshots.makeAsyncIterator()
+    let scanReply = TestValue<CheckedContinuation<ToolDiscoverySnapshot, Never>?>(nil)
+    let app = selectionApp()
+    let model = AppToolModel(preferences: preferences, discover: {
+      await withCheckedContinuation { scanReply.value = $0 }
+    }, changes: { updates }, currentDiscovery: {
+      ToolDiscoverySnapshot(apps: [app], revision: 2)
+    }, openApp: { _ in })
+    model.stateChanged = { snapshotContinuation.yield($0) }
+    let scan = model.start()
+    try await waitForState { scanReply.value != nil }
+
+    updateContinuation.yield(())
+    let first = try #require(await publications.next())
+    #expect(first.state.selectedApp?.metadata == app.metadata)
+    #expect(first.discovery == .searching)
+
+    scanReply.value?.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
+    await scan?.value
+    #expect(model.snapshot.state.selectedApp?.id == app.id)
+    await model.stop().value
+  }
+
+  @Test
+  func serverObservationPreservesDiscoveryPublicationOrder() async throws {
+    let suite = "ToolServerSelectionTests.\(UUID().uuidString)"
+    let preferences = try #require(UserDefaults(suiteName: suite))
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let (updates, updateContinuation) = AsyncStream<Void>.makeStream()
+    let (scans, scanContinuation) = AsyncStream<CheckedContinuation<ToolDiscoverySnapshot, Error>>.makeStream()
+    let (snapshots, snapshotContinuation) = AsyncStream<AppToolSnapshot>.makeStream()
+    defer {
+      updateContinuation.finish()
+      scanContinuation.finish()
+      snapshotContinuation.finish()
+    }
+    var requests = scans.makeAsyncIterator()
+    var publications = snapshots.makeAsyncIterator()
+    var reads = 0
+    let model = AppToolModel(preferences: preferences, discover: {
+      try await withCheckedThrowingContinuation { scanContinuation.yield($0) }
+    }, changes: {
+      updateContinuation.yield(())
+      return updates
+    }, currentDiscovery: {
+      reads += 1
+      return ToolDiscoverySnapshot(apps: [], revision: UInt64(reads + 10))
+    }, openApp: { _ in })
+    model.stateChanged = { snapshotContinuation.yield($0) }
+    let firstScan = model.start()
+    let firstReply = try #require(await requests.next())
+    #expect(await publications.next()?.presentation == .findingApps)
+
+    firstReply.resume(throwing: TestError.failed)
+    await firstScan?.value
+    #expect(await publications.next()?.presentation == .discoveryFailed)
+    updateContinuation.yield(())
+    #expect(await publications.next()?.presentation == .discoveryFailed)
+
+    let retry = model.refresh()
+    #expect(await publications.next()?.presentation == .findingApps)
+    let secondReply = try #require(await requests.next())
+    secondReply.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
+    await retry?.value
+    #expect(await publications.next()?.presentation == .noApps)
+    await model.stop().value
+  }
+
   private func remoteApp() -> InspectableApp {
     selectionApp(device: DeviceID(serverID: serverID, serial: "phone").storedValue)
   }

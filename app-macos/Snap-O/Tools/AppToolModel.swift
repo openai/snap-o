@@ -103,9 +103,13 @@ final class AppToolModel {
     running = true
     reconcileSelection()
     let configuredServerIDs = configuredServerIDs
+    let initialServerIDs = configuredServerIDs()
     _ = startWork { [weak self] in
-      for await _ in Observations({ configuredServerIDs() }) {
+      var previousServerIDs = initialServerIDs
+      for await serverIDs in Observations({ configuredServerIDs() }) {
         guard !Task.isCancelled, let self, running else { return }
+        guard serverIDs != previousServerIDs else { continue }
+        previousServerIDs = serverIDs
         reconcileSelection()
         publish()
       }
