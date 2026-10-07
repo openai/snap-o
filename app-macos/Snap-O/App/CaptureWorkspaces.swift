@@ -6,6 +6,7 @@ final class CaptureWorkspaces {
   let deviceManager: DeviceManager
   private let captureServices: CaptureServices
   private let fileStore: FileStore
+  private let configuredServerIDs: () -> Set<ADBServerID>
   private let adbService: ADBService
   private let history: CaptureHistory
   private let sessions = NSHashTable<CaptureWindowSession>.weakObjects()
@@ -13,12 +14,13 @@ final class CaptureWorkspaces {
 
   init(
     captureServices: CaptureServices, deviceManager: DeviceManager, fileStore: FileStore,
-    adbService: ADBService, history: CaptureHistory
+    adbService: ADBService, history: CaptureHistory, configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] }
   ) {
     self.captureServices = captureServices
     self.deviceManager = deviceManager
     self.fileStore = fileStore
     self.adbService = adbService
+    self.configuredServerIDs = configuredServerIDs
     self.history = history
   }
 
@@ -27,7 +29,7 @@ final class CaptureWorkspaces {
       capture: CapturePaneSession(
         services: captureServices, devices: deviceManager, fileStore: fileStore, history: history
       ),
-      tools: ToolSession(adbService: adbService, deviceManager: deviceManager),
+      tools: ToolSession(adbService: adbService, deviceManager: deviceManager, configuredServerIDs: configuredServerIDs),
       workspace: WorkspaceLayoutController(snapshot: initialWorkspace)
     )
     sessions.add(session)

@@ -1,5 +1,6 @@
 import Dependencies
 import Foundation
+import Observation
 
 struct AppLaunchState: Encodable {
   let pending: Bool
@@ -43,6 +44,8 @@ struct AppToolSnapshot {
 final class AppToolModel {
   var stateChanged: ((AppToolSnapshot) -> Void)?
 
+  private let configuredServerIDs: () -> Set<ADBServerID>
+  private var discoveredApps: [InspectableApp] = []
   private let discover: () async throws -> ToolDiscoverySnapshot
   private let changes: (() async -> AsyncStream<Void>)?
   private let currentDiscovery: (() async -> ToolDiscoverySnapshot)?
@@ -69,12 +72,14 @@ final class AppToolModel {
 
   init(
     preferences: UserDefaults = .standard,
+    configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] },
     discover: @escaping () async throws -> ToolDiscoverySnapshot,
     changes: (() async -> AsyncStream<Void>)? = nil,
     currentDiscovery: (() async -> ToolDiscoverySnapshot)? = nil,
     openApp: @escaping (OpenAppInput) async throws -> Void
   ) {
     self.preferences = preferences
+    self.configuredServerIDs = configuredServerIDs
     self.discover = discover
     self.changes = changes
     self.currentDiscovery = currentDiscovery
@@ -96,6 +101,19 @@ final class AppToolModel {
   func start() -> Task<Void, Never>? {
     guard !running else { return nil }
     running = true
+    reconcileSelection()
+    let configuredServerIDs = configuredServerIDs
+    let initialServerIDs = configuredServerIDs()
+    _ = startWork { [weak self] in
+      var previousServerIDs = initialServerIDs
+      for await serverIDs in Observations({ configuredServerIDs() }) {
+        guard !Task.isCancelled, let self, running else { return }
+        guard serverIDs != previousServerIDs else { continue }
+        previousServerIDs = serverIDs
+        reconcileSelection()
+        publish()
+      }
+    }
     let initialScan = refresh()
     if let changes, let currentDiscovery {
       updatesTask = startWork { [weak self] in
@@ -181,12 +199,18 @@ final class AppToolModel {
       guard discoveryRevision.map({ revision > $0 }) ?? true else { return }
       discoveryRevision = revision
     }
+    discoveredApps = discovery.apps
+    reconcileSelection()
+  }
+
+  private func reconcileSelection() {
     let previous = launchKey
-    selection.reconcile(discovery.apps)
+    selection.reconcile(discoveredApps, serverIDs: configuredServerIDs())
     if previous != launchKey { cancelLaunch() }
   }
 
   func selectApp(_ app: InspectableApp) {
+    guard configuredServerIDs().contains(DeviceID(storedValue: app.deviceId).serverID) else { return }
     let previous = launchKey
     selection.selectApp(app)
     if previous != launchKey { cancelLaunch() }
@@ -194,6 +218,7 @@ final class AppToolModel {
   }
 
   func selectTool(_ app: InspectableApp, option: AppToolOption) {
+    guard configuredServerIDs().contains(DeviceID(storedValue: app.deviceId).serverID) else { return }
     let previous = launchKey
     selection.selectTool(app, option: option)
     if previous != launchKey { cancelLaunch() }

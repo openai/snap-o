@@ -5,6 +5,10 @@ import Observation
 @MainActor
 final class ADBServers {
   private(set) var profiles: [RemoteADBServer]
+  var configuredServerIDs: Set<ADBServerID> {
+    Set([.local] + profiles.map { .remote($0.id) })
+  }
+
   private(set) var snapshots: [ADBServerSnapshot] = []
   private(set) var updatingServerID: UUID?
   var isUpdating: Bool {

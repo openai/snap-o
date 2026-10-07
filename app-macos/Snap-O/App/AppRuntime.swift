@@ -54,10 +54,11 @@ final class AppRuntime {
     let deviceManager = DeviceManager(
       adb: adbService, deviceTracker: deviceTracker, client: hostClient, remoteServerLabels: remoteServerLabels
     )
-    adbServers = ADBServers(
+    let adbServers = ADBServers(
       service: adbService, store: serverStore, profiles: profiles, error: serverError,
       makeTracker: ADBServerConnection.tracker
     ) { deviceManager.updateRemoteServerLabels($0) }
+    self.adbServers = adbServers
     let captureHistory = CaptureHistory()
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
     let fileStore = FileStore(frameExportHandler: recordFrame)
@@ -102,8 +103,9 @@ final class AppRuntime {
     )
     self.captureServices = captureServices
     workspaces = CaptureWorkspaces(
-      captureServices: captureServices, deviceManager: deviceManager, fileStore: fileStore, adbService: adbService, history: captureHistory
-    )
+      captureServices: captureServices, deviceManager: deviceManager, fileStore: fileStore, adbService: adbService,
+      history: captureHistory
+    ) { adbServers.configuredServerIDs }
   }
 
   func start() {
