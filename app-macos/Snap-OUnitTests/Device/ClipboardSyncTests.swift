@@ -30,6 +30,23 @@ struct ClipboardSyncTests {
   }
 
   @MainActor
+  @Test(arguments: ["Shared text", "Unicode 📋\n第二行"])
+  func matchingStartupTextIsNotRewritten(text: String) {
+    let pasteboard = TextPasteboardDouble()
+    pasteboard.replaceText(text)
+    let originalCount = pasteboard.changeCount
+    let sync = makeSync(pasteboard)
+    #expect(sync.synchronizeInitialClipboard(with: text) == nil)
+    sync.receive(text)
+    #expect(pasteboard.changeCount == originalCount)
+    // A skipped write must still allow subsequent device copies.
+    sync.receive("New device copy")
+    #expect(pasteboard.text == "New device copy")
+    let reconnected = makeSync(pasteboard)
+    #expect(reconnected.synchronizeInitialClipboard(with: "New device copy") == nil)
+  }
+
+  @MainActor
   private func makeSync(_ pasteboard: TextPasteboardDouble) -> ClipboardSync {
     let defaults = UserDefaults(suiteName: "ClipboardSyncTests." + UUID().uuidString)!
     return ClipboardSync(settings: AppSettings(defaults: defaults), pasteboard: pasteboard) { _, _ in

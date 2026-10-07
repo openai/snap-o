@@ -14,9 +14,11 @@ ends the helper. There is no network listener or persistent service.
 In clipboard mode, the helper only reads and writes plain text. It registers an Android clipboard listener and sends
 changes to the Mac. Host writes suppress their corresponding notification. The desktop shares
 initial clipboard handling, limits, and feedback-loop prevention with emulator sync.
+The desktop skips the initial host write when Android already has the same text.
 It starts the helper only while Live Preview is visible and the saved Sync clipboard setting is on.
 On Android 13+, host writes include the same per-clip overlay suppression flag as Android Studio.
-This hides the bottom clipboard preview without changing the device's global settings or read-access toasts.
+Android uses this flag to hide the bottom clipboard preview without changing global settings or read-access toasts.
+Waydroid's host clipboard bridge can discard the flag, so new host writes may still show the preview.
 
 Framework initialization and the `ClipboardManager` constructor use reflection. The clipboard context
 uses the shell's operation package so Android can validate its UID. Android or OEM changes may make
