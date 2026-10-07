@@ -40,6 +40,32 @@ struct RemoteADBTests {
     await #expect(throws: (any Error).self) { try await client.makeConnection(maxAttempts: 1) }
   }
 
+  @Test(arguments: [false, true])
+  func legacyMetadataUsesRemoteTransportAndRawSerial(http: Bool) async throws {
+    let body = http
+      ? #"{"protocolVersion":5,"packageName":"com.example.demo","name":"Demo"}"#
+      : #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo",""#
+      + #"processName":"com.example.demo","pid":42}}"#
+    let response = http ? "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body : body + "\n"
+    let local = ScriptedADBConnection()
+    let remote = ScriptedADBConnection(reads: [.data(Data(response.utf8)), .end])
+    let server = Server(id: serverID, connection: remote)
+    let target = DeviceTarget(serial: "emulator-5554", transportID: "7", server: server)
+    let client = ADBClient(discoveryTimeout: .seconds(2)) { local }.bound(to: target)
+    let kind: ToolID = http ? .tweaks : .network
+    let reference = ToolServerReference(deviceId: target.deviceID.storedValue, socketName: "snapo_\(kind.rawValue)_42")
+    #expect(reference.deviceId != target.serial)
+    let metadata = try await client.legacyPluginMetadata(
+      deviceID: target.serial, socketName: reference.socketName, kind: kind, pid: 42
+    )
+    #expect(metadata?.packageName == "com.example.demo")
+    #expect(metadata?.protocolVersion == (http ? 5 : 1))
+    #expect(remote.commands == ["host:transport-id:7", "localabstract:" + reference.socketName])
+    #expect(String(data: remote.written, encoding: .utf8) == LegacyPluginReader.request(kind: kind))
+    #expect(remote.isClosed)
+    #expect(local.commands.isEmpty)
+  }
+
   @Test
   func closedServerRejectsNewSockets() throws {
     let tracking = ScriptedADBConnection()
@@ -75,6 +101,89 @@ struct RemoteADBTests {
     #expect(await local.stopped)
     #expect(await remote.stopped)
     #expect(await iterator.next() == nil)
+  }
+
+  @Test(arguments: [false, true])
+  func initializedInventorySurvivesServerRemovalAndReplacement(replace: Bool) async throws {
+    let local = Tracker()
+    let old = Tracker()
+    let replacement = Tracker()
+    let service = ADBService(trackers: [(.local, local), (serverID, old)])
+    var preview = await service.previewDeviceStream().makeAsyncIterator()
+    var ready = await service.deviceStream().makeAsyncIterator()
+    await service.startTracking()
+    let original = device(serverID: serverID)
+    await old.publish([original])
+    #expect(await preview.next() == [original])
+    await old.publishReady([original])
+    #expect(await ready.next() == [original])
+
+    // Local discovery stays pending while the only initialized server disappears.
+    try await service.replaceRemote(serverID, tracker: replace ? replacement : nil)
+    #expect(await preview.next() == [])
+    #expect(await ready.next() == [])
+    var latePreview = await service.previewDeviceStream().makeAsyncIterator()
+    var lateReady = await service.deviceStream().makeAsyncIterator()
+    #expect(await latePreview.next() == [])
+    #expect(await lateReady.next() == [])
+
+    if replace {
+      let fresh = device(serverID: serverID)
+      await replacement.publish([fresh])
+      #expect(await preview.next() == [fresh])
+      await replacement.publishReady([fresh])
+      #expect(await ready.next() == [fresh])
+    }
+    await service.stopTracking()
+  }
+
+  @Test
+  func removingUninitializedServerDoesNotCompleteDiscovery() async throws {
+    let service = ADBService(trackers: [(.local, Tracker()), (serverID, Tracker())])
+    var preview = await service.previewDeviceStream().makeAsyncIterator()
+    var ready = await service.deviceStream().makeAsyncIterator()
+    await service.startTracking()
+    try await service.replaceRemote(serverID, tracker: nil)
+    await service.stopTracking()
+    #expect(await preview.next() == nil)
+    #expect(await ready.next() == nil)
+  }
+
+  @Test
+  func previewInitializationDoesNotInitializeReadyInventory() async throws {
+    let remote = Tracker()
+    let service = ADBService(trackers: [(serverID, remote)])
+    var preview = await service.previewDeviceStream().makeAsyncIterator()
+    var ready = await service.deviceStream().makeAsyncIterator()
+    await service.startTracking()
+    let original = device(serverID: serverID)
+    await remote.publish([original])
+    #expect(await preview.next() == [original])
+    try await service.replaceRemote(serverID, tracker: nil)
+    #expect(await preview.next() == [])
+    var lateReady = await service.deviceStream().makeAsyncIterator()
+    await service.stopTracking()
+    #expect(await ready.next() == nil)
+    #expect(await lateReady.next() == nil)
+  }
+
+  @Test
+  func readyInventoryDropsDisconnectedTargetsBeforeMetadataCatchesUp() async {
+    let remote = Tracker()
+    let service = ADBService(trackers: [(serverID, remote)])
+    var preview = await service.previewDeviceStream().makeAsyncIterator()
+    var ready = await service.deviceStream().makeAsyncIterator()
+    await service.startTracking()
+    let original = device(serverID: serverID)
+    await remote.publish([original])
+    #expect(await preview.next() == [original])
+    await remote.publishReady([original])
+    #expect(await ready.next() == [original])
+    await remote.publish([])
+    #expect(await ready.next() == [])
+    var lateReady = await service.deviceStream().makeAsyncIterator()
+    #expect(await lateReady.next() == [])
+    await service.stopTracking()
   }
 
   @Test
@@ -316,6 +425,10 @@ struct RemoteADBTests {
 
     func publish(_ devices: [Device]) {
       connected.continuation.yield(devices)
+    }
+
+    func publishReady(_ devices: [Device]) {
+      ready.continuation.yield(devices)
     }
 
     func stopTracking() {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct ADBServerSnapshot {
+struct ADBServerSnapshot: Equatable {
   let id: ADBServerID
   var state: ADBServerState = .connecting
   var inventory = DeviceInventory()
@@ -14,9 +14,17 @@ actor ADBService: DeviceTracking {
   private var generations: [ADBServerID: UUID] = [:]
   private var revisions: [ADBServerID: UUID] = [:]
   private var retiring: [UUID: Task<Void, Never>] = [:]
+  // Discovery initialization belongs to this service, not its current server membership.
+  private var hasConnectedInventory = false
+  private var hasReadyInventory = false
   private var hasStarted = false
   private var shutdownTask: Task<Void, Never>?
-  private var observers: [UUID: AsyncStream<[ADBServerSnapshot]>.Continuation] = [:]
+  private var observers: [UUID: AsyncStream<Snapshot>.Continuation] = [:]
+
+  private struct Snapshot {
+    let servers: [ADBServerSnapshot]
+    let inventory: DeviceInventory
+  }
 
   init(trackers: [(ADBServerID, any DeviceTracking)] = []) {
     self.trackers = trackers
@@ -93,8 +101,12 @@ actor ADBService: DeviceTracking {
   }
 
   func snapshots() -> AsyncStream<[ADBServerSnapshot]> {
+    mapSnapshots { $0.servers }
+  }
+
+  private func observeSnapshots() -> AsyncStream<Snapshot> {
     let id = UUID()
-    let (stream, continuation) = AsyncStream<[ADBServerSnapshot]>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    let (stream, continuation) = AsyncStream<Snapshot>.makeStream(bufferingPolicy: .bufferingNewest(1))
     guard shutdownTask == nil else {
       continuation.finish()
       return stream
@@ -105,18 +117,27 @@ actor ADBService: DeviceTracking {
     return stream
   }
 
-  private var snapshot: [ADBServerSnapshot] {
-    trackers.compactMap { servers[$0.0] }
+  private var snapshot: Snapshot {
+    let current = trackers.compactMap { servers[$0.0] }
+    let connected = hasConnectedInventory ? current.flatMap { $0.inventory.connected ?? [] } : nil
+    let ready = hasReadyInventory ? current.flatMap { server in
+      (server.inventory.ready ?? []).filter { device in
+        server.inventory.connected?.contains { $0.connection == device.connection } == true
+      }
+    } : nil
+    return Snapshot(servers: current, inventory: DeviceInventory(connected: connected, ready: ready))
   }
 
   private func update(_ id: ADBServerID, generation: UUID, connected: [Device]) {
     guard shutdownTask == nil, generations[id] == generation else { return }
+    hasConnectedInventory = true
     servers[id]?.inventory.connected = connected
     publish()
   }
 
   private func update(_ id: ADBServerID, generation: UUID, ready: [Device]) {
     guard shutdownTask == nil, generations[id] == generation else { return }
+    hasReadyInventory = true
     servers[id]?.inventory.ready = ready
     publish()
   }
@@ -139,32 +160,22 @@ actor ADBService: DeviceTracking {
   }
 
   func previewDeviceStream() -> AsyncStream<[Device]> {
-    mapSnapshots { servers in
-      guard servers.contains(where: { $0.inventory.connected != nil }) else { return nil }
-      return servers.flatMap { $0.inventory.connected ?? [] }
-    }
+    mapSnapshots { $0.inventory.connected }
   }
 
   func deviceStream() -> AsyncStream<[Device]> {
-    mapSnapshots { servers in
-      guard servers.contains(where: { $0.inventory.ready != nil }) else { return nil }
-      return servers.flatMap { server in
-        (server.inventory.ready ?? []).filter { device in
-          server.inventory.connected?.contains { $0.connection == device.connection } == true
-        }
-      }
-    }
+    mapSnapshots { $0.inventory.ready }
   }
 
   /// Existing local recovery controls describe only the built-in local server.
   func serverStateStream() -> AsyncStream<ADBServerState> {
-    mapSnapshots { $0.first { $0.id == .local }?.state }
+    mapSnapshots { $0.servers.first { $0.id == .local }?.state }
   }
 
   private func mapSnapshots<Value: Sendable & Equatable>(
-    _ transform: @escaping @Sendable ([ADBServerSnapshot]) -> Value?
+    _ transform: @escaping @Sendable (Snapshot) -> Value?
   ) -> AsyncStream<Value> {
-    let source = snapshots()
+    let source = observeSnapshots()
     return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
       let task = Task {
         var previous: Value?

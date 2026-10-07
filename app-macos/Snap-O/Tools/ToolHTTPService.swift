@@ -344,7 +344,9 @@ actor ToolHTTPService {
 
   private func loadLegacyMetadata(socket: DiscoveredPluginSocket, target: DeviceTarget, using adb: ADBClient) async {
     let key = socket.reference.key
-    let metadata = try? await adb.legacyPluginMetadata(reference: socket.reference, kind: socket.kind, pid: socket.pid)
+    let metadata = try? await adb.legacyPluginMetadata(
+      deviceID: target.serial, socketName: socket.reference.socketName, kind: socket.kind, pid: socket.pid
+    )
     guard !Task.isCancelled, !isStopped, target.isValid, discoveredKeys.contains(key),
           var app = knownApps[key], app.target == target, app.socketInode == socket.inode else { return }
     legacyTasks[key] = nil

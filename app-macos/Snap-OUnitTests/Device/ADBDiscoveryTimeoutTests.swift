@@ -155,7 +155,7 @@ struct ADBDiscoveryTimeoutTests {
     let client = ADBClient(discoveryTimeout: .seconds(2)) { connection }
     let kind = http ? "tweaks" : "network"
     let metadata = try await client.legacyPluginMetadata(
-      reference: ToolServerReference(deviceId: "phone", socketName: "snapo_\(kind)_42"),
+      deviceID: "phone", socketName: "snapo_\(kind)_42",
       kind: ToolID(rawValue: kind), pid: 42
     )
     #expect(metadata?.protocolVersion == (http ? 5 : 1))
@@ -171,7 +171,7 @@ struct ADBDiscoveryTimeoutTests {
       return connection
     }
     let metadata = try await client.legacyPluginMetadata(
-      reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"), pid: 42
+      deviceID: "phone", socketName: "snapo_network_42", kind: ToolID(rawValue: "network"), pid: 42
     )
     #expect(metadata == nil)
     #expect(attempts.value == 1)
@@ -186,7 +186,7 @@ struct ADBDiscoveryTimeoutTests {
     let client = ADBClient(discoveryTimeout: .seconds(2)) { connection }
     let task = Task {
       try await client.legacyPluginMetadata(
-        reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"), pid: 42
+        deviceID: "phone", socketName: "snapo_network_42", kind: ToolID(rawValue: "network"), pid: 42
       )
     }
     defer { task.cancel() }

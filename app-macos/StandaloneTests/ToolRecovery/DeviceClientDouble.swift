@@ -203,7 +203,8 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func legacyPluginMetadata(
-    reference: ToolServerReference,
+    deviceID: String,
+    socketName: String,
     kind: ToolID,
     pid: Int
   ) async throws -> LegacyPluginMetadata? {

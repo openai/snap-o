@@ -439,19 +439,19 @@ public struct ADBClient: Sendable {
   }
 
   public func legacyPluginMetadata(
-    reference: ToolServerReference, kind: ToolID, pid: Int
+    deviceID: String, socketName: String, kind: ToolID, pid: Int
   ) async throws -> LegacyPluginMetadata? {
-    guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)",
+    guard pid > 0, socketName == "snapo_\(kind.rawValue)_\(pid)",
           let request = LegacyPluginReader.request(kind: kind) else { return nil }
     try Task.checkCancellation()
     let clock = AnyClock<Duration>(self.clock)
     do {
       return try await withConnection(maxAttempts: 1) { connection in
         try connection.withRequestTimeout(.seconds(2)) {
-          try connection.sendTransport(to: reference.deviceId)
-          try connection.sendLocalAbstract(reference.socketName)
+          try connection.sendTransport(to: deviceID)
+          try connection.sendLocalAbstract(socketName)
           let deadline = clock.now.advanced(by: .seconds(2))
-          try connection.writeLine(String(request.dropLast()))
+          try connection.writeFully(Data(request.utf8))
           let http = request.hasPrefix("GET ")
           var bytes = Data()
           while true {
