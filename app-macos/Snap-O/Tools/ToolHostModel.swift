@@ -119,6 +119,7 @@ final class ToolHostModel {
 
   init(
     service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil,
+    configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] },
     makeContainer: @escaping @MainActor (ToolWebBridge, UUID?, URL?) -> any ToolPageContainer = {
       ToolWebContainer(bridge: $0, storageIdentifier: $1, developmentURL: $2)
     }
@@ -127,7 +128,7 @@ final class ToolHostModel {
     self.service = service
     self.preferences = preferences
     let appTool = appTool ?? AppToolModel(
-      preferences: preferences,
+      preferences: preferences, configuredServerIDs: configuredServerIDs,
       discover: { try await service.discoverPlugins() },
       changes: { await service.changes() },
       currentDiscovery: { await service.currentPlugins() },

@@ -273,7 +273,7 @@ final class CaptureWorkspaces {
   private let probe = RuntimeTestEnvironment.probe
   init(
     captureServices: CaptureServices, deviceManager: DeviceManager, fileStore: FileStore,
-    adbService: ADBService, history: CaptureHistory
+    adbService: ADBService, history: CaptureHistory, configuredServerIDs: @escaping () -> Set<ADBServerID>
   ) {}
   func beginShutdown() -> Task<Void, Never> {
     Task { await probe.finish(.workspaces) }
@@ -317,6 +317,7 @@ enum ADBServerConnection {
 
 @MainActor
 final class ADBServers {
+  let configuredServerIDs: Set<ADBServerID>
   init(
     service: ADBService,
     store: ADBServerStore,
@@ -324,7 +325,10 @@ final class ADBServers {
     error: String?,
     makeTracker: (RemoteADBServer) -> any DeviceTracking,
     updateLabels: ([ADBServerID: String]) -> Void
-  ) {}
+  ) {
+    configuredServerIDs = Set([.local] + profiles.map { .remote($0.id) })
+  }
+
   func start() {}
   func beginShutdown() {}
   func stop() async {}
