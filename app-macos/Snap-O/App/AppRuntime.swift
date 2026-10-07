@@ -6,7 +6,7 @@ import Observation
 final class AppRuntime {
   let deviceManager: DeviceManager
   let adbService: ADBService
-  private let deviceTracker: DeviceTracker
+  private let deviceTracker: any DeviceTracking
   let fileStore: FileStore
   private let captureServices: CaptureServices
   let workspaces: CaptureWorkspaces
@@ -34,16 +34,34 @@ final class AppRuntime {
   private var shutdownTask: Task<Void, Never>?
 
   init() {
-    let adbService = ADBService()
     let hostClient = AndroidHostClient()
-    let deviceTracker = DeviceTracker(adbService: adbService) {
-      do {
-        try await hostClient.ensureADBServerRunning()
-      } catch {
-        SnapOLog.tracker.error("Could not start ADB: \(error.localizedDescription, privacy: .public)")
-        throw error
-      }
-    }
+    let localTracker = DeviceTracker(connect: { ADBClient() }, recoverADBServer: {
+      try await hostClient.ensureADBServerRunning()
+    })
+    var trackers: [(ADBServerID, any DeviceTracking)] = [(.local, localTracker)]
+    #if DEBUG
+    // Temporary testing configuration; replace with saved profiles when adding the server editor.
+    let remote = RemoteADBServer(
+      id: UUID(uuid: (0xF0, 0xEB, 0x33, 0xDE, 0xA1, 0x50, 0x43, 0xBD, 0xB1, 0x34, 0xC2, 0x23, 0x1A, 0x08, 0x3B, 0x6D)),
+      ssh: SSHConfiguration(destination: "android-devbox-b")
+    )
+    let tunnelHost = AndroidHostClient()
+    let connection = ADBServerConnection(
+      configuration: remote,
+      openTunnel: { try await tunnelHost.openADBTunnel(id: $0, configuration: $1) },
+      socketFactory: { tunnelHost.tunnelSocketFactory(id: $0) },
+      closeTunnel: { await tunnelHost.closeADBTunnel(id: $0) },
+      disconnect: { tunnelHost.close() }
+    )
+    let remoteTracker = DeviceTracker(
+      connect: { try await connection.client() },
+      disconnect: { await connection.close() },
+      retriesWithBackoff: true
+    )
+    trackers.append((.remote(remote.id), remoteTracker))
+    #endif
+    let adbService = ADBService(trackers: trackers)
+    let deviceTracker = adbService
     let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker, client: hostClient)
     let captureHistory = CaptureHistory()
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
@@ -51,8 +69,8 @@ final class AppRuntime {
     let captureCoordinator = CaptureCoordinator()
     let startRecording: RecordingCapture.StartRecording = { device, bugReport in
       let target = try device.requireConnection()
-      if EmulatorGRPCEndpoint.isEmulator(device.id) || bugReport {
-        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.id, bugReport: bugReport)
+      if device.isLocalEmulator || bugReport {
+        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.serial, bugReport: bugReport)
         return ADBScreenRecording(session: session, adb: adbService)
       }
       return try await NativeScreenRecording.start(target: target)

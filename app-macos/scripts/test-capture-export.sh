@@ -9,7 +9,7 @@ cd "$APP_DIR"
 . "$APP_DIR/scripts/test-swift-packages.sh"
 
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift \
+  Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Models/Device+Formatting.swift \
   Snap-O/Models/Media.swift Snap-O/Capture/Export/VideoFileClient.swift Snap-O/Capture/Export/CaptureExportRequest.swift Snap-O/Capture/CaptureMedia.swift \
   Snap-O/Storage/StagedFileExport.swift \
   Snap-O/Capture/Review/CaptureTrimRange.swift \

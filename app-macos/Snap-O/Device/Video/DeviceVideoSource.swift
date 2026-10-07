@@ -15,7 +15,7 @@ final class DeviceVideoHub {
   private var sessions: [DeviceTarget: DeviceVideoStream] = [:]
 
   init(makeSource: @escaping (DeviceTarget) -> any LivePreviewFrameSource = { target in
-    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+    if target.isLocalEmulator {
       EmulatorPreviewFrameSource(target: target)
     } else {
       DeviceVideoConnection(target: target)

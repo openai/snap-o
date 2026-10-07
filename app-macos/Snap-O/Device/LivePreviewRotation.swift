@@ -19,7 +19,7 @@ final class LivePreviewRotation {
     }, readRotation: {
       try await client.displayRotation(deviceID: target.serial).rawValue
     })
-    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+    if target.isLocalEmulator {
       rotateEmulator = { left in try await EmulatorRotationClient.rotate(target: target, left: left) }
     }
   }

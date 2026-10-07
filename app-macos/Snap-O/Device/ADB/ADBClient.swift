@@ -4,10 +4,11 @@ import Foundation
 public struct ADBClient: Sendable {
   @Dependency(\.continuousClock)
   private var clock
-  private let connectionFactory: @Sendable () throws -> any ADBConnection
+  private var connectionFactory: @Sendable () throws -> any ADBConnection
   private let discoveryTimeout: Duration
   private var requestTimeout: Duration?
   private var target: DeviceTarget?
+  private var serverID: ADBServerID = .local
   private static let recordingCommandTimeout: Duration = .seconds(3)
   private static let recordingDownloadIdleTimeout: Duration = .seconds(5)
 
@@ -20,7 +21,17 @@ public struct ADBClient: Sendable {
   func bound(to target: DeviceTarget) -> ADBClient {
     var client = self
     client.target = target
+    if let server = target.server {
+      client.connectionFactory = { try server.makeOperationConnection() }
+      client.serverID = server.serverID
+    }
     return client
+  }
+
+  init(serverID: ADBServerID, connectionFactory: @escaping @Sendable () throws -> any ADBConnection) {
+    self.serverID = serverID
+    self.connectionFactory = connectionFactory
+    discoveryTimeout = .seconds(3)
   }
 
   // MARK: - Public entry points
@@ -252,7 +263,7 @@ public struct ADBClient: Sendable {
       }
     }
 
-    let server = ADBServerSession(tracking: connection, timeout: discoveryTimeout, connectionFactory: connectionFactory)
+    let server = ADBServerSession(tracking: connection, timeout: discoveryTimeout, serverID: serverID, connectionFactory: connectionFactory)
     let stream = AsyncThrowingStream<String, Error> { continuation in
       let streamTask = Task.detached(priority: .userInitiated) {
         defer { server.close() }
@@ -560,7 +571,12 @@ public struct ADBClient: Sendable {
 
       do {
         if let target { _ = try target.requireTransport(for: target.serial) }
-        let connection = try connectionFactory()
+        let factory = connectionFactory
+        let connection = try await withCheckedThrowingContinuation { continuation in
+          DispatchQueue.global(qos: .userInitiated).async {
+            continuation.resume(with: Result { try factory() })
+          }
+        }
         do {
           if let target { try connection.bind(to: target) }
           let value = try await withTaskCancellationHandler {

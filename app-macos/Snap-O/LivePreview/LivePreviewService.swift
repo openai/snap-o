@@ -95,7 +95,7 @@ final class LivePreviewService {
     let attachment = attach(to: target)
     guard !attachment.isClosed else { return attachment }
     attachment.user.fileDrop = makeFileDrop(device)
-    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+    if target.isLocalEmulator {
       attachment.user.emulatorControls = makeEmulatorControls(target)
     }
     return attachment
@@ -543,7 +543,7 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     try await service.request(user: user, isInput: true) { [user] in
       guard let owner = user.entry.owner else { throw CancellationError() }
       try await owner.rotation.rotate(left: left)
-      if !EmulatorGRPCEndpoint.isEmulator(owner.target.serial) { owner.video.restart() }
+      if !owner.target.isLocalEmulator { owner.video.restart() }
     }
   }
 

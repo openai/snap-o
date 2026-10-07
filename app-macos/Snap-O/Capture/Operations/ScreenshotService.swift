@@ -21,8 +21,8 @@ struct ScreenshotService {
   private func captureImage(device: Device) async throws -> CaptureMedia {
     let target = try device.requireConnection()
     let exec = await adb.exec().bound(to: target)
-    async let dataTask = exec.screencapPNG(deviceID: device.id)
-    async let densityTask = try? await exec.displayDensity(deviceID: device.id)
+    async let dataTask = exec.screencapPNG(deviceID: device.serial)
+    async let densityTask = try? await exec.displayDensity(deviceID: device.serial)
     let data = try await dataTask
     let capturedAt = await timestampSource.next()
     let destination = fileStore.makePreviewDestination(

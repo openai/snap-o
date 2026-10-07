@@ -301,7 +301,7 @@ final class RecordingCapture: CaptureBatch {
     guard info.isPlayable, info.duration > 0 else { throw invalidRecording }
     var density: CGFloat?
     if let target = try? device.requireConnection() {
-      let value = try? await adb.exec().bound(to: target).withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
+      let value = try? await adb.exec().bound(to: target).withTimeout(.seconds(3)).displayDensity(deviceID: device.serial)
       density = value.map { CGFloat($0) }
     }
     return CaptureMedia(device: device, media: .video(

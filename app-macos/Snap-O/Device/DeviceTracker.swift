@@ -3,8 +3,10 @@ import Foundation
 
 private let log = SnapOLog.tracker
 
-actor DeviceTracker {
-  private let adbService: ADBService
+actor DeviceTracker: DeviceTracking {
+  private let connect: @Sendable () async throws -> ADBClient
+  private let disconnect: @Sendable () async -> Void
+  private let retriesWithBackoff: Bool
   private let recoverADBServer: @Sendable () async throws -> Void
   @Dependency(\.continuousClock)
   private var clock
@@ -77,7 +79,21 @@ actor DeviceTracker {
   private var hasSeenFirstMessage: Bool = false
 
   init(adbService: ADBService, recoverADBServer: @escaping @Sendable () async throws -> Void = {}) {
-    self.adbService = adbService
+    connect = { await adbService.exec() }
+    disconnect = {}
+    retriesWithBackoff = false
+    self.recoverADBServer = recoverADBServer
+  }
+
+  init(
+    connect: @escaping @Sendable () async throws -> ADBClient,
+    disconnect: @escaping @Sendable () async -> Void = {},
+    retriesWithBackoff: Bool = false,
+    recoverADBServer: @escaping @Sendable () async throws -> Void = {}
+  ) {
+    self.connect = connect
+    self.disconnect = disconnect
+    self.retriesWithBackoff = retriesWithBackoff
     self.recoverADBServer = recoverADBServer
   }
 
@@ -192,6 +208,7 @@ actor DeviceTracker {
       for task in pending {
         await task.value
       }
+      await disconnect()
     }
     stoppingTask = task
     await task.value
@@ -226,25 +243,32 @@ actor DeviceTracker {
     #if PERF_TRACING
     Perf.startupEvent("tracker loop entered")
     #endif
-    @inline(__always)
-    func pause() async {
-      try? await clock.sleep(for: .milliseconds(300))
+    var failures = 0
+    func pause(_ failures: Int) async {
+      let delay: Duration = retriesWithBackoff ? .seconds(min(15, 1 << min(failures, 4))) : .milliseconds(300)
+      try? await clock.sleep(for: delay)
     }
 
     var attemptedRecovery = false
     while !Task.isCancelled {
-      let exec = await adbService.exec()
-      guard let (handle, stream) = try? await exec.trackDevices() else {
+      let exec: ADBClient
+      let handle: TrackDevicesHandle
+      let stream: AsyncThrowingStream<String, Error>
+      do {
+        exec = try await connect()
+        (handle, stream) = try await exec.trackDevices()
+      } catch {
         if Task.isCancelled { break }
         await handleTrackingInterruption()
+        await disconnect()
         if Task.isCancelled { break }
-        if !attemptedRecovery {
+        if !attemptedRecovery, !retriesWithBackoff {
           attemptedRecovery = true
           await attemptRecovery()
-        } else if serverState == .connecting {
-          updateServerState(.unavailable("Could not connect to the local ADB server."))
         }
-        await pause()
+        updateServerState(.unavailable(error.localizedDescription))
+        await pause(failures)
+        failures += 1
         continue
       }
 
@@ -254,6 +278,7 @@ actor DeviceTracker {
         for try await payload in stream {
           if Task.isCancelled { break }
           attemptedRecovery = false
+          failures = 0
           updateServerState(.online)
           let devices = payload.split(separator: "\n").compactMap(parseDeviceRow).map { row in
             Device(
@@ -267,7 +292,7 @@ actor DeviceTracker {
               connection: target(for: row.id, transportID: row.fields["transport_id"], server: handle.server)
             )
           }
-          retainTargets(Set(devices.map(\.id)))
+          retainTargets(Set(devices.map(\.serial)))
           broadcastPreview(devices)
           cancelPropertyRequests()
           let requestID = UUID()
@@ -282,8 +307,11 @@ actor DeviceTracker {
       } catch {
         // Failed reads reconnect through the same path as a closed stream.
       }
+      handle.cancel()
       await handleTrackingInterruption()
-      await pause()
+      await disconnect()
+      await pause(failures)
+      failures += 1
     }
   }
 

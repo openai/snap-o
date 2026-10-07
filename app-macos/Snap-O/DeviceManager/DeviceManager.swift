@@ -51,7 +51,7 @@ final class DeviceManager {
     )
   }
 
-  @ObservationIgnored private let deviceTracker: DeviceTracker
+  @ObservationIgnored private let deviceTracker: any DeviceTracking
   @ObservationIgnored private let adb: ADBService
   @ObservationIgnored private let client: AndroidHostClient
   @ObservationIgnored private var actionTasks: [String: Task<Void, Never>] = [:]
@@ -59,7 +59,7 @@ final class DeviceManager {
   private var bootConnections: [EmulatorConnection] = []
   private var inventoryConnections: [EmulatorConnection] = []
 
-  init(adb: ADBService, deviceTracker: DeviceTracker, client: AndroidHostClient = AndroidHostClient()) {
+  init(adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient = AndroidHostClient()) {
     self.adb = adb
     self.deviceTracker = deviceTracker
     self.client = client
@@ -187,7 +187,7 @@ final class DeviceManager {
 
   private func matchEmulators(in devices: [Device]) {
     guard observationTask != nil else { return }
-    let connections = devices.filter { EmulatorGRPCEndpoint.isEmulator($0.id) }.map {
+    let connections = devices.filter(\.isLocalEmulator).map {
       EmulatorConnection(serial: $0.id, transportID: $0.transportID, state: .starting)
     }.sorted { $0.serial < $1.serial }
     guard connections != trackedConnections else { return }
@@ -255,7 +255,7 @@ final class DeviceManager {
   }
 
   private func resolveName(_ device: Device) -> Device {
-    guard device.id.hasPrefix("emulator-") else { return device }
+    guard device.isLocalEmulator else { return device }
     let connection = inventoryConnections.first { $0.serial == device.id && $0.transportID == device.transportID }
     let emulator = emulators.first { $0.avdName.replacingOccurrences(of: "_", with: " ") == device.avdName }
       ?? emulators.first { connection != nil && $0.serial == device.id }

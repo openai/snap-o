@@ -227,7 +227,7 @@ actor ToolHTTPService {
   func endpoint(for reference: ToolServerReference) async throws -> Endpoint {
     let connection = try connection(for: reference)
     let adb = await adbService.exec().bound(to: connection.target)
-    _ = try connection.target.requireTransport(for: reference.deviceId)
+    _ = try connection.target.requireTransport(for: connection.target.serial)
     return Endpoint(id: connection.id, reference: reference, adb: adb, target: connection.target)
   }
 
@@ -373,7 +373,7 @@ actor ToolHTTPService {
       let adb = await adbService.exec().bound(to: connection.target)
       let input = try ToolHTTPRequestInput(request: request)
       let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .seconds(2)) {
-        try await adb.openLocalAbstract(deviceID: connection.reference.deviceId, abstractSocket: connection.reference.socketName)
+        try await adb.openLocalAbstract(deviceID: connection.target.serial, abstractSocket: connection.reference.socketName)
       }
       try await operation.run(onResponse: { response in
         guard (200 ... 299).contains(response.status.code) else { throw ToolHTTPTransportError.invalidResponse }

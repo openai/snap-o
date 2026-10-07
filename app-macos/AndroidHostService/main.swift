@@ -1,13 +1,43 @@
 import Foundation
 
+final class AndroidHostResources: @unchecked Sendable {
+  let worker = DispatchQueue(label: "com.openai.snapo.emulators")
+  // Preview startup must not wait for SDK scans or emulator start/stop commands.
+  let endpointWorker = DispatchQueue(label: "com.openai.snapo.emulator-endpoints", qos: .userInitiated)
+  let adbWorker = DispatchQueue(label: "com.openai.snapo.adb")
+  let host = EmulatorHost()
+  let discovery = EmulatorGRPCDiscovery()
+}
+
 /// Inventory, endpoint discovery, and ADB startup each have their own serial queue.
 final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
-  private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
-  // Preview startup must not wait for SDK scans or emulator start/stop commands.
-  private let endpointWorker = DispatchQueue(label: "com.openai.snapo.emulator-endpoints", qos: .userInitiated)
-  private let adbWorker = DispatchQueue(label: "com.openai.snapo.adb")
-  private let host = EmulatorHost()
-  private let discovery = EmulatorGRPCDiscovery()
+  private let resources: AndroidHostResources
+  private let tunnels = ADBTunnelHost()
+  private var worker: DispatchQueue {
+    resources.worker
+  }
+
+  private var endpointWorker: DispatchQueue {
+    resources.endpointWorker
+  }
+
+  private var adbWorker: DispatchQueue {
+    resources.adbWorker
+  }
+
+  private var host: EmulatorHost {
+    resources.host
+  }
+
+  private var discovery: EmulatorGRPCDiscovery {
+    resources.discovery
+  }
+
+  init(resources: AndroidHostResources = AndroidHostResources()) {
+    self.resources = resources
+    super.init()
+  }
+
   #if !DEBUG
   private let clientRequirement = AndroidHostAuthentication.clientRequirement()
   #endif
@@ -19,9 +49,38 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     connection.setCodeSigningRequirement(clientRequirement)
     #endif
     connection.exportedInterface = AndroidHostInterface.make()
-    connection.exportedObject = self
+    let client = AndroidHostService(resources: resources)
+    connection.exportedObject = client
+    connection.invalidationHandler = { client.tunnels.closeAll() }
     connection.resume()
     return true
+  }
+
+  func openADBTunnel(_ id: String, configuration: Data, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async { [tunnels] in
+      do {
+        let configuration = try JSONDecoder().decode(SSHConfiguration.self, from: configuration)
+        let handle = try tunnels.open(id: id, configuration: configuration)
+        try reply(JSONEncoder().encode(handle), nil)
+      } catch { reply(nil, error.localizedDescription) }
+    }
+  }
+
+  func connectADBTunnel(_ id: String, reply: @escaping @Sendable (FileHandle?, String?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async { [tunnels] in
+      do {
+        let handle = try tunnels.connect(id: id)
+        defer { try? handle.close() }
+        reply(handle, nil)
+      } catch { reply(nil, error.localizedDescription) }
+    }
+  }
+
+  func closeADBTunnel(_ id: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async { [tunnels] in
+      tunnels.close(id: id)
+      reply(Data(), nil)
+    }
   }
 
   func snapshot(_ serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void) {

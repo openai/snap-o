@@ -44,7 +44,26 @@ enum RuntimeTestEnvironment {
 }
 
 @MainActor
-final class ADBService {
+final class ADBService: DeviceTracking {
+  init(trackers: [(ADBServerID, any DeviceTracking)] = []) {}
+  func startTracking() {}
+  func stopTracking() async {
+    await probe.finish(.tracker)
+  }
+
+  func retryADBServer() {}
+  func previewDeviceStream() -> AsyncStream<[Device]> {
+    AsyncStream { $0.finish() }
+  }
+
+  func deviceStream() -> AsyncStream<[Device]> {
+    AsyncStream { $0.finish() }
+  }
+
+  func serverStateStream() -> AsyncStream<ADBServerState> {
+    AsyncStream { $0.finish() }
+  }
+
   private let probe = RuntimeTestEnvironment.probe
   func exec() -> ADBService {
     self
@@ -73,6 +92,8 @@ final class ADBService {
   }
 }
 
+struct ADBClient {}
+
 struct RecordingSession {}
 protocol ScreenRecording: Sendable {}
 struct ADBScreenRecording: ScreenRecording {
@@ -97,9 +118,23 @@ final class AndroidHostClient {
 }
 
 @MainActor
-final class DeviceTracker {
+final class DeviceTracker: DeviceTracking {
+  func startTracking() {}
+  func retryADBServer() {}
+  func previewDeviceStream() -> AsyncStream<[Device]> {
+    AsyncStream { $0.finish() }
+  }
+
+  func deviceStream() -> AsyncStream<[Device]> {
+    AsyncStream { $0.finish() }
+  }
+
+  func serverStateStream() -> AsyncStream<ADBServerState> {
+    AsyncStream { $0.finish() }
+  }
+
   private let probe = RuntimeTestEnvironment.probe
-  init(adbService: ADBService, recoverADBServer: @escaping @Sendable () async throws -> Void) {}
+  init(connect: @escaping @Sendable () async throws -> ADBClient, recoverADBServer: @escaping @Sendable () async throws -> Void) {}
   func stopTracking() async {
     await probe.finish(.tracker)
   }
@@ -115,7 +150,7 @@ final class DeviceManager {
   }
 
   private let probe = RuntimeTestEnvironment.probe
-  init(adb: ADBService, deviceTracker: DeviceTracker, client: AndroidHostClient) {}
+  init(adb: ADBService, deviceTracker: any DeviceTracking, client: AndroidHostClient) {}
   func start() {}
   func shutdown() -> Task<Void, Never> {
     if let shutdownTask { return shutdownTask }

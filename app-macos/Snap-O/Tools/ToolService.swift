@@ -83,7 +83,7 @@ actor ToolService {
     }
     let target = try device.requireConnection()
     let adb = await adbService.exec().bound(to: target)
-    try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName, androidUserID: input.androidUserId)
+    try await adb.openApp(deviceID: target.serial, packageName: input.packageName, androidUserID: input.androidUserId)
   }
 
   func pluginEndpoint(for reference: ToolServerReference) async throws -> ToolHTTPService.Endpoint {
@@ -114,10 +114,10 @@ actor ToolService {
     let helper = (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
       .appending(path: "snapo-tool-reader.jar")
     let bundle = try await adb.pluginFrontend(
-      deviceID: reference.deviceId, socketName: reference.socketName, identity: identity, tool: tool, helperURL: helper
+      deviceID: target.serial, socketName: reference.socketName, identity: identity, tool: tool, helperURL: helper
     )
     guard !Task.isCancelled, !isStopped else { throw CancellationError() }
-    _ = try target.requireTransport(for: reference.deviceId)
+    _ = try target.requireTransport(for: target.serial)
     frontends.removeAll { $0.key == key }
     while frontends.count >= 4 {
       frontends.removeFirst()

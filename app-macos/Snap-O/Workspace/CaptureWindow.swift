@@ -126,7 +126,7 @@ struct CaptureWindow: View {
         } attached: { window in
           session.attach(to: window)
         } thumbnail: { connection in
-          guard let attachment = controller.livePreviewAttachment(for: connection.serial),
+          guard let attachment = controller.livePreviewAttachment(for: connection.deviceID.storedValue),
                 attachment.target == connection else { return nil }
           return attachment.thumbnail
         }
@@ -139,6 +139,8 @@ struct CaptureWindow: View {
       switch request {
       case .serial(let serial):
         return deviceTitle(for: serial)
+      case .device(let id):
+        return deviceTitle(for: id.storedValue)
       case .avd(let name, _):
         return deviceManager.emulators.first { $0.avdName == name }?.title ?? name
       }

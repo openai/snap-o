@@ -182,6 +182,6 @@ struct DeviceManagerWindow: View {
   }
 
   private func showPreview(_ serial: String) {
-    SnapOCommandCoordinator.shared.openDevice(.serial(serial))
+    SnapOCommandCoordinator.shared.openDevice(.device(DeviceID(storedValue: serial)))
   }
 }
