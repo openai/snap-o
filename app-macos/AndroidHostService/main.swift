@@ -1,4 +1,5 @@
 import Foundation
+import XPC
 
 final class AndroidHostResources: @unchecked Sendable {
   let worker = DispatchQueue(label: "com.openai.snapo.emulators")
@@ -51,16 +52,23 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
     connection.exportedInterface = AndroidHostInterface.make()
     let client = AndroidHostService(resources: resources)
     connection.exportedObject = client
-    connection.invalidationHandler = { client.tunnels.closeAll() }
+    connection.invalidationHandler = {
+      // Acquire before starting the task to prevent idle exit while cleanup is pending.
+      xpc_transaction_begin()
+      Task {
+        defer { xpc_transaction_end() }
+        await client.tunnels.closeAll()
+      }
+    }
     connection.resume()
     return true
   }
 
   func openADBTunnel(_ id: String, configuration: Data, reply: @escaping @Sendable (Data?, String?) -> Void) {
-    DispatchQueue.global(qos: .userInitiated).async { [tunnels] in
+    Task(priority: .userInitiated) { [tunnels] in
       do {
         let configuration = try JSONDecoder().decode(SSHConfiguration.self, from: configuration)
-        let handle = try tunnels.open(id: id, configuration: configuration)
+        let handle = try await tunnels.open(id: id, configuration: configuration)
         try reply(JSONEncoder().encode(handle), nil)
       } catch { reply(nil, error.localizedDescription) }
     }
@@ -77,8 +85,8 @@ final class AndroidHostService: NSObject, AndroidHostServiceProtocol, NSXPCListe
   }
 
   func closeADBTunnel(_ id: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
-    DispatchQueue.global(qos: .userInitiated).async { [tunnels] in
-      tunnels.close(id: id)
+    Task(priority: .userInitiated) { [tunnels] in
+      await tunnels.close(id: id)
       reply(Data(), nil)
     }
   }

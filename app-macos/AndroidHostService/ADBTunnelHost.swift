@@ -8,7 +8,7 @@ final class ADBTunnelHost: @unchecked Sendable {
   private var cancelled: Set<String> = []
   private var closed = false
 
-  func open(id: String, configuration: SSHConfiguration) throws -> ADBTunnelHandle {
+  func open(id: String, configuration: SSHConfiguration) async throws -> ADBTunnelHandle {
     try configuration.validate()
     let tunnel = SSHADBTunnel()
     try lock.withLock {
@@ -16,13 +16,13 @@ final class ADBTunnelHost: @unchecked Sendable {
       tunnels[id] = tunnel
     }
     do {
-      try tunnel.start(configuration: configuration)
+      try await tunnel.start(configuration: configuration)
       try lock.withLock {
         guard !closed, !cancelled.contains(id) else { throw CancellationError() }
       }
       return ADBTunnelHandle(id: id)
     } catch {
-      close(id: id)
+      await close(id: id)
       throw error
     }
   }
@@ -35,15 +35,15 @@ final class ADBTunnelHost: @unchecked Sendable {
     return try tunnel.connect()
   }
 
-  func close(id: String) {
+  func close(id: String) async {
     let tunnel = lock.withLock {
       cancelled.insert(id)
       return tunnels.removeValue(forKey: id)
     }
-    tunnel?.close()
+    await tunnel?.close()
   }
 
-  func closeAll() {
+  func closeAll() async {
     let pending = lock.withLock {
       closed = true
       let pending = Array(tunnels.values)
@@ -51,7 +51,7 @@ final class ADBTunnelHost: @unchecked Sendable {
       return pending
     }
     for tunnel in pending {
-      tunnel.close()
+      await tunnel.close()
     }
   }
 }
@@ -69,7 +69,7 @@ private final class SSHADBTunnel: @unchecked Sendable {
     directory.appending(path: "control").path
   }
 
-  func start(configuration: SSHConfiguration) throws {
+  func start(configuration: SSHConfiguration) async throws {
     try lock.withLock {
       guard !closed else { throw CancellationError() }
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -95,15 +95,15 @@ private final class SSHADBTunnel: @unchecked Sendable {
     while !FileManager.default.fileExists(atPath: controlPath) {
       try requireRunning()
       guard ContinuousClock.now < deadline else { throw failure("SSH connection timed out.") }
-      Thread.sleep(forTimeInterval: 0.02)
+      try await Task.sleep(for: .milliseconds(20))
     }
-    guard try forward(configuration: configuration) else {
+    guard try await forward(configuration: configuration) else {
       throw failure("Could not create the ADB forward.")
     }
     try requireRunning()
   }
 
-  private func forward(configuration: SSHConfiguration) throws -> Bool {
+  private func forward(configuration: SSHConfiguration) async throws -> Bool {
     let child = Process()
     let output = Pipe()
     let exited = try lock.withLock {
@@ -133,9 +133,9 @@ private final class SSHADBTunnel: @unchecked Sendable {
     while child.isRunning {
       try requireRunning()
       guard ContinuousClock.now < deadline else { throw failure("SSH forwarding timed out.") }
-      Thread.sleep(forTimeInterval: 0.02)
+      try await Task.sleep(for: .milliseconds(20))
     }
-    _ = exited.waitForExit(until: .distantFuture)
+    await exited.waitForExit()
     let data = output.fileHandleForReading.readDataToEndOfFile()
     lock.withLock {
       command = nil
@@ -161,14 +161,14 @@ private final class SSHADBTunnel: @unchecked Sendable {
     }
   }
 
-  func close() {
+  func close() async {
     let children: [any SSHChildProcess]? = lock.withLock {
       guard !closed else { return nil }
       closed = true
       return [processExit, command].compactMap(\.self)
     }
     guard let children else { return }
-    SSHProcessShutdown.stop(children) {
+    await SSHProcessShutdown.stop(children) {
       errors.fileHandleForReading.readabilityHandler = nil
       try? errors.fileHandleForReading.close()
       try? errors.fileHandleForWriting.close()
