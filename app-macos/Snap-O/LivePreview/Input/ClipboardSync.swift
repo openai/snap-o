@@ -126,7 +126,8 @@ final class ClipboardSync {
     } else {
       receive(previousText)
     }
-    return text
+    // Rewriting an identical clip can still show Android's clipboard preview.
+    return text == previousText ? nil : text
   }
 
   private var isActive: Bool {

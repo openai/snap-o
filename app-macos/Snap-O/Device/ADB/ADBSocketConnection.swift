@@ -36,7 +36,6 @@ public final class ADBSocketConnection: ADBSocketTransfer {
 
   private enum Constants {
     static let host = "127.0.0.1"
-    static let port: UInt16 = 5037
     static let bufferSize = 64 * 1024
   }
 
@@ -50,7 +49,22 @@ public final class ADBSocketConnection: ADBSocketTransfer {
   private var isSkippingOversizedLine = false
 
   public convenience init() throws {
-    try self.init(connectedSocket: Self.openSocket())
+    try self.init(port: 5037)
+  }
+
+  convenience init(port: UInt16) throws {
+    try self.init(connectedSocket: Self.openSocket(port: port))
+  }
+
+  convenience init(fileHandle: FileHandle) throws {
+    defer { try? fileHandle.close() }
+    let descriptor = dup(fileHandle.fileDescriptor)
+    guard descriptor >= 0 else { throw POSIXError(.EMFILE) }
+    guard fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0 else {
+      Darwin.close(descriptor)
+      throw POSIXError(.EIO)
+    }
+    self.init(connectedSocket: descriptor)
   }
 
   init(connectedSocket: Int32) {
@@ -514,14 +528,14 @@ public final class ADBSocketConnection: ADBSocketTransfer {
 extension ADBSocketConnection: @unchecked Sendable {}
 
 private extension ADBSocketConnection {
-  static func openSocket() throws -> Int32 {
+  static func openSocket(port: UInt16) throws -> Int32 {
     let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
     guard descriptor >= 0 else { throw makeSocketError(errno, context: "socket") }
 
     var address = sockaddr_in()
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
     address.sin_family = sa_family_t(AF_INET)
-    address.sin_port = Constants.port.bigEndian
+    address.sin_port = port.bigEndian
     address.sin_addr = in_addr(s_addr: inet_addr(Constants.host))
 
     let result = withUnsafePointer(to: &address) { pointer -> Int32 in

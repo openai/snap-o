@@ -42,7 +42,7 @@ public extension ToolDiscovery {
         group.addTask {
           do {
             let target = try device.requireConnection()
-            let output = try await adb.bound(to: target).runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand)
+            let output = try await adb.bound(to: target).runDiscoveryShellString(deviceID: target.serial, command: snapshotCommand)
             return .success(Self.sockets(inProcNetUnix: output, deviceID: deviceID))
           } catch {
             return .failure(error)

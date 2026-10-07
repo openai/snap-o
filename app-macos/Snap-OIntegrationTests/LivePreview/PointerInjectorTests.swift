@@ -123,7 +123,7 @@ struct LivePreviewPointerTests {
 
   private func injector(_ backend: RecordingBackend) -> LivePreviewPointerInjector {
     LivePreviewPointerInjector(
-      makePreferredBackend: { _ in throw CancellationError() }, fallbackBackend: backend
+      makePreferredBackend: { _ in throw CancellationError() }, makeFallbackBackend: { _ in backend }
     )
   }
 
@@ -136,7 +136,7 @@ struct LivePreviewPointerTests {
         if preferred { return backend }
         throw CancellationError()
       },
-      fallbackBackend: fallback
+      makeFallbackBackend: { _ in fallback }
     )
     await sender.prepare(target: target)?.value
     await sender.enqueue(event(.down))
@@ -183,7 +183,7 @@ struct LivePreviewPointerTests {
         return oldBackend
       }
       return newBackend
-    }, fallbackBackend: RecordingBackend(minimumMoveInterval: .zero))
+    }, makeFallbackBackend: { _ in RecordingBackend(minimumMoveInterval: .zero) })
     let oldPreparation = await sender.prepare(target: target)
     try await preparation.waitForEvents(1)
     target.invalidate()
@@ -223,7 +223,7 @@ struct LivePreviewPointerTests {
     let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in
       try await preparation.send(event(.down))
       return preferred
-    }, fallbackBackend: RecordingBackend())
+    }, makeFallbackBackend: { _ in RecordingBackend() })
     await sender.prepare(target: target)
     try await preparation.waitForEvents(1)
     let finished = StopCompletions()
@@ -272,7 +272,7 @@ struct LivePreviewPointerTests {
     let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in
       try await preparation.send(event(.down))
       return preferred
-    }, fallbackBackend: RecordingBackend(minimumMoveInterval: .zero))
+    }, makeFallbackBackend: { _ in RecordingBackend(minimumMoveInterval: .zero) })
     var down = event(.down)
     down.locations.append(CGPoint(x: 50, y: 50))
     await sender.enqueue(down)
@@ -298,7 +298,7 @@ struct LivePreviewPointerTests {
     let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in
       try await preparation.send(event(.down))
       return preferred
-    }, fallbackBackend: RecordingBackend())
+    }, makeFallbackBackend: { _ in RecordingBackend() })
     var down = event(.down)
     down.locations.append(CGPoint(x: 50, y: 50))
     await sender.enqueue(down)
@@ -314,20 +314,18 @@ struct LivePreviewPointerTests {
   }
 
   @Test
-  func shellFallbackDoesNotTurnMultitouchIntoSingleTouch() async throws {
-    let backend = RecordingBackend()
+  func fallbackPreservesMultitouchContacts() async throws {
+    let backend = RecordingBackend(minimumMoveInterval: .zero)
     let sender = injector(backend)
     for action in [LivePreviewPointerAction.down, .move, .up] {
       var touch = event(action)
       touch.locations.append(CGPoint(x: 50, y: 50))
       await sender.enqueue(touch)
     }
-    await clock.advance(by: .seconds(1))
-    await sender.enqueue(event(.down))
-    try await backend.waitForEvents(1)
+    try await backend.waitForEvents(3)
     let sent = await backend.events
-    #expect(sent[0].locations.count == 1)
-    #expect(sent[0].action == .down)
+    #expect(sent.map(\.action) == [.down, .move, .up])
+    #expect(sent.allSatisfy { $0.locations.count == 2 })
     await sender.stopAll()
   }
 
@@ -432,7 +430,7 @@ struct LivePreviewPointerTests {
   func preferredGestureEnds(_ endAction: LivePreviewPointerAction) async throws {
     let preferred = RecordingBackend(minimumMoveInterval: .zero)
     let fallback = RecordingBackend(minimumMoveInterval: .zero)
-    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, fallbackBackend: fallback)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, makeFallbackBackend: { _ in fallback })
     try await preparePreferredBackend(sender, preferred: preferred, fallback: fallback)
     let actions: [LivePreviewPointerAction] = [.down, .move, endAction, .down, .up]
     for action in actions {
@@ -449,7 +447,7 @@ struct LivePreviewPointerTests {
   func preferredFailureWaitsForNextGesture(_ action: LivePreviewPointerAction) async throws {
     let preferred = RecordingBackend(minimumMoveInterval: .zero)
     let fallback = RecordingBackend(minimumMoveInterval: .zero)
-    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, fallbackBackend: fallback)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, makeFallbackBackend: { _ in fallback })
     try await preparePreferredBackend(sender, preferred: preferred, fallback: fallback)
     await sender.enqueue(event(.down))
     try await preferred.waitForEvents(1)
@@ -479,7 +477,7 @@ struct LivePreviewPointerTests {
     let replacement = RecordingBackend(minimumMoveInterval: .zero)
     let fallback = RecordingBackend(minimumMoveInterval: .zero)
     let backends = BackendSequence([old, replacement])
-    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in await backends.next() }, fallbackBackend: fallback)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in await backends.next() }, makeFallbackBackend: { _ in fallback })
     try await preparePreferredBackend(sender, preferred: old, fallback: fallback)
     await sender.enqueue(event(.down))
     try await old.waitForEvents(1)

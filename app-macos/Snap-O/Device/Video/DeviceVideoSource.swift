@@ -15,7 +15,7 @@ final class DeviceVideoHub {
   private var sessions: [DeviceTarget: DeviceVideoStream] = [:]
 
   init(makeSource: @escaping (DeviceTarget) -> any LivePreviewFrameSource = { target in
-    if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+    if target.isLocalEmulator {
       EmulatorPreviewFrameSource(target: target)
     } else {
       DeviceVideoConnection(target: target)
@@ -59,20 +59,22 @@ final class DeviceVideoSource: LivePreviewFrameSource {
 
   private let target: DeviceTarget
   private let hub: DeviceVideoHub
+  private let replaysLastFrame: Bool
   private var subscription: DeviceVideoHub.Subscription?
   private var cleanup: Task<Void, Never>?
   private var hasStopped = false
 
-  init(target: DeviceTarget, hub: DeviceVideoHub = .shared) {
+  init(target: DeviceTarget, hub: DeviceVideoHub = .shared, replaysLastFrame: Bool = true) {
     self.target = target
     self.hub = hub
+    self.replaysLastFrame = replaysLastFrame
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
     guard subscription == nil, !hasStopped else { return }
     let subscription = hub.subscription(target: target)
     self.subscription = subscription
-    subscription.stream.subscribe(subscription.id, receive: deliver)
+    subscription.stream.subscribe(subscription.id, replaysLastFrame: replaysLastFrame, receive: deliver)
   }
 
   func requestKeyFrame() {
@@ -122,13 +124,13 @@ private final class DeviceVideoStream {
     self.previous = previous
   }
 
-  func subscribe(_ id: UUID, receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
+  func subscribe(_ id: UUID, replaysLastFrame: Bool, receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
     subscribers[id] = Subscriber(receive: receive)
     if let density { receive(.density(density)) }
     guard subscribers[id] != nil, !hasStopped else { return }
     if let format { receive(.format(format)) }
     guard subscribers[id] != nil, !hasStopped else { return }
-    if let latestIndependentFrame {
+    if replaysLastFrame, let latestIndependentFrame {
       subscribers[id]?.needsKeyFrame = false
       receive(.sample(latestIndependentFrame, isKeyFrame: true))
     }

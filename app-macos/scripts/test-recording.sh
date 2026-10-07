@@ -9,7 +9,7 @@ cd "$APP_DIR"
 
 # Exercise the recording owners with deterministic ADB sessions and placeholder files.
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift Snap-O/Capture/Export/VideoFileClient.swift \
+  Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift Snap-O/Capture/Export/VideoFileClient.swift \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/Operations/CaptureTimestampSource.swift Snap-O/App/StartupCapturePreparation.swift \
   Snap-O/Capture/Operations/CaptureCoordinator.swift Snap-O/Device/ShowTouchesOverride.swift \
   Snap-O/Capture/Operations/ScreenRecording.swift Snap-O/Capture/Operations/ADBScreenRecording.swift Snap-O/Capture/Operations/ADBRecordingFile.swift \

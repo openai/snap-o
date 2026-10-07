@@ -32,7 +32,14 @@ struct DeviceOpenResolver {
       let state = snapshot()
       switch request {
       case .serial(let serial):
-        if state.connectedSerials.contains(serial) { return serial }
+        let matches = state.connectedSerials.filter { $0 == serial || DeviceID(storedValue: $0).serial == serial }
+        guard matches.count <= 1 else {
+          throw DeviceOpenError(message: "More than one server has this device. Specify a server in the link.")
+        }
+        if let match = matches.first { return match }
+        progress("Connecting")
+      case .device(let id):
+        if state.connectedSerials.contains(id.storedValue) { return id.storedValue }
         progress("Connecting")
       case .avd(let name, let shouldStart):
         let matches = state.emulators.filter { $0.avdName == name }

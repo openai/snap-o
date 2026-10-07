@@ -146,10 +146,10 @@ final class DeviceFileDrop {
           }
         }
         if isAPK {
-          try await adb.installAPK(deviceID: device.id, localURL: url, progress: update)
+          try await adb.installAPK(deviceID: device.serial, localURL: url, progress: update)
           installed += 1
         } else {
-          if directory == nil { directory = try await adb.downloadsDirectory(deviceID: device.id) }
+          if directory == nil { directory = try await adb.downloadsDirectory(deviceID: device.serial) }
           guard let directory else { continue }
           let name = try DeviceFileCommand.filename(url.lastPathComponent)
           guard let destination = try await resolveDestination(name: name, directory: directory, using: adb) else {
@@ -157,7 +157,7 @@ final class DeviceFileDrop {
             continue
           }
           let warning = try await adb.copyFile(
-            deviceID: device.id, localURL: url, destination: destination.path, replace: destination.replace, progress: update
+            deviceID: device.serial, localURL: url, destination: destination.path, replace: destination.replace, progress: update
           )
           copied += 1
           if let warning {
@@ -180,7 +180,7 @@ final class DeviceFileDrop {
 
   private func resolveDestination(name: String, directory: String, using adb: ADBClient) async throws -> (path: String, replace: Bool)? {
     let path = "\(directory)/\(name)"
-    guard try await adb.fileExists(deviceID: device.id, path: path) else { return (path, false) }
+    guard try await adb.fileExists(deviceID: device.serial, path: path) else { return (path, false) }
     try Task.checkCancellation()
     let choice = await withCheckedContinuation { continuation in
       conflictReply = continuation
@@ -198,7 +198,7 @@ final class DeviceFileDrop {
       repeat {
         candidate = try "\(directory)/\(DeviceFileCommand.filename(name, copy: copy))"
         copy += 1
-      } while try await adb.fileExists(deviceID: device.id, path: candidate)
+      } while try await adb.fileExists(deviceID: device.serial, path: candidate)
       return (candidate, false)
     }
   }

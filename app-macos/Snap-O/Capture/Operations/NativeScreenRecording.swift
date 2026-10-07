@@ -2,7 +2,7 @@
 import Dependencies
 import Foundation
 
-/// Writes the encoder's original samples; preview rendering never owns this subscription.
+/// Records device samples; preview rendering never owns this subscription.
 @MainActor
 final class NativeScreenRecording: ScreenRecording {
   nonisolated let id = UUID()
@@ -19,7 +19,8 @@ final class NativeScreenRecording: ScreenRecording {
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
 
   convenience init(target: DeviceTarget) {
-    self.init(source: DeviceVideoSource(target: target))
+    // An idle preview's cached timestamp can predate the start of recording.
+    self.init(source: DeviceVideoSource(target: target, replaysLastFrame: false))
   }
 
   init(
@@ -153,9 +154,28 @@ final class AVRecordingWriter: NativeRecordingWriter {
     writer.status == .completed
   }
 
+  var isReadyForMoreMediaData: Bool {
+    input.isReadyForMoreMediaData
+  }
+
   init(url: URL, format: CMVideoFormatDescription, start: CMTime) throws {
     writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
+    var settings: [String: Any]?
+    if CMFormatDescriptionGetMediaSubType(format) == kCVPixelFormatType_32BGRA {
+      let size = CMVideoFormatDescriptionGetDimensions(format)
+      settings = [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
+        AVVideoCompressionPropertiesKey: [AVVideoAllowFrameReorderingKey: false],
+        AVVideoColorPropertiesKey: [
+          AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+          AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+          AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+        ]
+      ]
+    }
+    input = AVAssetWriterInput(mediaType: .video, outputSettings: settings, sourceFormatHint: format)
+    if settings != nil { input.mediaTimeScale = 1_000_000 }
     input.expectsMediaDataInRealTime = true
     guard writer.canAdd(input) else { throw ADBError.protocolFailure("Unsupported recording format") }
     writer.add(input)
@@ -165,7 +185,7 @@ final class AVRecordingWriter: NativeRecordingWriter {
   }
 
   func append(_ sample: CMSampleBuffer) throws {
-    guard input.isReadyForMoreMediaData else { throw ADBError.protocolFailure("Recording storage could not keep up with the device") }
+    guard isReadyForMoreMediaData else { throw ADBError.protocolFailure("Recording storage could not keep up with the device") }
     guard input.append(sample) else { throw writer.error ?? ADBError.protocolFailure("Could not write video frame") }
   }
 

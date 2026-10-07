@@ -9,6 +9,7 @@ import Foundation
 /// Each version request closes its socket, so the next unselected socket takes over.
 final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
   let id = UUID()
+  let serverID: ADBServerID
   private let stateLock = NSLock()
   private let verificationLock = NSLock()
   private let connectionFactory: @Sendable () throws -> any ADBConnection
@@ -25,11 +26,26 @@ final class ADBServerSession: DeviceServerConnection, @unchecked Sendable {
   init(
     tracking: any ADBConnection,
     timeout: Duration,
+    serverID: ADBServerID = .local,
     connectionFactory: @escaping @Sendable () throws -> any ADBConnection
   ) {
+    self.serverID = serverID
     self.timeout = timeout
     self.connectionFactory = connectionFactory
     connections[ObjectIdentifier(tracking)] = tracking
+  }
+
+  /// The caller owns this socket; binding it registers target invalidation.
+  func makeOperationConnection() throws -> any ADBConnection {
+    try stateLock.withLock { try requireOpen() }
+    let connection = try connectionFactory()
+    do {
+      try stateLock.withLock { try requireOpen() }
+      return connection
+    } catch {
+      connection.close()
+      throw error
+    }
   }
 
   func register(_ target: DeviceTarget) {

@@ -8,7 +8,7 @@ extension ClipboardSync {
     self.init(settings: settings, pasteboard: pasteboard, maySynchronize: maySynchronize) { target, synchronize in
       try Task.checkCancellation()
       let serial = target.serial
-      if serial.hasPrefix("emulator-") {
+      if target.isLocalEmulator {
         let emulator = AndroidHostClient()
         defer { emulator.close() }
         _ = try target.requireTransport(for: serial)

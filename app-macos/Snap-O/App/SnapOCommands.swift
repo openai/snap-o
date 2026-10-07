@@ -170,6 +170,7 @@ struct SnapOCommands: Commands {
     }
     CommandMenu("Device") {
       Button("Device Manager…") { openWindow(id: "device-manager") }
+      Button("ADB Servers…") { openWindow(id: "adb-servers") }
       Divider()
       ForEach(LivePreviewDeviceCommand.allCases, id: \.self) { command in
         Button(command.title) {

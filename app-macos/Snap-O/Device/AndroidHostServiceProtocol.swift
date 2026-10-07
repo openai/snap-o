@@ -2,6 +2,9 @@ import Foundation
 
 @objc(AndroidHostServiceProtocol)
 protocol AndroidHostServiceProtocol {
+  func openADBTunnel(_ id: String, configuration: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func connectADBTunnel(_ id: String, reply: @escaping @Sendable (FileHandle?, String?) -> Void)
+  func closeADBTunnel(_ id: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -254,4 +257,30 @@ struct EmulatorGRPCEndpoint: Codable {
           let port = UInt16(deviceID.dropFirst(9)) else { return false }
     return port >= 1024
   }
+}
+
+struct SSHConfiguration: Codable, Equatable {
+  let destination: String
+  var port: UInt16?
+  var adbPort: UInt16 = 5037
+
+  var displayAddress: String {
+    var ports: [String] = []
+    if let port, port != 22 { ports.append("SSH \(port)") }
+    if adbPort != 5037 { ports.append("ADB \(adbPort)") }
+    return destination + (ports.isEmpty ? "" : " (" + ports.joined(separator: ", ") + ")")
+  }
+
+  func validate() throws {
+    guard !destination.isEmpty, destination.utf8.count <= 512,
+          !destination.hasPrefix("-"),
+          !destination.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains($0) }),
+          port != 0, adbPort != 0 else {
+      throw NSError(domain: "SnapO.SSH", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid SSH server configuration."])
+    }
+  }
+}
+
+struct ADBTunnelHandle: Codable {
+  let id: String
 }

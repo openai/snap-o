@@ -44,7 +44,7 @@ final class DevicePreview: PreviewStatus {
   @ObservationIgnored lazy var video = PreviewVideo(
     makeSession: { [weak self] in
       guard let self, !isClosed else { throw CancellationError() }
-      if !EmulatorGRPCEndpoint.isEmulator(target.serial) { try await boot.value }
+      if !target.isLocalEmulator { try await boot.value }
       try Task.checkCancellation()
       guard !isClosed, target.isValid else { throw CancellationError() }
       return LivePreviewSession(deviceID: target.serial, densityScale: density, source: makeSource())
@@ -108,7 +108,7 @@ final class DevicePreview: PreviewStatus {
       guard !Task.isCancelled, target.isValid else { return Preparation(touches: nil, density: nil) }
       async let touches = ShowTouchesOverride.apply(target: target, enabled: settings.showTouchesDuringCapture, using: adb)
       var density: CGFloat?
-      if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+      if target.isLocalEmulator {
         let exec = await adb.exec().bound(to: target)
         while !Task.isCancelled, target.isValid {
           if let value = try? await exec.displayDensity(deviceID: target.serial) {

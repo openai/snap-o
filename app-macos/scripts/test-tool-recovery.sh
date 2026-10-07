@@ -23,7 +23,7 @@ done
 
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDALONE_TESTS \
   "$@" \
-  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift \
+  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift Snap-O/Device/DeviceTracking.swift Snap-O/Device/ADB/ADBConnection.swift \
   Snap-O/Device/ToolServerReference.swift \
   Snap-O/Device/ToolDiscovery.swift \
   Snap-O/Device/ToolManifest.swift \

@@ -84,7 +84,7 @@ final class PreviewVideo {
   private struct Attempt {
     let opened: Bool
     let duration: Duration?
-    let error: String?
+    let error: Error?
   }
 
   private func run(retryStartup: Bool) async {
@@ -111,7 +111,11 @@ final class PreviewVideo {
       phase = .starting
       let attempt = await runAttempt()
       guard !isClosed, !Task.isCancelled else { return }
-      errorMessage = attempt.error ?? "Live preview disconnected."
+      errorMessage = attempt.error?.localizedDescription ?? "Live preview disconnected."
+      if let failure = attempt.error as? DeviceVideoFailure, !failure.retryable {
+        phase = .failed(errorMessage)
+        return
+      }
       recovering = recovering || attempt.opened || retryStartup
       if let duration = attempt.duration, duration >= .seconds(10) { retryIndex = 0 }
       if !recovering { phase = .failed(errorMessage)
@@ -125,7 +129,7 @@ final class PreviewVideo {
     do {
       candidate = try await makeSession()
     } catch {
-      return Attempt(opened: false, duration: nil, error: error.localizedDescription)
+      return Attempt(opened: false, duration: nil, error: error)
     }
     guard !isClosed, !Task.isCancelled else {
       candidate.cancel()
@@ -144,6 +148,6 @@ final class PreviewVideo {
     let error = await candidate.waitUntilStop()
     let duration = candidate.streamingDuration
     if session === candidate { session = nil }
-    return Attempt(opened: true, duration: duration, error: error?.localizedDescription)
+    return Attempt(opened: true, duration: duration, error: error)
   }
 }

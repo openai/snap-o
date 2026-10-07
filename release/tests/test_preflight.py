@@ -420,6 +420,16 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("0x534E5632", report)
         self.assertNotIn("UNRESOLVED: Device video client versioned magic", report)
 
+    def test_reports_additive_device_video_packets_without_a_version_change(self):
+        self.write("device-helper/src/com/openai/snapo/video/Main.java", "private static final int MAGIC = 0x534e5631;\n")
+        self.write("app-macos/Snap-O/Device/Video/DeviceVideoPacket.swift", "static let magic: UInt32 = 0x534E5631\n")
+        self.write("contracts/device-video/README.md", "| `3`: failure | stage; retryable; codec error |\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device video packet definitions", report)
+        self.assertIn("| `3`: failure | stage; retryable; codec error |", report)
+        self.assertNotIn("UNRESOLVED: Device video", report)
+
     def test_reports_device_keyboard_versions(self):
         self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 1;\n")
         self.write("app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift", "static let version: UInt32 = 1\n")
@@ -427,6 +437,14 @@ class ProtocolReportTests(unittest.TestCase):
         report = self.report()
         self.assertIn("Device keyboard helper version", report)
         self.assertIn("Device keyboard client version", report)
+
+    def test_reports_device_pointer_versions(self):
+        self.write("device-helper/src/com/openai/snapo/pointer/Main.java", "private static final int VERSION = 1;\n")
+        self.write("app-macos/Snap-O/Device/ADB/DevicePointerProtocol.swift", "static let version: UInt32 = 1\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device pointer helper version", report)
+        self.assertIn("Device pointer client version", report)
 
     def test_reports_bundled_frontends_without_version_negotiation(self):
         for _, path, _ in DECLARATIONS:

@@ -6,7 +6,8 @@ import Observation
 final class AppRuntime {
   let deviceManager: DeviceManager
   let adbService: ADBService
-  private let deviceTracker: DeviceTracker
+  let adbServers: ADBServers
+  private let deviceTracker: any DeviceTracking
   let fileStore: FileStore
   private let captureServices: CaptureServices
   let workspaces: CaptureWorkspaces
@@ -34,25 +35,37 @@ final class AppRuntime {
   private var shutdownTask: Task<Void, Never>?
 
   init() {
-    let adbService = ADBService()
     let hostClient = AndroidHostClient()
-    let deviceTracker = DeviceTracker(adbService: adbService) {
-      do {
-        try await hostClient.ensureADBServerRunning()
-      } catch {
-        SnapOLog.tracker.error("Could not start ADB: \(error.localizedDescription, privacy: .public)")
-        throw error
-      }
+    let localTracker = DeviceTracker(connect: { ADBClient() }, recoverADBServer: {
+      try await hostClient.ensureADBServerRunning()
+    })
+    let serverStore = ADBServerStore(defaults: .standard)
+    let profiles: [RemoteADBServer]
+    var serverError: String?
+    do { profiles = try serverStore.load() } catch {
+      profiles = []
+      serverError = "Could not load saved ADB servers. " + error.localizedDescription
     }
-    let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker, client: hostClient)
+    let trackers: [(ADBServerID, any DeviceTracking)] = [(.local, localTracker)]
+      + profiles.map { (.remote($0.id), ADBServerConnection.tracker(for: $0)) }
+    let remoteServerLabels = Dictionary(uniqueKeysWithValues: profiles.map { (ADBServerID.remote($0.id), $0.connection.displayAddress) })
+    let adbService = ADBService(trackers: trackers)
+    let deviceTracker = adbService
+    let deviceManager = DeviceManager(
+      adb: adbService, deviceTracker: deviceTracker, client: hostClient, remoteServerLabels: remoteServerLabels
+    )
+    adbServers = ADBServers(
+      service: adbService, store: serverStore, profiles: profiles, error: serverError,
+      makeTracker: ADBServerConnection.tracker
+    ) { deviceManager.updateRemoteServerLabels($0) }
     let captureHistory = CaptureHistory()
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
     let fileStore = FileStore(frameExportHandler: recordFrame)
     let captureCoordinator = CaptureCoordinator()
     let startRecording: RecordingCapture.StartRecording = { device, bugReport in
       let target = try device.requireConnection()
-      if EmulatorGRPCEndpoint.isEmulator(device.id) || bugReport {
-        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.id, bugReport: bugReport)
+      if device.isLocalEmulator || bugReport {
+        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.serial, bugReport: bugReport)
         return ADBScreenRecording(session: session, adb: adbService)
       }
       return try await NativeScreenRecording.start(target: target)
@@ -97,6 +110,7 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
+    adbServers.start()
     deviceManager.start()
     let manager = deviceManager
     startupTask = Task.immediate { [weak self] in
@@ -133,6 +147,7 @@ final class AppRuntime {
       return
     }
 
+    adbServers.beginShutdown()
     pendingCleanup = Set(Cleanup.allCases)
     captureCoordinator.beginShutdown()
     fileStore.beginShutdown()
@@ -173,6 +188,7 @@ final class AppRuntime {
       await captureCoordinator.waitUntilIdle()
       finishCleanup(.reservations)
       // Keep device connections open until captures and previews have restored their settings.
+      await adbServers.stop()
       await deviceTracker.stopTracking()
       finishCleanup(.deviceTracker)
       Perf.step(.appShutdown, "device tracking stopped")

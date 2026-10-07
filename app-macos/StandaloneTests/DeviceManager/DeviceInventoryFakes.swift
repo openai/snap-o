@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-actor DeviceTracker {
+actor DeviceTracker: DeviceTracking {
+  func stopTracking() {}
   private var preview: AsyncStream<[Device]>.Continuation?
   private var ready: AsyncStream<[Device]>.Continuation?
   private var currentPreview: [Device]?

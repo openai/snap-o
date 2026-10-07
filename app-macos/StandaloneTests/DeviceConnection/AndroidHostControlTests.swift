@@ -5,10 +5,44 @@ struct AndroidHostControlTests {
   private static let native = EmulatorNativeConnection(processID: 1, grpcPort: 8554, clientPort: 12345)
 
   static func run() async throws {
+    try await socketHandoffSurvivesSenderClose()
     try await joinsHelperReply(cancelRequest: true)
     try await joinsHelperReply(cancelRequest: false)
     try await ownerJoinsHelperBeforeClosing()
     print("Android host control cancellation tests passed")
+  }
+
+  private static func socketHandoffSurvivesSenderClose() async throws {
+    let listener = NSXPCListener.anonymous()
+    let host = SocketTestHost()
+    let delegate = ControlTestListener(host: host)
+    listener.delegate = delegate
+    listener.resume()
+    defer { listener.invalidate()
+      withExtendedLifetime(delegate) {}
+    }
+    let client = AndroidHostClient { NSXPCConnection(listenerEndpoint: listener.endpoint) }
+    defer { client.close() }
+    let factory = client.tunnelSocketFactory(id: "owned")
+    try await Task.detached {
+      let handle = try factory()
+      let connection = try ADBSocketConnection(fileHandle: handle)
+      defer { connection.close() }
+      try connection.setIOTimeout(.seconds(2))
+      let bytes = try connection.readChunk(maxLength: 1)
+      precondition(bytes == Data([42]))
+      try connection.writeFully(Data([43]))
+    }.value
+    let rejected = client.tunnelSocketFactory(id: "another-client")
+    let failed = await Task.detached {
+      do {
+        let handle = try rejected()
+        try? handle.close()
+        return false
+      } catch { return true }
+    }.value
+    precondition(failed)
+    print("XPC socket handoff and rejected tunnel tests passed")
   }
 
   private static func ownerJoinsHelperBeforeClosing() async throws {
@@ -109,8 +143,8 @@ struct AndroidHostControlTests {
 }
 
 private final class ControlTestListener: NSObject, NSXPCListenerDelegate {
-  let host: ControlTestHost
-  init(host: ControlTestHost) {
+  let host: NSObject
+  init(host: NSObject) {
     self.host = host
   }
 
@@ -160,5 +194,32 @@ private final class ControlTestHost: NSObject, @unchecked Sendable {
       return callback
     }
     callback?(Data(), nil)
+  }
+}
+
+private final class SocketTestHost: NSObject, @unchecked Sendable {
+  @objc
+  func connectADBTunnel(_ id: String, reply: @escaping @Sendable (FileHandle?, String?) -> Void) {
+    guard id == "owned" else { reply(nil, "Unknown tunnel")
+      return
+    }
+    var descriptors = [Int32](repeating: -1, count: 2)
+    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { reply(nil, "socketpair failed")
+      return
+    }
+    let sent = FileHandle(fileDescriptor: descriptors[0], closeOnDealloc: true)
+    let peer = FileHandle(fileDescriptor: descriptors[1], closeOnDealloc: true)
+    defer { try? sent.close() }
+    do {
+      try peer.write(contentsOf: Data([42]))
+      reply(sent, nil)
+      DispatchQueue.global().async {
+        defer { try? peer.close() }
+        let bytes = try? peer.read(upToCount: 1)
+        precondition(bytes == Data([43]))
+      }
+    } catch { try? peer.close()
+      reply(nil, error.localizedDescription)
+    }
   }
 }

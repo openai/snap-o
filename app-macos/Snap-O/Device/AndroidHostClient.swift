@@ -24,6 +24,32 @@ final class AndroidHostClient {
     self.displayReader = displayReader
   }
 
+  func openADBTunnel(id: String, configuration: SSHConfiguration) async throws -> ADBTunnelHandle {
+    let data = try JSONEncoder().encode(configuration)
+    do {
+      let response = try await request(waitForReplyOnCancellation: true) { proxy, reply in
+        proxy.openADBTunnel(id, configuration: data, reply: reply)
+      }
+      let handle = try JSONDecoder().decode(ADBTunnelHandle.self, from: response)
+      try Task.checkCancellation()
+      return handle
+    } catch {
+      await closeADBTunnel(id: id)
+      throw error
+    }
+  }
+
+  func tunnelSocketFactory(id: String) -> @Sendable () throws -> FileHandle {
+    let factory = TunnelSocketFactory(connection: connect(), id: id)
+    return { try factory.open() }
+  }
+
+  func closeADBTunnel(id: String) async {
+    _ = try? await request(waitForReplyOnCancellation: true) { proxy, reply in
+      proxy.closeADBTunnel(id, reply: reply)
+    }
+  }
+
   func previewEndpoint(_ serial: String) async throws -> EmulatorGRPCEndpoint? {
     try await JSONDecoder().decode(EmulatorGRPCEndpoint?.self, from: request { proxy, reply in
       proxy.previewEndpoint(serial, reply: reply)
@@ -196,5 +222,67 @@ struct AndroidHostClientError: LocalizedError {
   let message: String
   var errorDescription: String? {
     message
+  }
+}
+
+/// The ADB socket factory is synchronous. Only socket setup crosses XPC; payload bytes do not.
+private final class TunnelSocketReply: @unchecked Sendable {
+  private let lock = NSLock()
+  private let ready = DispatchSemaphore(value: 0)
+  private var result: Result<FileHandle, Error>?
+  private var finished = false
+
+  func complete(_ value: Result<FileHandle, Error>) {
+    lock.withLock {
+      guard !finished else {
+        if case .success(let handle) = value { try? handle.close() }
+        return
+      }
+      finished = true
+      result = value
+      ready.signal()
+    }
+  }
+
+  func wait() throws -> FileHandle {
+    let status = ready.wait(timeout: .now() + 5)
+    return try lock.withLock {
+      defer { result = nil }
+      if status == .success, let result { return try result.get() }
+      finished = true
+      if case .success(let handle) = result { try? handle.close() }
+      throw AndroidHostClientError(message: "Opening the remote ADB socket timed out.")
+    }
+  }
+}
+
+/// NSXPCConnection supports concurrent proxy requests; this holder has no mutable state.
+private final class TunnelSocketFactory: @unchecked Sendable {
+  private let connection: NSXPCConnection
+  private let id: String
+
+  init(connection: NSXPCConnection, id: String) {
+    self.connection = connection
+    self.id = id
+  }
+
+  func open() throws -> FileHandle {
+    let response = TunnelSocketReply()
+    guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+      response.complete(.failure(AndroidHostClientError(message: error.localizedDescription)))
+    }) as? AndroidHostServiceProtocol else {
+      throw AndroidHostClientError(message: "Could not connect to the Android host service.")
+    }
+    proxy.connectADBTunnel(id) { handle, message in
+      if let message {
+        try? handle?.close()
+        response.complete(.failure(AndroidHostClientError(message: message)))
+      } else if let handle {
+        response.complete(.success(handle))
+      } else {
+        response.complete(.failure(AndroidHostClientError(message: "The Android host service returned no socket.")))
+      }
+    }
+    return try response.wait()
   }
 }

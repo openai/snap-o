@@ -74,7 +74,7 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
           let input = try ToolHTTPRequestInput(request: urlSchemeTask.request)
           let operation = ToolHTTPRequestOperation(input: input, makeExchange: makeExchange) {
             try await endpoint.adb.openLocalAbstract(
-              deviceID: endpoint.reference.deviceId, abstractSocket: endpoint.reference.socketName
+              deviceID: endpoint.target.serial, abstractSocket: endpoint.reference.socketName
             )
           }
           try await operation.run(onResponse: { response in

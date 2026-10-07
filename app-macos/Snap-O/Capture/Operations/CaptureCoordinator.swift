@@ -46,7 +46,7 @@ final class CaptureCoordinator {
     _ = try target.requireTransport(for: target.serial)
     for held in leases.values where held.target == target {
       let exclusive = activity == .bugReportRecording || held.activity == .bugReportRecording
-      let emulatorRecording = EmulatorGRPCEndpoint.isEmulator(target.serial)
+      let emulatorRecording = target.isLocalEmulator
         && activity == .recording && held.activity == .recording
       if exclusive || emulatorRecording {
         throw CaptureCoordinationError.deviceBusy(deviceID: target.serial, activity: held.activity)

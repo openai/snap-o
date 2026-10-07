@@ -39,7 +39,7 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
       target: target,
       touchscreen: touchscreen
     ) {
-      if EmulatorGRPCEndpoint.isEmulator(target.serial) {
+      if target.isLocalEmulator {
         return try await EmulatorRotationClient.rotation(target: target)
       }
       let exec = await adb.exec().bound(to: target)

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DeviceManagerWindow: View {
+  @Environment(\.openWindow)
+  private var openWindow
   @State private var deviceToDelete: ManagedEmulator?
   @Bindable var manager: DeviceManager
 
@@ -37,6 +39,14 @@ struct DeviceManagerWindow: View {
     .frame(minWidth: 620, minHeight: 300)
     .navigationTitle("Device Manager")
     .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button {
+          openWindow(id: "adb-servers")
+        } label: {
+          Text("Manage Servers…").padding(.horizontal, 8)
+        }
+      }
+
       ToolbarItem(placement: .primaryAction) {
         Button {
           Task { await manager.refresh() }
@@ -76,6 +86,12 @@ struct DeviceManagerWindow: View {
     let emulator: ManagedEmulator? = if case .emulator(let device) = entry { device } else { nil }
     let action = emulator.flatMap { manager.actions[$0.id] }
     let status = emulator.flatMap { manager.startupStatus(for: $0) }
+    let server = manager.remoteServerLabel(for: entry)
+    let subtitle = if let server {
+      Text("\(entry.subtitle) · \(Image(systemName: "cloud")) \(server)")
+    } else {
+      Text(entry.subtitle)
+    }
     return HStack(alignment: .center, spacing: 16) {
       DeviceThumbnailView(device: entry, action: status, manager: manager)
         .contentShape(Rectangle())
@@ -90,7 +106,9 @@ struct DeviceManagerWindow: View {
       VStack(alignment: .leading, spacing: 5) {
         Text(entry.title).font(.headline)
           .lineLimit(1)
-        Text(entry.subtitle)
+        subtitle
+          .help([entry.subtitle, server].compactMap(\.self).joined(separator: " · "))
+          .accessibilityLabel([entry.subtitle, server.map { "Server " + $0 }].compactMap(\.self).joined(separator: ", "))
           .font(.subheadline).foregroundStyle(.secondary)
           .lineLimit(1)
       }
@@ -182,6 +200,6 @@ struct DeviceManagerWindow: View {
   }
 
   private func showPreview(_ serial: String) {
-    SnapOCommandCoordinator.shared.openDevice(.serial(serial))
+    SnapOCommandCoordinator.shared.openDevice(.device(DeviceID(storedValue: serial)))
   }
 }
