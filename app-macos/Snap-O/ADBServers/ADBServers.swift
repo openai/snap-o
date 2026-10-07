@@ -6,7 +6,11 @@ import Observation
 final class ADBServers {
   private(set) var profiles: [RemoteADBServer]
   private(set) var snapshots: [ADBServerSnapshot] = []
-  private(set) var isUpdating = false
+  private(set) var updatingServerID: UUID?
+  var isUpdating: Bool {
+    updatingServerID != nil
+  }
+
   var error: String?
   private let loadError: String?
   private let service: ADBService
@@ -53,7 +57,13 @@ final class ADBServers {
     } else {
       next.append(profile)
     }
-    try await apply(next, replacing: profile.id, tracker: makeTracker(profile))
+    try await apply(next, replacing: profile.id, tracker: profile.isEnabled ? makeTracker(profile) : nil)
+  }
+
+  func setEnabled(_ isEnabled: Bool, for profile: RemoteADBServer) async throws {
+    guard var current = profiles.first(where: { $0.id == profile.id }) else { return }
+    current.isEnabled = isEnabled
+    try await save(current)
   }
 
   func remove(_ profile: RemoteADBServer) async throws {
@@ -66,10 +76,10 @@ final class ADBServers {
     try store.save(next)
     profiles = next
     updateLabels(Dictionary(uniqueKeysWithValues: next.map { (.remote($0.id), $0.connection.displayAddress) }))
-    isUpdating = true
+    updatingServerID = id
     let task = Task { try await service.replaceRemote(.remote(id), tracker: tracker) }
     change = task
-    defer { isUpdating = false
+    defer { updatingServerID = nil
       change = nil
     }
     try await task.value

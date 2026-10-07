@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ADBServersWindow: View {
@@ -17,11 +18,6 @@ struct ADBServersWindow: View {
         }
         .padding(.horizontal, 20)
       }
-      Divider()
-      Text("Servers connect automatically. SSH uses your existing keys and configuration.")
-        .font(.footnote).foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
     }
     .frame(minWidth: 540, minHeight: 260)
     .navigationTitle("ADB Servers")
@@ -38,11 +34,11 @@ struct ADBServersWindow: View {
         try await servers.save($0)
       }
     }
-    .alert("Remove Server?", isPresented: Binding(
+    .alert("Delete Server?", isPresented: Binding(
       get: { removing != nil }, set: { if !$0 { removing = nil } }
     ), presenting: removing) { profile in
       Button("Cancel", role: .cancel) {}
-      Button("Remove", role: .destructive) {
+      Button("Delete", role: .destructive) {
         Task {
           do { try await servers.remove(profile) } catch { servers.error = error.localizedDescription }
         }
@@ -60,50 +56,102 @@ struct ADBServersWindow: View {
   private func row(title: String, id: ADBServerID, profile: RemoteADBServer?) -> some View {
     let snapshot = servers.snapshots.first { $0.id == id }
     let state = snapshot?.state ?? .connecting
-    return HStack(alignment: .top, spacing: 12) {
-      Image(systemName: profile == nil ? "desktopcomputer" : "cloud")
-        .font(.title2).foregroundStyle(.secondary).frame(width: 28)
-      VStack(alignment: .leading, spacing: 5) {
+    let isUpdating = profile.map { servers.updatingServerID == $0.id } ?? false
+    let isDisconnecting = profile?.isEnabled == false && isUpdating
+    let isConnecting = profile?.isEnabled != false && (isUpdating || state == .connecting || state == .starting)
+    let isConnected = profile?.isEnabled != false && !isUpdating && state == .online
+    let deviceCount = snapshot?.inventory.connected?.count ?? 0
+    let status: String = if isDisconnecting {
+      "Disconnecting"
+    } else if profile?.isEnabled == false {
+      "Disconnected"
+    } else if isConnecting {
+      state == .starting && !isUpdating ? "Starting" : "Connecting"
+    } else {
+      switch state {
+      case .online: "Connected"
+      case .connecting: "Connecting"
+      case .starting: "Starting"
+      case .unavailable(let message): message
+      }
+    }
+    return HStack(alignment: .firstTextBaseline, spacing: 12) {
+      Toggle("Enable \(title)", isOn: Binding(
+        get: { profile?.isEnabled ?? true },
+        set: { enabled in
+          guard let profile else { return }
+          Task {
+            do {
+              try await servers.setEnabled(enabled, for: profile)
+            } catch { servers.error = error.localizedDescription }
+          }
+        }
+      ))
+      .toggleStyle(.checkbox)
+      .labelsHidden()
+      .fixedSize()
+      .disabled(profile == nil || servers.isUpdating)
+      .help(profile == nil ? "Local ADB discovery is always enabled." : "Enable or disable this server.")
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
+        Image(systemName: profile == nil ? "desktopcomputer" : "cloud")
+          .font(.title2)
+          .foregroundStyle(.secondary)
+          .frame(width: 28, height: 28)
+          .alignmentGuide(.firstTextBaseline) { dimensions in
+            dimensions[VerticalAlignment.center] + NSFont.preferredFont(forTextStyle: .headline).capHeight / 2
+          }
+          .accessibilityHidden(true)
         Text(title).font(.headline).help(title)
-        switch state {
-        case .online:
-          let count = snapshot?.inventory.connected?.count ?? 0
-          Text("Connected · \(count) \(count == 1 ? "device" : "devices")").foregroundStyle(.secondary)
-        case .connecting, .starting:
-          Text(state == .starting ? "Starting" : "Connecting").foregroundStyle(.secondary)
-        case .unavailable(let message):
-          Text(message).foregroundStyle(.secondary).help(message)
+          .truncationMode(.middle)
+          .lineLimit(1)
+          .textSelection(.disabled)
+      }
+      .contentShape(Rectangle())
+      .onTapGesture(count: 2) {
+        guard let profile, !servers.isUpdating else { return }
+        editing = profile
+      }
+      Group {
+        if isConnecting || isDisconnecting {
+          ProgressView().controlSize(.small).fixedSize()
+        } else {
+          Circle().fill(isConnected ? Color.green : Color.red)
+            .frame(width: 6, height: 6)
         }
       }
-      .font(.subheadline)
-      .lineLimit(1)
-      .textSelection(.disabled)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(width: 16, height: 16)
+      .alignmentGuide(.firstTextBaseline) { dimensions in
+        dimensions[VerticalAlignment.center] + NSFont.preferredFont(forTextStyle: .headline).capHeight / 2
+      }
+      .help(status)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(status)
+      .accessibilityAddTraits(.isImage)
+      if isConnected {
+        Text("\(deviceCount) \(deviceCount == 1 ? "device" : "devices")")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+          .fixedSize()
+      }
+      Spacer(minLength: 0)
       if let profile {
-        HStack(spacing: 8) {
-          Button {
-            editing = profile
-          } label: {
-            Label("Edit Server", systemImage: "pencil")
-              .frame(width: 28, height: 28)
-              .contentShape(Rectangle())
-          }
-          .help("Edit Server")
-          Button(role: .destructive) {
-            removing = profile
-          } label: {
-            Label("Remove Server", systemImage: "trash")
-              .frame(width: 28, height: 28)
-              .contentShape(Rectangle())
-          }
-          .help("Remove Server")
+        Menu {
+          Button("Edit", systemImage: "pencil") { editing = profile }
+          Button("Delete", systemImage: "trash", role: .destructive) { removing = profile }
+        } label: {
+          Label("Server Options", systemImage: "ellipsis")
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
         }
         .labelStyle(.iconOnly)
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Server Options")
         .disabled(servers.isUpdating)
       }
     }
-    .padding(.vertical, 16)
+    .padding(.vertical, 10)
   }
 }
 
@@ -180,6 +228,6 @@ private struct ADBServerEditor: View {
       destination: destination.trimmingCharacters(in: .whitespacesAndNewlines), port: UInt16(ssh), adbPort: adbNumber
     )
     try configuration.validate()
-    return RemoteADBServer(id: profile.id, connection: .ssh(configuration))
+    return RemoteADBServer(id: profile.id, connection: .ssh(configuration), isEnabled: profile.isEnabled)
   }
 }
