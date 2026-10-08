@@ -58,6 +58,7 @@ final class AppRuntime {
       service: adbService, store: serverStore, profiles: profiles, error: serverError,
       makeTracker: ADBServerConnection.tracker
     ) { deviceManager.updateRemoteServerLabels($0) }
+    deviceManager.linkServers = { [weak adbServers] in adbServers?.deviceLinkServers ?? [:] }
     self.adbServers = adbServers
     let captureHistory = CaptureHistory()
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }

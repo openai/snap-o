@@ -26,21 +26,17 @@ final class SnapOCommandCoordinator {
   init() {}
 
   func handle(url: URL) -> Bool {
-    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          components.scheme?.lowercased() == "snapo", components.host?.lowercased() == "open",
-          components.path.isEmpty || components.path == "/",
-          components.user == nil, components.password == nil,
-          components.port == nil, components.fragment == nil else { return false }
-    if !(components.queryItems ?? []).isEmpty {
-      guard let request = DeviceOpenRequest(url: url) else { return false }
+    guard let link = DeviceOpenURL(url: url) else { return false }
+    switch link {
+    case .target(let request):
       openDevice(request)
-      return true
-    }
-    if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
-      target.showLivePreview()
-    } else {
-      pendingLivePreview = true
-      openWorkspaceIfNeeded()
+    case .currentPreview:
+      if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
+        target.showLivePreview()
+      } else {
+        pendingLivePreview = true
+        openWorkspaceIfNeeded()
+      }
     }
     return true
   }

@@ -35,6 +35,8 @@ struct SnapOApp: App {
         WorkspaceWindowConfiguration(workspace: .persisted())
       }
     )
+    // AppDelegate routes URLs and opens a workspace only when needed.
+    .handlesExternalEvents(matching: [])
     .environment(settings)
     .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)

@@ -137,7 +137,7 @@ struct CaptureWindow: View {
   private var captureDeviceTitle: String? {
     if let request = controller.deviceOpenRequest {
       switch request {
-      case .serial(let serial):
+      case .serial(let serial, _):
         return deviceTitle(for: serial)
       case .device(let id):
         return deviceTitle(for: id.storedValue)
@@ -495,18 +495,11 @@ struct CaptureWindow: View {
   }
 
   @ViewBuilder private var deviceOpenOverlay: some View {
-    if let error = controller.deviceOpenError {
+    if controller.deviceOpenError != nil {
       VStack(spacing: 12) {
         Text("Could not open \(captureDeviceTitle ?? "device")")
-          .font(.headline)
-        Text(error)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-        HStack {
-          Button("Retry") {
-            if let request = controller.deviceOpenRequest { session.openDevice(request) }
-          }
-          Button("Cancel") { session.openDevice(nil) }
+        Button("Retry") {
+          if let request = controller.deviceOpenRequest { session.openDevice(request) }
         }
       }
       .multilineTextAlignment(.center)
