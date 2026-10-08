@@ -31,7 +31,9 @@ struct DeviceLinkAuthorizationTests {
   func enabledServerSkipsApproval() async throws {
     let authorization = DeviceLinkAuthorization(
       servers: { [id: DeviceLinkConnection(server: server)] },
-      confirmEnable: { _, _ in Issue.record("Unexpected confirmation"); return false },
+      confirmEnable: { _, _ in Issue.record("Unexpected confirmation")
+        return false
+      },
       enable: { _, _ in Issue.record("Unexpected enable") }
     )
     #expect(!authorization.requiresApproval(.serial("phone", server: server)))
@@ -44,7 +46,9 @@ struct DeviceLinkAuthorizationTests {
     var connection = server
     let authorization = DeviceLinkAuthorization(
       servers: { [id: DeviceLinkConnection(server: connection, isEnabled: false)] },
-      confirmEnable: { _, _ in connection = .ssh(destination: "different-host"); return true },
+      confirmEnable: { _, _ in connection = .ssh(destination: "different-host")
+        return true
+      },
       enable: { _, _ in Issue.record("Changed destination must not be enabled") }
     )
     await #expect(throws: DeviceOpenError.self) {
@@ -59,8 +63,10 @@ struct DeviceLinkAuthorizationTests {
       servers: { [
         id: DeviceLinkConnection(server: server, isEnabled: false),
         .remote(UUID()): DeviceLinkConnection(server: .ssh(destination: "test-host", port: 2223), isEnabled: false)
-    ] },
-      confirmEnable: { _, _ in Issue.record("Ambiguous destination must not be offered"); return false },
+      ] },
+      confirmEnable: { _, _ in Issue.record("Ambiguous destination must not be offered")
+        return false
+      },
       enable: { _, _ in Issue.record("Unexpected enable") }
     )
     #expect(!authorization.requiresApproval(request))
@@ -84,7 +90,9 @@ struct DeviceLinkAuthorizationTests {
     var edits = 0
     let authorization = DeviceLinkAuthorization(
       servers: { [:] },
-      confirmEnable: { _, _ in Issue.record("Unknown server cannot be enabled"); return false },
+      confirmEnable: { _, _ in Issue.record("Unknown server cannot be enabled")
+        return false
+      },
       confirmAdd: {
         #expect(edits == 0)
         return review
@@ -107,7 +115,9 @@ struct DeviceLinkAuthorizationTests {
     var saved = false
     let authorization = DeviceLinkAuthorization(
       servers: { [:] },
-      confirmEnable: { _, _ in Issue.record("Unexpected enable prompt"); return false },
+      confirmEnable: { _, _ in Issue.record("Unexpected enable prompt")
+        return false
+      },
       confirmAdd: { true },
       addServer: { _ in
         saved = true
@@ -124,7 +134,9 @@ struct DeviceLinkAuthorizationTests {
   func failedSaveDoesNotOpenDevice() async {
     let authorization = DeviceLinkAuthorization(
       servers: { [:] },
-      confirmEnable: { _, _ in Issue.record("Unexpected enable prompt"); return false },
+      confirmEnable: { _, _ in Issue.record("Unexpected enable prompt")
+        return false
+      },
       confirmAdd: { true },
       addServer: { _ in throw DeviceOpenError(message: "Synthetic save failure") },
       enable: { _, _ in Issue.record("Unexpected enable") }

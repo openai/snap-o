@@ -32,11 +32,15 @@ struct SnapOCommandCoordinatorTests {
     let target = CommandTarget()
     let authorization = DeviceLinkAuthorization(
       servers: { [.remote(UUID()): DeviceLinkConnection(server: .ssh(destination: "test-host"))] },
-      confirmEnable: { _, _ in Issue.record("Unexpected confirmation"); return false },
+      confirmEnable: { _, _ in Issue.record("Unexpected confirmation")
+        return false
+      },
       enable: { _, _ in Issue.record("Unexpected enable") }
     )
     coordinator.requiresDeviceLinkApproval = authorization.requiresApproval
-    coordinator.authorizeDeviceLink = { _ in Issue.record("Ordinary links must not wait for approval"); return nil }
+    coordinator.authorizeDeviceLink = { _ in Issue.record("Ordinary links must not wait for approval")
+      return nil
+    }
     if windowExists { coordinator.register(target) }
     for serial in ["first", "second"] {
       let url = try #require(URL(string: "snapo://open?serial=\(serial)\(serverQuery)"))
