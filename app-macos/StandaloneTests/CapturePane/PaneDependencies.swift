@@ -18,7 +18,7 @@ final class DeviceManager {
   func retryADBServer() {}
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
     if let resolveRequest { return try await resolveRequest(request, progress) }
-    if case .serial(let serial, _) = request { return serial }
+    if case .serial(let serial, _, _) = request { return serial }
     throw CancellationError()
   }
 }

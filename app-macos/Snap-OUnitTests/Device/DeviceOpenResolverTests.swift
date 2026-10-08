@@ -318,6 +318,19 @@ struct DeviceOpenResolverTests {
     }
   }
 
+  @Test
+  func approvedServerDoesNotSwitchToAnotherMatch() async {
+    let approvedID = ADBServerID.remote(UUID())
+    let otherID = ADBServerID.remote(UUID())
+    let server = DeviceLinkServer.ssh(destination: "test-host", port: 2222)
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(servers: [otherID: connected(server, serials: ["phone"])])
+    }, start: { _ in Issue.record("Unexpected launch") })
+    await expectFailure("The selected ADB server disconnected while opening the device.") {
+      try await resolver.resolve(.serial("phone", server: server, serverID: approvedID)) { _ in }
+    }
+  }
+
   @Test func serverErrorsAreDistinct() async {
     let cases: [(DeviceLinkConnection?, String)] = [
       (nil, "No configured ADB server matches this link."),

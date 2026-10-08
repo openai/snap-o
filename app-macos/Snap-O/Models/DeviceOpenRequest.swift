@@ -38,7 +38,7 @@ enum DeviceOpenURL: Equatable {
 }
 
 enum DeviceOpenRequest: Equatable {
-  case serial(String, server: DeviceLinkServer = .local())
+  case serial(String, server: DeviceLinkServer = .local(), serverID: ADBServerID? = nil)
   case device(DeviceID)
   case avd(String, start: Bool)
 

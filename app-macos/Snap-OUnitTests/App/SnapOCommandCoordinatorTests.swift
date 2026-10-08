@@ -4,6 +4,55 @@ import Testing
 
 @MainActor
 struct SnapOCommandCoordinatorTests {
+  @Test(arguments: [false, true])
+  func incomingLinksCannotReplaceAnApproval(approved: Bool) async throws {
+    let coordinator = SnapOCommandCoordinator()
+    let target = CommandTarget()
+    coordinator.register(target)
+    let original = try #require(URL(string: "snapo://open?serial=phone&server=test-host"))
+    let other = try #require(URL(string: "snapo://open?serial=other"))
+    let preview = try #require(URL(string: "snapo://open"))
+    coordinator.authorizeDeviceLink = { request in
+      #expect(request == .serial("phone", server: .ssh(destination: "test-host")))
+      #expect(coordinator.handle(url: other))
+      #expect(coordinator.handle(url: preview))
+      coordinator.openDevice(.serial("internal-choice"))
+      #expect(target.requests.isEmpty && target.previews == 0)
+      return approved ? request : nil
+    }
+    #expect(coordinator.handle(url: original))
+    await coordinator.deviceLinkTask?.value
+    #expect(target.requests == (approved ? [.serial("phone", server: .ssh(destination: "test-host"))] : []))
+    #expect(coordinator.deviceLinkTask == nil)
+  }
+
+  @Test(arguments: [false, true], ["", "&server=test-host"])
+  func ordinaryLinksDoNotEnterApprovalQueue(windowExists: Bool, serverQuery: String) throws {
+    let coordinator = SnapOCommandCoordinator()
+    let target = CommandTarget()
+    let authorization = DeviceLinkAuthorization(
+      servers: { [.remote(UUID()): DeviceLinkConnection(server: .ssh(destination: "test-host"))] },
+      confirmEnable: { _, _ in Issue.record("Unexpected confirmation")
+        return false
+      },
+      enable: { _, _ in Issue.record("Unexpected enable") }
+    )
+    coordinator.requiresDeviceLinkApproval = authorization.requiresApproval
+    coordinator.authorizeDeviceLink = { _ in Issue.record("Ordinary links must not wait for approval")
+      return nil
+    }
+    if windowExists { coordinator.register(target) }
+    for serial in ["first", "second"] {
+      let url = try #require(URL(string: "snapo://open?serial=\(serial)\(serverQuery)"))
+      #expect(coordinator.handle(url: url))
+      #expect(coordinator.deviceLinkTask == nil)
+    }
+    if !windowExists { coordinator.register(target) }
+    let server: DeviceLinkServer = serverQuery.isEmpty ? .local() : .ssh(destination: "test-host")
+    let serials = windowExists ? ["first", "second"] : ["second"]
+    #expect(target.requests == serials.map { .serial($0, server: server) })
+  }
+
   @Test(arguments: ["snapo://open", "snapo://open/", "SNAPO://OPEN"])
   func opensPreviewInAnInactiveWindow(address: String) throws {
     let coordinator = SnapOCommandCoordinator()

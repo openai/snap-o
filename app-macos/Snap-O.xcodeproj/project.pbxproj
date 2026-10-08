@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A89100000000000000000001 /* DeviceLinkAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A89100000000000000000002 /* DeviceLinkAuthorization.swift */; };
 		B9121A000000000000000001 /* ToolConnectionHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9121A000000000000000002 /* ToolConnectionHealth.swift */; };
 		02288FF1C74A76762433FA67 /* Snap-O/UI/PlaybackVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9790185B1E1B29271ACBC6C /* Snap-O/UI/PlaybackVisibility.swift */; };
 		023C84EF38EFEB972DB4D8C3 /* Snap-O/Device/Emulators/EmulatorConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798562CA2312562E7E77FB80 /* Snap-O/Device/Emulators/EmulatorConnection.swift */; };
@@ -151,6 +152,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A89100000000000000000002 /* DeviceLinkAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/App/DeviceLinkAuthorization.swift"; sourceTree = SOURCE_ROOT; };
 		B9121A000000000000000002 /* ToolConnectionHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Tools/ToolConnectionHealth.swift"; sourceTree = SOURCE_ROOT; };
 		006BBE20874F0E47B3195714 /* Snap-O/History/CaptureHistoryGridSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/History/CaptureHistoryGridSelection.swift"; sourceTree = SOURCE_ROOT; };
 		01E2C64D296CEE09BB0E970E /* AndroidHostService/EmulatorDisplayReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AndroidHostService/EmulatorDisplayReader.swift; sourceTree = SOURCE_ROOT; };
@@ -404,6 +406,7 @@
 				40D040FC77F642DD91556E04 /* Snap-O/Tools/AppToolPresentation.swift */,
 				5F277D0DD60623DFAAF0619E /* Snap-O/Tools/ToolSelection.swift */,
 				C039F6179E36ECD4EB3C2DBD /* Snap-O/App/SnapOCommandCoordinator.swift */,
+				A89100000000000000000002 /* DeviceLinkAuthorization.swift */,
 				09573B564252B9340904B8B3 /* Snap-O/LivePreview/PreviewHint.swift */,
 				CD5F21F6854E63E3CD6414E7 /* Snap-O/History/CaptureHistory.swift */,
 				2D1D17CDCBFF480AB301386D /* Snap-O/Capture/Review/CaptureReviewState.swift */,
@@ -791,6 +794,7 @@
 				6590B7C0F1219F753620B8D5 /* Snap-O/History/CaptureHistory.swift in Sources */,
 				867D6EF6B3F481314A9BBEA8 /* Snap-O/LivePreview/PreviewHint.swift in Sources */,
 				052CE11598CB1173E2CA4254 /* Snap-O/App/SnapOCommandCoordinator.swift in Sources */,
+				A89100000000000000000001 /* DeviceLinkAuthorization.swift in Sources */,
 				E3D680C540464CEC85C08BBB /* Snap-O/Tools/AppToolModel.swift in Sources */,
 				28E05C925321453E90AE3CC1 /* Snap-O/Tools/AppToolPresentation.swift in Sources */,
 				40D9D7C30116863A7A729678 /* Snap-O/Tools/ToolSelection.swift in Sources */,

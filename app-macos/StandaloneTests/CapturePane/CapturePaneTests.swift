@@ -373,6 +373,58 @@ struct CapturePaneTests {
     await fixture.close()
   }
 
+  @Test(arguments: [false, true])
+  func anotherDeviceClearsFailedOpen(fromDeviceManager: Bool) async throws {
+    let fixture = Fixture()
+    let failed = DeviceOpenRequest.serial("missing", server: .ssh(destination: "test-host"))
+    fixture.devices.resolveRequest = { request, _ in
+      if request == failed { throw CocoaError(.fileReadUnknown) }
+      #expect(request == .device(DeviceID(storedValue: "B")))
+      return "B"
+    }
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    pane.openDevice(failed)
+    try await waitForState { pane.deviceOpenError != nil }
+
+    if fromDeviceManager {
+      pane.openDevice(.device(DeviceID(storedValue: "B")))
+    } else {
+      pane.selectDevice(id: "B")
+    }
+    try await waitForState { pane.selectedPreviewDeviceID == "B" && pane.deviceOpenRequest == nil }
+    #expect(pane.deviceOpenError == nil && pane.deviceOpenStatus == nil)
+    #expect(pane.livePreviewAttachment(for: "B") != nil)
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: [0, 1, 2])
+  func cancellingFailedDeviceOpenReturnsToAvailablePreview(deviceCount: Int) async throws {
+    let deviceIDs = Array(["A", "B"].prefix(deviceCount))
+    let fixture = Fixture(deviceIDs: deviceIDs)
+    fixture.devices.resolveRequest = { _, _ in throw CocoaError(.fileReadUnknown) }
+    let pane = fixture.pane()
+    if deviceIDs.isEmpty {
+      pane.requestLivePreview()
+      await pane.start()
+    } else {
+      await fixture.start(pane)
+    }
+    pane.openDevice(.serial("missing", server: .ssh(destination: "test-host")))
+    try await waitForState { pane.deviceOpenError != nil }
+
+    pane.openDevice(nil)
+
+    #expect(pane.deviceOpenRequest == nil && pane.deviceOpenError == nil && pane.deviceOpenStatus == nil)
+    #expect(pane.currentPreview?.device.id == deviceIDs.first)
+    if let available = deviceIDs.first {
+      #expect(pane.livePreviewAttachment(for: available) != nil)
+    }
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test
   func cancellingFailedDeviceOpenKeepsTheCurrentReview() async throws {
     let fixture = Fixture()
