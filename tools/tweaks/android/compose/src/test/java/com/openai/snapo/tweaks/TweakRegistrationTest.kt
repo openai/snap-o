@@ -466,7 +466,7 @@ class TweakRegistrationTest {
         }
 
         assertTrue(error.message.orEmpty().contains("java.lang.Long"))
-        assertTrue(error.message.orEmpty().contains("Boolean, Int, Float, String, Color, and BezierCurve"))
+        assertTrue(error.message.orEmpty().contains("Boolean, Int, Float, String, Color, enum, and BezierCurve"))
     }
 
     @Test

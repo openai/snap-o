@@ -135,6 +135,77 @@ class TweakScopeTest {
     }
 
     @Test
+    fun `enum sources preserve selections owner changes and reset behavior`() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        var upstream = Mode.FIRST
+        var override: Mode? = null
+        val source = object : TweakSource<Mode> {
+            override var value: Mode
+                get() = override ?: upstream
+                set(value) { override = value }
+            override val isModified: Boolean get() = override != null
+            override fun reset() { override = null }
+            override fun observe(): Flow<Unit> = changes
+        }
+        val value = scope().tweak(source, "Mode")
+        val initial = TweakRegistry.snapshot().single()
+        assertEquals("FIRST", initial.value)
+        assertEquals(listOf("FIRST", "SECOND"), initial.descriptor.options)
+        assertEquals(Mode.FIRST, value.value)
+
+        upstream = Mode.SECOND
+        changes.tryEmit(Unit)
+        assertEquals(Mode.SECOND, value.value)
+        assertEquals("SECOND", TweakRegistry.snapshot(cachedOnly = true).single().value)
+
+        TweakRegistry.update(mapOf("Mode" to "FIRST"))
+        assertEquals(Mode.FIRST, source.value)
+        assertEquals(Mode.FIRST, value.value)
+        assertTrue(TweakRegistry.snapshot().single().modified)
+        assertThrows(IllegalArgumentException::class.java) {
+            TweakRegistry.update(mapOf("Mode" to "Unknown"))
+        }
+        TweakRegistry.update(mapOf("Mode" to null))
+        assertEquals(Mode.SECOND, value.value)
+        assertEquals(null, override)
+        assertFalse(TweakRegistry.snapshot().single().modified)
+    }
+
+    @Test
+    fun `shared enum sources decode without reading inactive owners`() {
+        val first = scope()
+        val second = scope()
+        var secondReads = 0
+        var secondOwner = Mode.SECOND
+        fun source(read: () -> Mode, write: (Mode) -> Unit = {}) = object : TweakSource<Mode> {
+            override var value: Mode
+                get() = read()
+                set(value) = write(value)
+            override val isModified: Boolean get() = false
+            override fun reset() = Unit
+            override fun observe(): Flow<Unit> = MutableSharedFlow()
+        }
+        first.tweak(source({ Mode.FIRST }), "Shared enum")
+        val value = second.tweak(
+            source({
+                secondReads++
+                secondOwner
+            }, { secondOwner = it }),
+            "Shared enum",
+        )
+        assertEquals(Mode.FIRST, value.value)
+        assertEquals(0, secondReads)
+
+        first.close()
+
+        assertEquals(Mode.SECOND, value.value)
+        assertEquals(1, secondReads)
+        TweakRegistry.update(mapOf("Shared enum" to "FIRST"))
+        assertEquals(Mode.FIRST, secondOwner)
+        assertEquals(Mode.FIRST, value.value)
+    }
+
+    @Test
     fun `source observation transfers to the next active owner`() {
         val first = scope()
         val second = scope()
@@ -216,7 +287,10 @@ class TweakScopeTest {
     }
 
     private fun scope() = TweakScope().also { scopes.add(it) }
-    private enum class Mode { FIRST, SECOND }
+    private enum class Mode {
+        FIRST { override fun toString(): String = "First mode" },
+        SECOND,
+    }
 
     private class Source(var upstream: Int) : TweakSource<Int> {
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
