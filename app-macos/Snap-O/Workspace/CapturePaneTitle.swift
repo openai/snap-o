@@ -18,7 +18,7 @@ struct CapturePaneTitle: View {
         }
       }
       .lineLimit(1)
-      .help([title, serverName].compactMap { $0 }.joined(separator: " "))
+      .help([title, serverName].compactMap(\.self).joined(separator: " "))
       Button(action: openDeviceManager) {
         Image(systemName: "ellipsis")
           .font(.system(size: 13, weight: .regular))

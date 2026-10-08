@@ -179,7 +179,7 @@ struct CaptureWindow: View {
 
   private var captureDeviceTitle: String? {
     guard let label = captureDeviceLabel else { return nil }
-    return [label.name, label.server].compactMap { $0 }.joined(separator: " ")
+    return [label.name, label.server].compactMap(\.self).joined(separator: " ")
   }
 
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
