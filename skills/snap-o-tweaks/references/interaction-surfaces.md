@@ -92,7 +92,7 @@ fun AnimatedContent() {
 }
 ```
 
-Value declarations return observable `State<T>` and update when any supported surface changes the shared registry. `TweakAction` returns `Unit`, registers its parameterless callback only while its owner remains in composition, and does not execute the callback during composition. The registry-editing `SnapOTweaks` helpers are annotated `@RestrictTo(LIBRARY_GROUP)`; do not present them as a stable public app API for building arbitrary in-process tools. Use the supported overlay or an external REST client when an editable custom control surface is needed.
+Value declarations return `MutableState<T>` and update when app code or any supported surface changes the shared registry. Use `var value by tweak(...)` with `androidx.compose.runtime.setValue` for app writes. Writes use the same validation as tool edits. No-op declarations retain writable local state across recompositions; source-backed declarations read and write the app’s source without registering or observing it. `TweakAction` returns `Unit`, registers its parameterless callback only while its owner remains in composition, and does not execute the callback during composition. The registry-editing `SnapOTweaks` helpers are annotated `@RestrictTo(LIBRARY_GROUP)`; do not present them as a stable public app API for building arbitrary in-process tools. Use the supported overlay or an external REST client when an editable custom control surface is needed.
 
 Register each shared action once at its owning composable. Distinct callbacks must use explicit, stable, unique names; concurrent registrations of the same action name are surfaced as conflicts and cannot be invoked.
 
