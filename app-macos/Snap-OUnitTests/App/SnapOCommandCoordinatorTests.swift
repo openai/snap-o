@@ -4,16 +4,18 @@ import Testing
 
 @MainActor
 struct SnapOCommandCoordinatorTests {
-  @Test func deliversCommandsToAnInactiveWindow() throws {
+  @Test(arguments: ["snapo://open", "snapo://open/", "SNAPO://OPEN"])
+  func opensPreviewInAnInactiveWindow(address: String) throws {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
     coordinator.register(target)
-    let url = try #require(URL(string: "snapo://record"))
+    let url = try #require(URL(string: address))
     #expect(coordinator.handle(url: url))
-    #expect(target.commands == [.record])
+    #expect(target.previews == 1)
   }
 
-  @Test func queuesLatestRequestUntilWindowRegisters() throws {
+  @Test
+  func queuesLatestRequestUntilWindowRegisters() throws {
     let coordinator = SnapOCommandCoordinator()
     var windowsOpened = 0
     coordinator.openWorkspace = { windowsOpened += 1 }
@@ -68,7 +70,8 @@ struct SnapOCommandCoordinatorTests {
     #expect(current.requests == [.serial("phone"), .serial("phone"), .serial("second-phone")])
   }
 
-  @Test func routesToLastWorkspaceWhenAnotherWindowIsFocused() throws {
+  @Test
+  func routesToLastWorkspaceWhenAnotherWindowIsFocused() throws {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
     coordinator.activate(target)
@@ -80,7 +83,8 @@ struct SnapOCommandCoordinatorTests {
     #expect(target.requests == [.serial("phone"), .serial("second-phone")])
   }
 
-  @Test func coldLaunchRetainsRequest() throws {
+  @Test
+  func coldLaunchRetainsRequest() throws {
     let coordinator = SnapOCommandCoordinator()
     let url = try #require(DeviceOpenRequest.serial("phone").url)
     #expect(coordinator.handle(url: url))
@@ -89,18 +93,19 @@ struct SnapOCommandCoordinatorTests {
     #expect(target.requests == [.serial("phone")])
   }
 
-  @Test func doesNotDispatchInvalidOpenRequest() throws {
+  @Test
+  func doesNotDispatchInvalidOpenRequest() throws {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
     coordinator.activate(target)
     let url = try #require(URL(string: "snapo://open?serial=phone&command=record"))
     #expect(!coordinator.handle(url: url))
     #expect(target.requests.isEmpty)
-    #expect(target.commands.isEmpty)
+    #expect(target.previews == 0)
   }
 
-  @Test(arguments: [SnapOCommand.capture, .record, .livepreview], [false, true])
-  func commandURLsUseCurrentWorkspace(command: SnapOCommand, appIsInactive: Bool) throws {
+  @Test(arguments: [false, true])
+  func livePreviewUsesCurrentWorkspace(appIsInactive: Bool) throws {
     let coordinator = SnapOCommandCoordinator()
     var windowsOpened = 0
     coordinator.openWorkspace = { windowsOpened += 1 }
@@ -110,33 +115,64 @@ struct SnapOCommandCoordinatorTests {
     coordinator.activate(current)
     if appIsInactive { coordinator.deactivate(current) }
 
-    let url = try #require(URL(string: "snapo://\(command.rawValue)"))
+    let url = try #require(URL(string: "snapo://open"))
     #expect(coordinator.handle(url: url))
-    #expect(current.commands == [command])
-    #expect(other.commands.isEmpty)
+    #expect(current.previews == 1)
+    #expect(other.previews == 0)
     #expect(windowsOpened == 0)
   }
 
   @Test(arguments: [false, true], [false, true])
-  func queuedCommandsOpenOneWorkspace(launcherIsReady: Bool, becomesKeyFirst: Bool) throws {
+  func repeatedLivePreviewRequestsOpenOneWorkspace(launcherIsReady: Bool, becomesKeyFirst: Bool) throws {
     let coordinator = SnapOCommandCoordinator()
     var windowsOpened = 0
     let openWorkspace = { windowsOpened += 1 }
     if launcherIsReady { coordinator.openWorkspace = openWorkspace }
-    #expect(try coordinator.handle(url: #require(URL(string: "snapo://record"))))
-    #expect(try coordinator.handle(url: #require(URL(string: "snapo://capture"))))
+    #expect(try coordinator.handle(url: #require(URL(string: "snapo://open"))))
+    #expect(try coordinator.handle(url: #require(URL(string: "snapo://open"))))
     if !launcherIsReady { coordinator.openWorkspace = openWorkspace }
     #expect(windowsOpened == 1)
 
     let target = CommandTarget()
     if becomesKeyFirst { coordinator.activate(target) } else { coordinator.register(target) }
-    #expect(target.commands == [.record, .capture])
+    #expect(target.previews == 1)
     coordinator.activate(target)
-    #expect(target.commands == [.record, .capture])
+    #expect(target.previews == 1)
     #expect(windowsOpened == 1)
   }
 
-  @Test func thumbnailsBelongToOneConnection() {
+  @Test(arguments: ["capture", "record", "recording", "livepreview"], [false, true])
+  func removedURLsDoNotOpenOrChangeAWindow(command: String, registered: Bool) throws {
+    let coordinator = SnapOCommandCoordinator()
+    var windowsOpened = 0
+    coordinator.openWorkspace = { windowsOpened += 1 }
+    let target = CommandTarget()
+    if registered { coordinator.register(target) }
+    for address in ["snapo://\(command)", "snapo:///\(command)"] {
+      #expect(try !coordinator.handle(url: #require(URL(string: address))))
+    }
+    coordinator.activate(target)
+    #expect(windowsOpened == 0)
+    #expect(target.previews == 0 && target.requests.isEmpty)
+  }
+
+  @Test(arguments: [
+    "snapo://open?serial=", "snapo://open?avd=", "snapo://open?start=true",
+    "snapo://open?unknown=value", "snapo://open#fragment", "snapo://open/extra",
+    "snapo://user@open", "snapo://open:1234", "https://open"
+  ])
+  func invalidOpenDoesNotFallBackToCurrentPreview(address: String) throws {
+    let coordinator = SnapOCommandCoordinator()
+    var windowsOpened = 0
+    coordinator.openWorkspace = { windowsOpened += 1 }
+    #expect(try !coordinator.handle(url: #require(URL(string: address))))
+    let target = CommandTarget()
+    coordinator.register(target)
+    #expect(windowsOpened == 0 && target.previews == 0 && target.requests.isEmpty)
+  }
+
+  @Test
+  func thumbnailsBelongToOneConnection() {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
     let original = DeviceTarget(serial: "phone", transportID: "1")
@@ -159,12 +195,12 @@ struct SnapOCommandCoordinatorTests {
 @MainActor
 private final class CommandTarget: SnapOCommandTarget {
   var requests: [DeviceOpenRequest] = []
-  var commands: [SnapOCommand] = []
+  var previews = 0
   var connection: DeviceTarget?
   var thumbnail: LivePreviewThumbnail?
 
-  func perform(_ command: SnapOCommand) {
-    commands.append(command)
+  func showLivePreview() {
+    previews += 1
   }
 
   func openDevice(_ request: DeviceOpenRequest) {

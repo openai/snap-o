@@ -14,7 +14,7 @@ swiftc_for_tests -swift-version 6 -parse-as-library \
   Snap-O/History/CaptureHistoryDropTarget.swift \
   Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \
   Snap-O/Capture/Operations/CaptureCoordinator.swift Snap-O/Utilities/Perf.swift \
-  Snap-O/Capture/Operations/CaptureBatch.swift Snap-O/Capture/Operations/ScreenshotCapture.swift \
+  Snap-O/Capture/Operations/CaptureOperation.swift Snap-O/Capture/Operations/ScreenshotCapture.swift \
   Snap-O/Capture/Operations/ScreenshotService.swift Snap-O/Capture/Operations/CaptureTimestampSource.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Utilities/Logging.swift \
   StandaloneTests/CaptureHistory/ScreenshotTestADB.swift \

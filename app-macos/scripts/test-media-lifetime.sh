@@ -27,7 +27,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   -Xlinker -rpath -Xlinker "$TEST_LIBRARIES" \
   -Xlinker -rpath -Xlinker "$TEST_FRAMEWORKS" "$PRODUCTS/DependenciesTestSupport.o" \
   Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/Media.swift Snap-O/Capture/Export/VideoFileClient.swift Snap-O/Utilities/Logging.swift \
-  Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/Export/CaptureExportRequest.swift Snap-O/Capture/Operations/CaptureBatch.swift \
+  Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/Export/CaptureExportRequest.swift Snap-O/Capture/Operations/CaptureOperation.swift \
   Snap-O/Capture/Review/CaptureCropGeometry.swift Snap-O/Capture/Review/CaptureTrimRange.swift \
   Snap-O/Capture/Export/CaptureCropExporter.swift Snap-O/Capture/Review/CaptureReviewDragExport.swift \
   Snap-O/Capture/Review/CaptureReviewState.swift Snap-O/Capture/Review/CaptureReviewPlayback.swift \
@@ -39,7 +39,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Capture/CapturePaneSession.swift \
   Snap-O/Workspace/CaptureWindowSession.swift Snap-O/Workspace/WorkspaceLayoutController.swift Snap-O/App/CaptureWorkspaces.swift \
   Snap-O/Capture/CaptureServices.swift Snap-O/LivePreview/LivePreviewDevice.swift \
-  Snap-O/Device/ADBServerState.swift Snap-O/Models/SnapOCommand.swift Snap-O/Models/DeviceOpenRequest.swift \
+  Snap-O/Device/ADBServerState.swift Snap-O/Models/DeviceOpenRequest.swift \
   StandaloneTests/CapturePane/PaneDependencies.swift StandaloneTests/CapturePane/CapturePaneTests.swift StandaloneTests/CapturePane/CaptureStartupTests.swift StandaloneTests/CapturePane/WorkspaceLifetimeTests.swift \
   StandaloneTests/MediaLifetime/MediaLifetimeTests.swift \
   -o "$TEST_DIR/media-lifetime-tests"

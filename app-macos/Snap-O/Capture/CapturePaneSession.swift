@@ -14,7 +14,7 @@ enum CapturePaneContent {
   }
 }
 
-/// Owns navigation and this pane's use of previews and capture batches.
+/// Owns navigation and this pane's use of previews and capture operations.
 @Observable
 @MainActor
 final class CapturePaneSession {
@@ -38,7 +38,6 @@ final class CapturePaneSession {
   private var lastDisplay: DisplayInfo?
   private var hasStarted = false
   private var needsInitialCapture = true
-  private var pendingCommands: [SnapOCommand] = []
   private struct RetiredReview {
     let review: CaptureReviewState
     let cleanup: Task<Void, Never>
@@ -72,15 +71,12 @@ final class CapturePaneSession {
     guard case .live = content else { return [] }
     if let recording {
       guard !recording.options.recordsBugReport else { return [] }
-      return recording.items.compactMap { item in
-        switch item.state {
-        case .pending, .recording: item.target?.isValid == true ? item.device : nil
-        default: nil
-        }
+      switch recording.state {
+      case .pending, .recording: return recording.device.connection?.isValid == true ? [recording.device] : []
+      default: return []
       }
     }
-    let firstCommand = pendingCommands.first ?? (AppSettings.shared.startupCaptureMode == .screenshot ? .capture : .livepreview)
-    guard !needsInitialCapture || deviceOpenRequest != nil || firstCommand != .capture else { return [] }
+    guard !needsInitialCapture || deviceOpenRequest != nil || AppSettings.shared.startupCaptureMode == .livePreview else { return [] }
     return devices.inventory.connected ?? []
   }
 
@@ -97,7 +93,7 @@ final class CapturePaneSession {
   }
 
   var selectedDeviceID: String? {
-    review?.selectedItem?.device.id ?? selectedPreviewDeviceID
+    review?.operation.device.id ?? selectedPreviewDeviceID
   }
 
   var isRecording: Bool {
@@ -117,7 +113,7 @@ final class CapturePaneSession {
   }
 
   var isProcessing: Bool {
-    review.map { !$0.batch.isComplete } ?? false
+    review.map { !$0.operation.isComplete } ?? false
   }
 
   var hasDevices: Bool {
@@ -140,12 +136,26 @@ final class CapturePaneSession {
     !isClosing && content.allowsReplacement
   }
 
+  private var captureDevice: Device? {
+    let connected = devices.inventory.connected ?? []
+    let preferredID = review?.operation.device.id ?? selectedPreviewDeviceID
+    let candidate: Device? = if let preferredID {
+      connected.first { $0.id == preferredID }
+    } else {
+      connected.first
+    }
+    guard let candidate, candidate.connection?.isValid == true else { return nil }
+    return devices.inventory.ready?.first {
+      $0.id == candidate.id && $0.connection == candidate.connection
+    }
+  }
+
   var canCaptureNow: Bool {
-    canChangeContent && !(devices.inventory.ready ?? []).isEmpty
+    canChangeContent && captureDevice != nil
   }
 
   var canStartRecordingNow: Bool {
-    canChangeContent && !(devices.inventory.ready ?? []).isEmpty
+    canChangeContent && captureDevice != nil
   }
 
   var canSelectLivePreview: Bool {
@@ -153,7 +163,7 @@ final class CapturePaneSession {
   }
 
   var currentCaptureDeviceTitle: String? {
-    review?.selectedItem?.device.displayTitle ?? currentPreview?.device.displayTitle
+    review?.operation.device.displayTitle ?? currentPreview?.device.displayTitle
   }
 
   var navigationTitle: String {
@@ -169,10 +179,7 @@ final class CapturePaneSession {
   }
 
   var captureProgressText: String? {
-    if let review {
-      guard review.items.count > 1, let index = review.items.firstIndex(where: { $0.id == review.selectedItemID }) else { return nil }
-      return "\(index + 1)/\(review.items.count)"
-    }
+    guard review == nil else { return nil }
     guard previews.count > 1, let index = previews.firstIndex(where: { $0.device.id == selectedPreviewDeviceID }) else { return nil }
     return "\(index + 1)/\(previews.count)"
   }
@@ -181,10 +188,14 @@ final class CapturePaneSession {
     guard !hasStarted, !isClosing else { return }
     hasStarted = true
     devices.start()
-    if let request = deviceOpenRequest { openDevice(request) }
+    if let request = deviceOpenRequest {
+      openDevice(request)
+    } else if !needsInitialCapture {
+      claimPreparedPreview()
+    }
     observation = Task {
       for await _ in Observations({
-        (self.devices.inventory, self.wantedDevices, self.recording?.isComplete, self.review?.selectedItemWasDeleted)
+        (self.devices.inventory, self.wantedDevices, self.recording?.isComplete)
       }) {
         guard !Task.isCancelled, !isClosing else { return }
         update()
@@ -193,13 +204,11 @@ final class CapturePaneSession {
   }
 
   private func update() {
-    if let recording, recording.isComplete { showReview(recording) }
-    if let review, review.selectedItemWasDeleted { returnToLive(from: review) }
-    while let command = pendingCommands.first, canRun(command) {
-      pendingCommands.removeFirst()
-      perform(command)
+    if needsInitialCapture, review == nil, let connected = devices.inventory.connected {
+      selectedPreviewDeviceID = connected.first { $0.id == selectedPreviewDeviceID }?.id ?? connected.first?.id
     }
-    if needsInitialCapture, pendingCommands.isEmpty, deviceOpenRequest == nil {
+    if let recording, recording.isComplete { showReview(recording) }
+    if needsInitialCapture, deviceOpenRequest == nil {
       if AppSettings.shared.startupCaptureMode == .screenshot, canCaptureNow {
         needsInitialCapture = false
         takeScreenshot(usePreparation: true)
@@ -223,30 +232,13 @@ final class CapturePaneSession {
     }
   }
 
-  func enqueue(_ command: SnapOCommand) {
-    // Busy-window commands are ignored, not saved for later.
+  func requestLivePreview() {
     guard canChangeContent else { return }
-    pendingCommands.append(command)
-    if hasStarted { update() }
-  }
-
-  private func canRun(_ command: SnapOCommand) -> Bool {
-    switch command {
-    case .capture, .record: !(devices.inventory.ready ?? []).isEmpty
-    case .livepreview: hasDevices
-    }
-  }
-
-  private func perform(_ command: SnapOCommand) {
     needsInitialCapture = false
-    switch command {
-    case .capture: takeScreenshot()
-    case .record: startRecording()
-    case .livepreview:
-      if let review { returnToLive(from: review) }
-      claimPreparedPreview()
-      reconcilePreviews()
-    }
+    guard hasStarted else { return }
+    if let review { returnToLive(from: review) }
+    claimPreparedPreview()
+    reconcilePreviews()
   }
 
   private func claimPreparedPreview() {
@@ -260,33 +252,32 @@ final class CapturePaneSession {
   }
 
   func takeScreenshot(usePreparation: Bool = false) {
-    guard canCaptureNow else { return }
+    guard canCaptureNow, let device = captureDevice else { return }
     openDevice(nil)
-    let targets = devices.inventory.ready ?? []
-    let batch = (usePreparation ? services.startup.claimScreenshots(for: targets) : nil) ?? services.screenshots(targets)
-    showReview(batch)
-    batch.start()
+    let capture = (usePreparation ? services.startup.claimScreenshots(for: device) : nil) ?? services.screenshots(device)
+    showReview(capture)
+    capture.start()
     run { await self.services.startup.discard() }
   }
 
   func startRecording() {
-    guard canStartRecordingNow else { return }
+    guard canStartRecordingNow, let device = captureDevice else { return }
     openDevice(nil)
-    let batch = services.recording(devices.inventory.ready ?? [], RecordingOptions(
+    let capture = services.recording(device, RecordingOptions(
       recordsBugReport: AppSettings.shared.recordAsBugReport,
       showsTouches: AppSettings.shared.showTouchesDuringCapture
     ))
     if let review { retire(review) }
-    content = .live(recording: batch)
+    content = .live(recording: capture)
     reconcilePreviews()
     run {
       await self.services.startup.discard()
-      if batch.options.recordsBugReport {
+      if capture.options.recordsBugReport {
         for cleanup in Array(self.retiredPreviews.values) {
           await cleanup.value
         }
       }
-      if !self.isClosing { batch.start() }
+      if !self.isClosing { capture.start() }
     }
   }
 
@@ -296,36 +287,32 @@ final class CapturePaneSession {
     recording.requestFinish()
   }
 
-  private func showReview(_ batch: any CaptureBatch) {
+  private func showReview(_ capture: any CaptureOperation) {
     lastDisplay = displayInfoForSizing
-    let selected = selectedDeviceID
     if let review { retire(review) }
-    let review = CaptureReviewState(batch: batch, selectedDeviceID: selected, fileStore: fileStore, history: history)
+    let review = CaptureReviewState(operation: capture, fileStore: fileStore, history: history.repository)
     content = .review(review)
-    review.start()
     review.setVisible(isVisible)
     reconcilePreviews()
   }
 
   func returnToLive(from expected: CaptureReviewState, selecting deviceID: String? = nil) {
     guard canChangeContent, review === expected else { return }
-    let preferred = deviceID ?? expected.selectedItem?.device.id ?? selectedPreviewDeviceID
+    let preferred = deviceID ?? expected.operation.device.id
     let available = devices.inventory.connected ?? []
-    selectedPreviewDeviceID = preferredDeviceID(
-      selected: preferred, originalOrder: expected.batch.items.map(\.device), available: available
-    ) ?? preferred
+    selectedPreviewDeviceID = available.first { $0.id == preferred }?.id ?? available.first?.id ?? preferred
     retire(expected)
     content = .live(recording: nil)
     reconcilePreviews()
   }
 
   private func retire(_ review: CaptureReviewState) {
-    let id = review.batch.id
+    let id = review.operation.id
     guard retiredReviews[id] == nil else { return }
     review.beginClosing()
     let cleanup = Task {
-      if !review.batch.isComplete {
-        for await complete in Observations({ review.batch.isComplete }) where complete {
+      if !review.operation.isComplete {
+        for await complete in Observations({ review.operation.isComplete }) where complete {
           break
         }
       }
@@ -339,9 +326,7 @@ final class CapturePaneSession {
     let wanted = wantedDevices
     if review == nil,
        selectedPreviewDeviceID == nil || !wanted.contains(where: { $0.id == selectedPreviewDeviceID }) {
-      selectedPreviewDeviceID = preferredDeviceID(
-        selected: selectedPreviewDeviceID, originalOrder: recording?.items.map(\.device) ?? wanted, available: wanted
-      ) ?? selectedPreviewDeviceID
+      selectedPreviewDeviceID = wanted.first?.id ?? selectedPreviewDeviceID
     }
     let selected = wanted.first { $0.id == selectedPreviewDeviceID }
     if displayedPreview?.target != selected?.connection {
@@ -355,17 +340,6 @@ final class CapturePaneSession {
       displayedPreview?.setPaneVisible(isVisible)
     }
     if let display = currentPreview?.display { lastDisplay = display }
-  }
-
-  private func preferredDeviceID(selected: String?, originalOrder: [Device], available: [Device]) -> String? {
-    let availableIDs = Set(available.map(\.id))
-    if let selected, availableIDs.contains(selected) { return selected }
-    let start = originalOrder.firstIndex { $0.id == selected }.map { $0 + 1 } ?? 0
-    for offset in originalOrder.indices {
-      let candidate = originalOrder[(start + offset) % originalOrder.count].id
-      if availableIDs.contains(candidate) { return candidate }
-    }
-    return available.first?.id
   }
 
   private func retire(_ attachment: LivePreviewAttachment) {
@@ -459,7 +433,7 @@ final class CapturePaneSession {
   }
 
   func hasAlternativeMedia() -> Bool {
-    (review?.items.count ?? previews.count) > 1
+    review == nil && previews.count > 1
   }
 
   func selectNextMedia() {
@@ -471,9 +445,7 @@ final class CapturePaneSession {
   }
 
   private func selectNeighbor(_ offset: Int) {
-    if let review { review.selectNeighbor(offset: offset)
-      return
-    }
+    guard review == nil else { return }
     guard !previews.isEmpty else { return }
     let index = previews.firstIndex { $0.device.id == selectedPreviewDeviceID } ?? 0
     selectDevice(id: previews[(index + offset + previews.count) % previews.count].device.id)
@@ -485,7 +457,7 @@ final class CapturePaneSession {
   }
 
   func copyCurrentImage() {
-    try? review?.copySelectedImage()
+    try? review?.copyImage()
   }
 
   func imageCopied() {

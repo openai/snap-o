@@ -11,9 +11,3 @@ struct CaptureMedia: Identifiable, Equatable {
     self.media = media
   }
 }
-
-extension [CaptureMedia] {
-  func media(forDeviceID id: String) -> CaptureMedia? {
-    first { $0.device.id == id }
-  }
-}

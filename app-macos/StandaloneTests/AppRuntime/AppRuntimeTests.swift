@@ -41,31 +41,31 @@ struct AppRuntimeTests {
     runtime.deviceManager.inventory.connected = [first, preferred]
     settings.lastViewedDeviceID = preferred.id
     runtime.start()
-    await waitForObservedTestState { probe.startupRequests.value.last?.devices == [preferred] }
+    await waitForObservedTestState { probe.startupRequests.value.last?.device == preferred }
     precondition(runtime.deviceManager.inventory.ready == nil, "Preview preparation must precede Android readiness")
     let count = probe.startupRequests.value.count
     runtime.start()
     precondition(probe.startupRequests.value.count == count)
 
     settings.lastViewedDeviceID = first.id
-    await waitForObservedTestState { probe.startupRequests.value.last?.devices == [first] }
+    await waitForObservedTestState { probe.startupRequests.value.last?.device == first }
     settings.lastViewedDeviceID = "missing"
     await waitForObservedTestState { probe.startupRequests.value.count > count + 1 }
-    precondition(probe.startupRequests.value.last?.devices == [first], "Missing preferences fall back to the first connection")
+    precondition(probe.startupRequests.value.last?.device == first, "Missing preferences fall back to the first connection")
 
     settings.startupCaptureMode = .screenshot
     await waitForObservedTestState {
       probe.startupRequests.value.last?.mode == .screenshot
     }
-    precondition(probe.startupRequests.value.last?.devices.isEmpty == true, "Connected devices cannot authorize screenshots")
+    precondition(probe.startupRequests.value.last?.device == nil, "Connected devices cannot authorize screenshots")
     runtime.deviceManager.inventory.ready = [first, preferred]
-    await waitForObservedTestState { probe.startupRequests.value.last?.devices == [first, preferred] }
+    await waitForObservedTestState { probe.startupRequests.value.last?.device == first }
 
     let replacement = device(first.id)
     runtime.deviceManager.inventory = DeviceInventory(connected: [replacement], ready: [replacement])
-    await waitForObservedTestState { probe.startupRequests.value.last?.devices == [replacement] }
+    await waitForObservedTestState { probe.startupRequests.value.last?.device == replacement }
     runtime.deviceManager.inventory.ready = []
-    await waitForObservedTestState { probe.startupRequests.value.last?.devices.isEmpty == true }
+    await waitForObservedTestState { probe.startupRequests.value.last?.device == nil }
     await runtime.shutdown()
     let stoppedCount = probe.startupRequests.value.count
     runtime.start()

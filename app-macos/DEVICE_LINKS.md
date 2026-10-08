@@ -40,7 +40,8 @@ report whether the emulator booted. Snap-O displays progress and errors.
 
 ## Accepted parameters
 
-Each link must contain exactly one nonempty `serial` or `avd` parameter.
+A link without parameters opens the current device’s Live Preview.
+When parameters are supplied, include exactly one nonempty `serial` or `avd`.
 Only AVD links accept `start`, whose value must be `true` or `false`.
 Unknown or repeated parameters, fragments, credentials, and nonempty paths
 are rejected. A single trailing slash is allowed.
@@ -50,3 +51,6 @@ AVD, connect to an ADB server, run arbitrary commands, pass emulator arguments,
 delete data, or export captures. Websites and other apps can invoke these
 links, including starting an installed emulator when `start=true` is present.
 Repeated requests reuse the pending operation and the existing workspace.
+
+Use `snapo://open` to show Live Preview in the current workspace. Select a
+device in Snap-O and use its screenshot or recording controls to capture it.

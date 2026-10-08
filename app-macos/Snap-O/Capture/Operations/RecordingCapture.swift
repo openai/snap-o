@@ -10,7 +10,7 @@ private struct RecordingLifecycleError: LocalizedError {
 
 @Observable
 @MainActor
-final class RecordingCapture: CaptureBatch {
+final class RecordingCapture: CaptureOperation {
   @Dependency(\.videoFiles)
   @ObservationIgnored private var videoFiles
   private enum StopStatus {
@@ -20,7 +20,6 @@ final class RecordingCapture: CaptureBatch {
   }
 
   private final class Entry {
-    let item: CaptureItem
     let session: any ScreenRecording
     let lease: DeviceCaptureLease
     let showTouchesOverride: ShowTouchesOverride
@@ -30,8 +29,7 @@ final class RecordingCapture: CaptureBatch {
     var endedCleanup: Task<Void, Never>?
     var finalization: Task<Void, Never>?
 
-    init(item: CaptureItem, session: any ScreenRecording, lease: DeviceCaptureLease, showTouchesOverride: ShowTouchesOverride) {
-      self.item = item
+    init(session: any ScreenRecording, lease: DeviceCaptureLease, showTouchesOverride: ShowTouchesOverride) {
       self.session = session
       self.lease = lease
       self.showTouchesOverride = showTouchesOverride
@@ -44,7 +42,8 @@ final class RecordingCapture: CaptureBatch {
   typealias LoadRecording = @Sendable (URL, Device, Date) async throws -> CaptureMedia
 
   let id = UUID()
-  let items: [CaptureItem]
+  let device: Device
+  private(set) var state: CaptureState = .pending
   let kind: CaptureKind = .recording
   private(set) var phase: Phase = .starting
   private(set) var isComplete = false
@@ -55,20 +54,20 @@ final class RecordingCapture: CaptureBatch {
   private let startRecording: StartRecording
   private let recordingLoader: LoadRecording?
   private let timestampSource: CaptureTimestampSource
-  private var invalidationHandlers: [DeviceTarget: UUID] = [:]
-  private var entries: [Entry] = []
-  private var startupErrors: [UUID: Error] = [:]
+  private var invalidationHandler: UUID?
+  private var entry: Entry?
+  private var startupError: Error?
   @ObservationIgnored private(set) var startup: Task<Error?, Never>?
   @ObservationIgnored private var finalization: Task<Void, Never>?
   @ObservationIgnored private var closeTask: Task<Void, Never>?
 
   init(
-    devices: [Device], options: RecordingOptions,
+    device: Device, options: RecordingOptions,
     adb: ADBService, fileStore: FileStore, coordinator: CaptureCoordinator,
     startRecording: @escaping StartRecording, loadRecording: LoadRecording?,
     timestampSource: CaptureTimestampSource
   ) {
-    items = devices.map(CaptureItem.init)
+    self.device = device
     self.options = options
     self.adb = adb
     self.fileStore = fileStore
@@ -76,12 +75,9 @@ final class RecordingCapture: CaptureBatch {
     self.startRecording = startRecording
     recordingLoader = loadRecording
     self.timestampSource = timestampSource
-    for device in devices {
-      guard let target = device.connection else { continue }
-      if let handler = try? target.onInvalidation({ [weak self] in
-        Task { @MainActor in self?.connectionLost(target) }
-      }) {
-        invalidationHandlers[target] = handler
+    if let target = device.connection {
+      invalidationHandler = try? target.onInvalidation { [weak self] in
+        Task { @MainActor in self?.connectionLost() }
       }
     }
   }
@@ -92,69 +88,45 @@ final class RecordingCapture: CaptureBatch {
   }
 
   private func startReserved() async -> Error? {
-    let adb = adb
-    let options = options
-    let startRecording = startRecording
-    let coordinator = coordinator
-    await withTaskGroup(of: (UUID, ShowTouchesOverride?, DeviceCaptureLease?, Result<any ScreenRecording, Error>).self) { group in
-      for item in items {
-        let id = item.id
-        let device = item.device
-        group.addTask {
-          var lease: DeviceCaptureLease?
-          var touches: ShowTouchesOverride?
-          do {
-            try Task.checkCancellation()
-            let target = try device.requireConnection()
-            lease = try await coordinator.acquire(
-              target: target, for: options.recordsBugReport ? .bugReportRecording : .recording
-            )
-            touches = await ShowTouchesOverride.apply(target: target, enabled: options.showsTouches, using: adb)
-            try Task.checkCancellation()
-            let session = try await startRecording(device, options.recordsBugReport)
-            return (id, touches, lease, .success(session))
-          } catch {
-            await touches?.restore(using: adb)
-            if let lease { await coordinator.release(lease) }
-            return (id, nil, nil, .failure(error))
-          }
-        }
+    var lease: DeviceCaptureLease?
+    var touches: ShowTouchesOverride?
+    do {
+      try Task.checkCancellation()
+      let target = try device.requireConnection()
+      lease = try coordinator.acquire(target: target, for: options.recordsBugReport ? .bugReportRecording : .recording)
+      touches = await ShowTouchesOverride.apply(target: target, enabled: options.showsTouches, using: adb)
+      try Task.checkCancellation()
+      let session = try await startRecording(device, options.recordsBugReport)
+      guard let touches, let lease else { preconditionFailure("Started recording must own its resources") }
+      let entry = Entry(session: session, lease: lease, showTouchesOverride: touches)
+      self.entry = entry
+      if !target.isValid {
+        let error = RecordingLifecycleError(errorDescription: "The device disconnected while recording was starting.")
+        failStartup(error)
+        finish(entry, discarding: true)
+      } else if phase == .cancelling || Task.isCancelled {
+        finish(entry, discarding: true)
+      } else if phase == .finishing {
+        finish(entry, discarding: false)
+      } else {
+        state = .recording
+        phase = .recording
+        entry.monitor = monitor(entry)
       }
-      for await (id, touches, lease, result) in group {
-        guard let item = items.first(where: { $0.id == id }) else { continue }
-        switch result {
-        case .success(let session):
-          guard let touches, let lease else { preconditionFailure("Started recording must own its resources") }
-          let entry = Entry(item: item, session: session, lease: lease, showTouchesOverride: touches)
-          entries.append(entry)
-          if item.target?.isValid != true {
-            let error = RecordingLifecycleError(errorDescription: "The device disconnected while recording was starting.")
-            failStartup(item, error: error)
-            finish(entry, discarding: true)
-          } else if phase == .cancelling || Task.isCancelled {
-            finish(entry, discarding: true)
-          } else if phase == .finishing {
-            finish(entry, discarding: false)
-          } else {
-            item.update(.recording)
-            phase = .recording
-            entry.monitor = monitor(entry)
-          }
-        case .failure(let error):
-          failStartup(item, error: error)
-        }
-      }
+    } catch {
+      await touches?.restore(using: adb)
+      if let lease { coordinator.release(lease) }
+      failStartup(error)
     }
-    if !entries.contains(where: { $0.finalization == nil && $0.stopStatus == .recording }) {
+    if entry?.finalization != nil || entry == nil {
       beginFinalization(discarding: phase == .cancelling)
     }
-    let didStart = entries.contains { startupErrors[$0.item.id] == nil }
-    return didStart ? nil : startupErrors.values.first
+    return startupError
   }
 
-  private func failStartup(_ item: CaptureItem, error: Error) {
-    startupErrors[item.id] = error
-    item.update(error is CancellationError ? .cancelled : .failed(error.localizedDescription))
+  private func failStartup(_ error: Error) {
+    startupError = error
+    state = error is CancellationError ? .cancelled : .failed(error.localizedDescription)
   }
 
   func requestFinish() {
@@ -166,22 +138,18 @@ final class RecordingCapture: CaptureBatch {
     if let finalization { return finalization }
     phase = discarding ? .cancelling : .finishing
     if discarding { startup?.cancel() }
-    // Stop acquired sessions now. A different device may still be starting.
-    for entry in entries {
+    // Stop an acquired session immediately, including while startup is finishing.
+    if let entry {
       finish(entry, discarding: discarding)
     }
     let task = Task {
       _ = await startup?.value
-      for entry in entries {
+      if let entry {
         await finish(entry, discarding: discarding).value
       }
-      for item in items {
-        if case .pending = item.state { item.update(.cancelled) }
-      }
-      for (target, handler) in invalidationHandlers {
-        target.removeInvalidationHandler(handler)
-      }
-      invalidationHandlers.removeAll()
+      if case .pending = state { state = .cancelled }
+      if let invalidationHandler { device.connection?.removeInvalidationHandler(invalidationHandler) }
+      invalidationHandler = nil
       isComplete = true
     }
     finalization = task
@@ -195,14 +163,14 @@ final class RecordingCapture: CaptureBatch {
     let completion = beginFinalization(discarding: true)
     let task = Task {
       await completion.value
-      fileStore.discardPreviews(items.compactMap(\.media))
+      if let media { fileStore.discardPreviews([media]) }
     }
     closeTask = task
     await task.value
   }
 
-  private func connectionLost(_ target: DeviceTarget) {
-    guard let entry = entries.first(where: { $0.item.target == target }) else { return }
+  private func connectionLost() {
+    guard let entry else { return }
     sessionEnded(entry, status: .unconfirmed, message: "Recording ended because the device disconnected.")
   }
 
@@ -227,20 +195,14 @@ final class RecordingCapture: CaptureBatch {
     guard entry.finalization == nil, entry.stopStatus == .recording else { return }
     entry.stopStatus = status
     entry.failure = message
-    entry.item.update(.failed(message))
+    state = .failed(message)
     let touches = entry.showTouchesOverride
     entry.endedCleanup = Task {
       async let restoration: Void = touches.restore(using: adb)
       await entry.session.close()
       await restoration
     }
-    // Pending devices must get their own chance to start.
-    if !items.contains(where: { if case .pending = $0.state { return true }
-      return false
-    }),
-      entries.allSatisfy({ $0.stopStatus != .recording }) {
-      requestFinish()
-    }
+    requestFinish()
   }
 
   @discardableResult
@@ -262,9 +224,9 @@ final class RecordingCapture: CaptureBatch {
       if discarding {
         await entry.session.remove()
         await entry.session.close()
-        if startupErrors[entry.item.id] == nil { entry.item.update(.cancelled) }
+        if startupError == nil { state = .cancelled }
       } else {
-        entry.item.update(.collecting)
+        state = .collecting
         await collect(entry)
       }
       await entry.monitor?.value
@@ -275,7 +237,6 @@ final class RecordingCapture: CaptureBatch {
   }
 
   private func collect(_ entry: Entry) async {
-    let device = entry.item.device
     let capturedAt = await timestampSource.next()
     let destination = fileStore.makePreviewDestination(deviceID: device.id, capturedAt: capturedAt, kind: .video)
     do {
@@ -284,13 +245,13 @@ final class RecordingCapture: CaptureBatch {
       // Preserve the remote copy unless stop was confirmed and the local copy is usable.
       if entry.stopStatus == .confirmed { await entry.session.remove() }
       await entry.session.close()
-      entry.item.update(.ready(capture, warning: entry.failure))
+      state = .ready(capture, warning: entry.failure)
     } catch {
       fileStore.discardTemporaryFile(at: destination)
       let message = [entry.failure, error.localizedDescription].compactMap(\.self).joined(separator: "\n")
       entry.failure = message
       await entry.session.close()
-      entry.item.update(.failed(message))
+      state = .failed(message)
     }
   }
 

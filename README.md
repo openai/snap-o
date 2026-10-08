@@ -24,7 +24,7 @@ For capture controls and keyboard shortcuts, see the [Screen capture guide](docs
 
 ## Screen capture
 
-Snap-O automatically keeps screenshots and recordings in Capture History, including across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Captures from multiple devices stay grouped together.
+Save screenshots and recordings to Capture History to keep them across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Each window captures its selected device. Existing groups of captures remain available in history.
 
 Drag screenshots and recordings straight into a pull request, chat, or document. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
 

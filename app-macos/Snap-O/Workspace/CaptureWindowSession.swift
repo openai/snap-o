@@ -68,11 +68,11 @@ final class CaptureWindowSession {
     tools.setVisible(workspace.showsTool)
   }
 
-  func perform(_ command: SnapOCommand) {
+  func showLivePreview() {
     guard !isClosed else { return }
     workspace.revealCapture()
     updatePaneVisibility()
-    capture.enqueue(command)
+    capture.requestLivePreview()
   }
 
   func openDevice(_ request: DeviceOpenRequest?) {

@@ -19,15 +19,15 @@ struct RecordingTeardownTests {
       let monitor = TestGate()
       let recording = ControlledRecording(video: video, monitorGate: monitor)
       let fixture = RecordingTests.Fixture(root: root, video: video) { _, _ in recording }
-      let batch = await fixture.startRecording(for: [RecordingTests.devices[0]], options: RecordingTests.options)
+      let capture = await fixture.startRecording(for: RecordingTests.devices[0], options: RecordingTests.options)
       await waitForActorTestState { await recording.waitsStarted == 1 }
       let finished = TestValue(false)
       let first = await startTestTask {
         switch ending {
-        case "finish": await batch.beginFinalization(discarding: false).value
-        case "cancel": await batch.close()
+        case "finish": await capture.beginFinalization(discarding: false).value
+        case "cancel": await capture.close()
         default: fixture.coordinator.beginShutdown()
-          await batch.close()
+          await capture.close()
         }
         finished.value = true
       }
@@ -37,7 +37,7 @@ struct RecordingTeardownTests {
       if ending != "shutdown" { try fixture.expectReserved(RecordingTests.devices[0]) }
       let repeatedFinished = TestValue(false)
       let repeated = await startTestTask {
-        await batch.close()
+        await capture.close()
         repeatedFinished.value = true
       }
       precondition(!repeatedFinished.value, "Repeated terminal calls must join monitor cleanup")
@@ -45,8 +45,8 @@ struct RecordingTeardownTests {
       await first.value
       await repeated.value
       let waitsFinished = await recording.waitsFinished
-      precondition(waitsFinished == 1 && batch.isComplete)
-      precondition(batch.items.compactMap(\.media).count == (ending == "finish" ? 1 : 0))
+      precondition(waitsFinished == 1 && capture.isComplete)
+      precondition((capture.media != nil) == (ending == "finish"))
       await fixture.coordinator.waitUntilIdle()
     }
     print("Finish, cancel and shutdown join recording monitors before releasing admission")
@@ -59,18 +59,18 @@ struct RecordingTeardownTests {
         let recording = ControlledRecording(video: video)
         let fixture = RecordingTests.Fixture(root: root, video: video) { _, _ in recording }
         let device = RecordingTests.devices[0]
-        let batch = await fixture.startRecording(
-          for: [device], options: RecordingOptions(recordsBugReport: false, showsTouches: true)
+        let capture = await fixture.startRecording(
+          for: device, options: RecordingOptions(recordsBugReport: false, showsTouches: true)
         )
         let gate = TestGate()
         await fixture.adb.blockTouchRestoration(on: gate)
         let finished = TestValue(false)
         let first = await startTestTask {
           switch ending {
-          case "finish": await batch.beginFinalization(discarding: false).value
-          case "cancel": await batch.close()
+          case "finish": await capture.beginFinalization(discarding: false).value
+          case "cancel": await capture.close()
           default: fixture.coordinator.beginShutdown()
-            await batch.close()
+            await capture.close()
           }
           finished.value = true
         }
@@ -79,7 +79,7 @@ struct RecordingTeardownTests {
         await clock.advance(by: .seconds(5))
         let repeatedFinished = TestValue(false)
         let repeated = await startTestTask {
-          await batch.close()
+          await capture.close()
           repeatedFinished.value = true
         }
         precondition(
@@ -91,8 +91,8 @@ struct RecordingTeardownTests {
         await first.value
         await repeated.value
         let setting = await fixture.adb.touchSettings[device.id]
-        precondition(setting == false && batch.isComplete)
-        precondition(batch.items.compactMap(\.media).count == (ending == "finish" ? 1 : 0))
+        precondition(setting == false && capture.isComplete)
+        precondition((capture.media != nil) == (ending == "finish"))
         await fixture.coordinator.waitUntilIdle()
       }
     }
@@ -103,17 +103,17 @@ struct RecordingTeardownTests {
     let close = TestGate()
     let recording = ControlledRecording(video: video, closeGate: close)
     let fixture = RecordingTests.Fixture(root: root, video: video) { _, _ in recording }
-    let batch = await fixture.startRecording(for: [RecordingTests.devices[0]], options: RecordingTests.options)
+    let capture = await fixture.startRecording(for: RecordingTests.devices[0], options: RecordingTests.options)
     await waitForActorTestState { await recording.waitsStarted == 1 }
     await recording.endUnexpectedly()
     await close.waitUntilEntered()
-    precondition(batch.phase == .finishing)
+    precondition(capture.phase == .finishing)
     try fixture.expectReserved(RecordingTests.devices[0])
     let collected = await recording.saves
     precondition(collected == 0, "Ended-session cleanup precedes collection")
     let joined = TestValue(false)
     let waiter = await startTestTask {
-      await batch.close()
+      await capture.close()
       joined.value = true
     }
     precondition(!joined.value, "Cancel joins the automatic finish already in progress")
@@ -121,7 +121,7 @@ struct RecordingTeardownTests {
     await waiter.value
     let stops = await recording.stops
     let waitsFinished = await recording.waitsFinished
-    precondition(batch.items.compactMap(\.media).count == 1 && batch.items[0].warning != nil)
+    precondition(capture.media != nil && capture.warning != nil)
     precondition(stops == 0 && waitsFinished == 1)
     await fixture.coordinator.waitUntilIdle()
     print("The final recording failure finishes without a self-wait and joins ended-session cleanup")
@@ -135,15 +135,17 @@ struct RecordingTeardownTests {
     let fixture = RecordingTests.Fixture(root: root, video: video) { device, _ in
       device.id == failedDeviceID ? failed : healthy
     }
-    let batch = await fixture.startRecording(for: RecordingTests.devices, options: RecordingTests.options)
+    let ended = await fixture.startRecording(for: RecordingTests.devices[0])
+    let active = await fixture.startRecording(for: RecordingTests.devices[1])
     await failed.endUnexpectedly()
     await close.waitUntilEntered()
-    precondition(batch.phase == .recording)
+    precondition(ended.phase == .finishing && active.phase == .recording)
     let finished = TestValue(false)
     let cancellation = await startTestTask {
-      await batch.close()
+      await ended.close()
       finished.value = true
     }
+    await active.close()
     await waitForActorTestState { await healthy.closesCompleted == 1 }
     let healthyStops = await healthy.stops
     precondition(healthyStops == 1 && !finished.value)

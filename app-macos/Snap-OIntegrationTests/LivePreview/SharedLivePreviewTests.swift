@@ -338,7 +338,7 @@ struct SharedLivePreviewTests {
       screenshots: { _ in preconditionFailure("Unexpected screenshot") },
       livePreview: fixture.service
     )
-    startup.prepare(mode: .livePreview, devices: [device])
+    startup.prepare(mode: .livePreview, device: device)
     try await waitForState { fixture.sources.count == 1 }
     let prepared = try #require(startup.claimLivePreview(for: device))
     #expect(startup.claimLivePreview(for: device) == nil)
@@ -363,7 +363,7 @@ struct SharedLivePreviewTests {
       screenshots: { _ in preconditionFailure("Unexpected screenshot") },
       livePreview: fixture.service
     )
-    startup.prepare(mode: .livePreview, devices: [device])
+    startup.prepare(mode: .livePreview, device: device)
     try await waitForState { fixture.sources.count == 1 }
     await clock.advance(by: .seconds(4))
     #expect(fixture.sources[0].stops == 0)
@@ -381,7 +381,7 @@ struct SharedLivePreviewTests {
     #expect(!finished.value)
     cleanup.resume()
     await discard.value
-    startup.prepare(mode: .livePreview, devices: [device])
+    startup.prepare(mode: .livePreview, device: device)
     #expect(startup.claimLivePreview(for: device) == nil)
     #expect(fixture.sources.count == 1 && fixture.sources[0].stops == 1)
     await fixture.close()

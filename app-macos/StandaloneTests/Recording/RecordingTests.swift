@@ -99,20 +99,8 @@ struct RecordingTests {
       try await runTestCase("startupRefreshesOldScreenshotsWithoutDuplicatingPendingWork") {
         try await startupRefreshesOldScreenshotsWithoutDuplicatingPendingWork(root: root, video: video)
       }
-      try await runTestCase("screenshotReusesCurrentPreload") {
-        try await screenshotReusesCurrentPreload(root: root, video: video)
-      }
-      try await runTestCase("screenshotReplacesPreloadFromOldConnection") {
-        try await screenshotReplacesPreloadFromOldConnection(root: root, video: video)
-      }
-      try await runTestCase("screenshotRefreshesExpiredPreload") {
-        try await screenshotRefreshesExpiredPreload(root: root, video: video)
-      }
       try await runTestCase("screenshotReservationCanBeDiscarded") {
         try await screenshotReservationCanBeDiscarded(root: root, video: video)
-      }
-      try await runTestCase("screenshotReservationCanBeFinished") {
-        try await screenshotReservationCanBeFinished(root: root, video: video)
       }
       try await runTestCase("shutdownCancelsQueuedRecordingStartup") {
         try await shutdownCancelsQueuedRecordingStartup(root: root, video: video)
@@ -126,7 +114,6 @@ struct RecordingTests {
       try await runTestCase("RecordingTeardownTests.run") {
         try await RecordingTeardownTests.run(root: root, video: video)
       }
-      try await CaptureBatchTests.run(root: root, video: video)
       print("Capture tests passed")
     }
   }
@@ -141,19 +128,18 @@ struct RecordingTests {
         manufacturer: nil, avdName: nil, connection: target
       )
       let fixture = Fixture(root: root, video: video)
-      let batch = withDependencies {
+      let capture = withDependencies {
         $0.videoFiles.inspect = { _ in VideoFileInfo(duration: 1, size: CGSize(width: 16, height: 16)) }
-      } operation: { fixture.recording(for: [device], readsVideoMetadata: true) }
-      batch.start()
-      _ = await batch.startup?.value
+      } operation: { fixture.recording(for: device, readsVideoMetadata: true) }
+      capture.start()
+      _ = await capture.startup?.value
       if disconnected { target.invalidate() }
-      await batch.beginFinalization(discarding: false).value
-      let media = batch.items.compactMap(\.media)
-      precondition(media.count == 1, "Missing connection metadata must not lose a playable recording")
-      precondition(media.first?.media.densityScale == (disconnected ? nil : 160))
+      await capture.beginFinalization(discarding: false).value
+      guard let media = capture.media else { preconditionFailure("Missing connection metadata must not lose a playable recording") }
+      precondition(media.media.densityScale == (disconnected ? nil : 160))
       let requests = await fixture.adb.densityRequests
       precondition(requests == (disconnected ? [] : [target.serial]))
-      await batch.close()
+      await capture.close()
     }
   }
 
@@ -175,11 +161,11 @@ struct RecordingTests {
     }
 
     func recording(
-      for devices: [Device], options: RecordingOptions = RecordingTests.options, readsVideoMetadata: Bool = false
+      for device: Device, options: RecordingOptions = RecordingTests.options, readsVideoMetadata: Bool = false
     ) -> RecordingCapture {
       let adb = adb
       return RecordingCapture(
-        devices: devices, options: options, adb: adb, fileStore: fileStore,
+        device: device, options: options, adb: adb, fileStore: fileStore,
         coordinator: coordinator,
         startRecording: start ?? { device, bugReport in
           let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
@@ -195,25 +181,25 @@ struct RecordingTests {
       )
     }
 
-    func startRecording(for devices: [Device], options: RecordingOptions = RecordingTests.options) async -> RecordingCapture {
-      let batch = recording(for: devices, options: options)
-      batch.start()
-      _ = await batch.startup?.value
-      return batch
+    func startRecording(for device: Device, options: RecordingOptions = RecordingTests.options) async -> RecordingCapture {
+      let capture = recording(for: device, options: options)
+      capture.start()
+      _ = await capture.startup?.value
+      return capture
     }
 
-    func screenshots(for devices: [Device]) -> ScreenshotCapture {
+    func screenshot(for device: Device) -> ScreenshotCapture {
       ScreenshotCapture(
-        devices: devices, screenshots: ScreenshotService(adb: adb, fileStore: fileStore), fileStore: fileStore,
+        device: device, screenshots: ScreenshotService(adb: adb, fileStore: fileStore), fileStore: fileStore,
         coordinator: coordinator
       )
     }
 
-    func captureScreenshots(for devices: [Device], reusing: [CaptureMedia] = []) async -> ScreenshotCapture {
-      let batch = screenshots(for: devices)
-      batch.start(reusing: reusing)
-      await batch.waitForCompletion()
-      return batch
+    func captureScreenshot(for device: Device) async -> ScreenshotCapture {
+      let capture = screenshot(for: device)
+      capture.start()
+      await capture.waitForCompletion()
+      return capture
     }
 
     func expectReserved(_ device: Device) throws {
@@ -224,9 +210,10 @@ struct RecordingTests {
       } catch CaptureCoordinationError.deviceBusy {}
     }
 
-    func waitForFailure(in batch: RecordingCapture) async {
+    func waitForFailure(in capture: RecordingCapture) async {
       await waitForObservedTestState {
-        if case .failed = batch.items[0].state { return true }
+        if case .failed = capture.state { return true }
+        if capture.warning != nil { return true }
         return false
       }
     }
@@ -234,42 +221,31 @@ struct RecordingTests {
 
   static func screenshotReservationCanBeDiscarded(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = fixture.screenshots(for: devices)
-    await batch.close()
-    batch.start()
+    let capture = fixture.screenshot(for: devices[0])
+    await capture.close()
+    capture.start()
     let requests = await fixture.adb.screenshotRequests
-    precondition(batch.isComplete && requests.isEmpty, "Closing an unstarted batch prevents later work")
+    precondition(capture.isComplete && requests.isEmpty, "Closing an unstarted capture prevents later work")
     await fixture.coordinator.waitUntilIdle()
-  }
-
-  static func screenshotReservationCanBeFinished(root: URL, video: URL) async throws {
-    let fixture = Fixture(root: root, video: video)
-    let batch = fixture.screenshots(for: devices)
-    await batch.beginFinalization(discarding: false).value
-    batch.start()
-    let requests = await fixture.adb.screenshotRequests
-    precondition(batch.isComplete && batch.items.compactMap(\.media).isEmpty && requests.isEmpty)
-    await batch.close()
   }
 
   static func shutdownCancelsQueuedRecordingStartup(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video) { _, _ in
       preconditionFailure("Closing queued startup must prevent device work")
     }
-    let batch = fixture.recording(for: devices)
-    batch.start()
-    await batch.close()
-    precondition(batch.isComplete && batch.items.allSatisfy { $0.media == nil })
+    let capture = fixture.recording(for: devices[0])
+    capture.start()
+    await capture.close()
+    precondition(capture.isComplete && capture.media == nil)
     await fixture.coordinator.waitUntilIdle()
   }
 
   static func screenshotSharesNormalRecording(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let recording = await fixture.startRecording(for: [devices[0]])
-    let screenshots = await fixture.captureScreenshots(for: devices)
-    precondition(screenshots.items.compactMap(\.media).count == devices.count)
-    precondition(!recording.isComplete, "Screenshots do not stop an existing recording")
-    await screenshots.close()
+    let recording = await fixture.startRecording(for: devices[0])
+    let screenshot = await fixture.captureScreenshot(for: devices[0])
+    precondition(screenshot.media != nil && !recording.isComplete)
+    await screenshot.close()
     await recording.close()
     await fixture.coordinator.waitUntilIdle()
   }
@@ -278,12 +254,12 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let gate = TestGate()
     await fixture.adb.blockScreenshot(for: devices[0].id, on: gate)
-    let screenshot = fixture.screenshots(for: [devices[0]])
+    let screenshot = fixture.screenshot(for: devices[0])
     screenshot.start()
     await gate.waitUntilEntered()
-    let recording = await fixture.startRecording(for: [devices[1]])
-    let other = await fixture.captureScreenshots(for: [devices[1]])
-    precondition(other.items.compactMap(\.media).count == 1 && !screenshot.isComplete && !recording.isComplete)
+    let recording = await fixture.startRecording(for: devices[1])
+    let other = await fixture.captureScreenshot(for: devices[1])
+    precondition(other.media != nil && !screenshot.isComplete && !recording.isComplete)
     await gate.open()
     await screenshot.waitForCompletion()
     await screenshot.close()
@@ -296,30 +272,29 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let gate = TestGate()
     await fixture.adb.blockScreenshots(on: gate)
-    let batch = fixture.screenshots(for: [devices[0]])
-    batch.start()
+    let capture = fixture.screenshot(for: devices[0])
+    capture.start()
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let cancellation = await startTestTask { await batch.close()
+    let cancellation = await startTestTask { await capture.close()
       finished.value = true
     }
     precondition(!finished.value, "Close must join pending device work")
     try fixture.expectReserved(devices[0])
     await gate.open()
     await cancellation.value
-    precondition(batch.items.compactMap(\.media).isEmpty)
+    precondition(capture.media == nil)
     await fixture.coordinator.waitUntilIdle()
   }
 
   static func screenshotFailureReleasesReservation(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let failed = await fixture.captureScreenshots(for: [Device(
+    let failed = await fixture.captureScreenshot(for: Device(
       id: "offline", model: "Offline", androidVersion: "16", vendorModel: nil, manufacturer: nil, avdName: nil
-    )])
-    precondition(failed.items.count == 1)
-    guard case .failed = failed.items[0].state else { preconditionFailure("Missing per-device failure") }
-    let next = await fixture.captureScreenshots(for: [devices[1]])
-    precondition(next.items.compactMap(\.media).count == 1)
+    ))
+    guard case .failed = failed.state else { preconditionFailure("Missing per-device failure") }
+    let next = await fixture.captureScreenshot(for: devices[1])
+    precondition(next.media != nil)
     await failed.close()
     await next.close()
     await fixture.coordinator.waitUntilIdle()
@@ -329,27 +304,24 @@ struct RecordingTests {
     let fixture = Fixture(root: root, video: video)
     let gate = TestGate()
     await fixture.adb.blockScreenshots(on: gate)
-    let batch = fixture.screenshots(for: devices)
-    batch.start()
-    await gate.waitUntilEntered(2)
+    let capture = fixture.screenshot(for: devices[0])
+    capture.start()
+    await gate.waitUntilEntered()
     fixture.coordinator.beginShutdown()
     let closed = TestValue(false)
-    let shutdown = await startTestTask { await batch.close()
+    let shutdown = await startTestTask { await capture.close()
       closed.value = true
     }
     precondition(!closed.value)
-    let rejected = await fixture.captureScreenshots(for: devices)
-    precondition(rejected.items.count == devices.count)
-    for item in rejected.items {
-      guard case .failed = item.state else { preconditionFailure("Shutdown must reject every device") }
-    }
+    let rejected = await fixture.captureScreenshot(for: devices[0])
+    guard case .failed = rejected.state else { preconditionFailure("Shutdown must reject captures") }
     do {
       _ = try fixture.coordinator.acquire(target: devices[0].requireConnection(), for: .screenshot)
       preconditionFailure("Shutdown must close capture admission")
     } catch CaptureCoordinationError.closed {}
     await gate.open()
     await shutdown.value
-    precondition(batch.items.compactMap(\.media).isEmpty)
+    precondition(capture.media == nil)
     await rejected.close()
     await fixture.coordinator.waitUntilIdle()
   }
@@ -363,92 +335,49 @@ struct RecordingTests {
         if state == "pending" { await fixture.adb.blockScreenshots(on: gate) }
         var batches: [ScreenshotCapture] = []
         let startup = StartupCapturePreparation(
-          screenshots: { devices in
-            let batch = fixture.screenshots(for: devices)
-            batches.append(batch)
-            return batch
+          screenshots: { device in
+            let capture = fixture.screenshot(for: device)
+            batches.append(capture)
+            return capture
           },
           livePreview: LivePreviewService()
         )
         let devices = makeDevices()
-        startup.prepare(mode: .screenshot, devices: devices)
+        startup.prepare(mode: .screenshot, device: devices[0])
         let first = batches[0]
         if state == "pending" {
-          await gate.waitUntilEntered(2)
+          await gate.waitUntilEntered()
         } else {
           await first.waitForCompletion()
         }
         await clock.advance(by: state == "fresh" ? .milliseconds(999) : .seconds(2))
         let currentDevices = state == "replacement" ? makeDevices() : devices
-        guard let claimed = startup.claimScreenshots(for: currentDevices) else { preconditionFailure("Missing startup batch") }
+        guard let claimed = startup.claimScreenshots(for: currentDevices[0]) else { preconditionFailure("Missing startup capture") }
         precondition((claimed === first) == (state == "fresh" || state == "pending"))
-        precondition(startup.claimScreenshots(for: currentDevices) == nil, "Only one window may claim preparation")
+        precondition(startup.claimScreenshots(for: currentDevices[0]) == nil, "Only one window may claim preparation")
         await gate.open()
         await claimed.waitForCompletion()
         let requests = await fixture.adb.screenshotRequests
-        precondition(requests.count == (state == "fresh" || state == "pending" ? 2 : 4))
+        precondition(requests.count == (state == "fresh" || state == "pending" ? 1 : 2))
         await startup.discard()
         await claimed.close()
       }
     }
   }
 
-  static func screenshotReusesCurrentPreload(root: URL, video: URL) async throws {
-    let fixture = Fixture(root: root, video: video)
-    let original = await fixture.captureScreenshots(for: devices)
-    let reused = await fixture.captureScreenshots(for: devices, reusing: original.items.compactMap(\.media))
-    precondition(reused.items.compactMap(\.media).map(\.id) == original.items.compactMap(\.media).map(\.id))
-    let requests = await fixture.adb.screenshotRequests
-    precondition(requests.count == devices.count, "A fresh preload needs no extra requests")
-    await reused.close()
-    await original.close()
-  }
-
-  static func screenshotReplacesPreloadFromOldConnection(root: URL, video: URL) async throws {
-    let fixture = Fixture(root: root, video: video)
-    let original = await fixture.captureScreenshots(for: devices)
-    let replacement = Device(
-      id: devices[0].id, model: devices[0].model, androidVersion: "16", vendorModel: nil,
-      manufacturer: nil, avdName: nil, connection: DeviceTarget(serial: devices[0].id, transportID: "2")
-    )
-    let next = await fixture.captureScreenshots(for: [replacement, devices[1]], reusing: original.items.compactMap(\.media))
-    precondition(next.items.compactMap(\.media).first?.device.connection == replacement.connection)
-    precondition(next.items.compactMap(\.media).first?.id != original.items.compactMap(\.media).first?.id)
-    precondition(next.items.compactMap(\.media).last?.id == original.items.compactMap(\.media).last?.id)
-    let requests = await fixture.adb.screenshotRequests
-    precondition(requests.count == devices.count + 1 && requests.last == replacement.id)
-    await next.close()
-    await original.close()
-  }
-
-  static func screenshotRefreshesExpiredPreload(root: URL, video: URL) async throws {
-    let fixture = Fixture(root: root, video: video)
-    let original = await fixture.captureScreenshots(for: devices)
-    let stale = original.items.compactMap(\.media).map { capture in
-      guard let url = capture.media.url else { preconditionFailure("Missing screenshot file") }
-      return CaptureMedia(device: capture.device, media: .image(
-        url: url, capturedAt: .distantPast, display: capture.media.common.display
-      ))
-    }
-    let next = await fixture.captureScreenshots(for: devices, reusing: stale)
-    precondition(next.items.compactMap(\.media).count == devices.count)
-    precondition(Set(next.items.compactMap(\.media).map(\.id)).isDisjoint(with: stale.map(\.id)))
-    let requests = await fixture.adb.screenshotRequests
-    precondition(requests.count == devices.count * 2)
-    await next.close()
-    await original.close()
-  }
-
   static func bugReportConflictAffectsOnlyItsDevice(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
     let busy = devices[1]
     let preview = try fixture.coordinator.acquire(target: busy.requireConnection(), for: .livePreview)
-    let recording = await fixture.startRecording(for: devices, options: RecordingOptions(recordsBugReport: true, showsTouches: true))
-    guard case .failed = recording.items[1].state else { preconditionFailure("Busy target must fail independently") }
-    guard case .recording = recording.items[0].state else { preconditionFailure("Healthy target must keep recording") }
+    let options = RecordingOptions(recordsBugReport: true, showsTouches: true)
+    let rejected = await fixture.startRecording(for: busy, options: options)
+    let healthy = await fixture.startRecording(for: devices[0], options: options)
+    guard case .failed = rejected.state else { preconditionFailure("Reject the busy target") }
+    guard case .recording = healthy.state else { preconditionFailure("Another window must keep recording") }
     let settings = await fixture.adb.touchSettings
     precondition(settings[busy.id] == nil, "Reject conflicting work before changing settings")
-    await recording.close()
+    await rejected.close()
+    await healthy.close()
     fixture.coordinator.release(preview)
     await fixture.coordinator.waitUntilIdle()
   }
@@ -460,15 +389,14 @@ struct RecordingTests {
       avdName: nil, connection: DeviceTarget(serial: "emulator-5554", transportID: "7")
     )
     let preview = try fixture.coordinator.acquire(target: emulator.requireConnection(), for: .livePreview)
-    let first = await fixture.startRecording(for: [emulator])
-    let second = await fixture.startRecording(for: [emulator, devices[0]])
-    guard case .failed = second.items[0].state else { preconditionFailure("Reject only the busy emulator") }
-    guard case .recording = second.items[1].state else { preconditionFailure("Another device must remain independent") }
+    let first = await fixture.startRecording(for: emulator)
+    let second = await fixture.startRecording(for: emulator)
+    guard case .failed = second.state else { preconditionFailure("Reject the busy emulator") }
     precondition(!first.isComplete)
     await second.close()
     await first.close()
-    let next = await fixture.startRecording(for: [emulator])
-    guard case .recording = next.items[0].state else { preconditionFailure("Cleanup must release the emulator") }
+    let next = await fixture.startRecording(for: emulator)
+    guard case .recording = next.state else { preconditionFailure("Cleanup must release the emulator") }
     await next.close()
     fixture.coordinator.release(preview)
     await fixture.coordinator.waitUntilIdle()
@@ -476,98 +404,107 @@ struct RecordingTests {
 
   static func bugReportRecordingIsExclusive(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: [devices[0]], options: RecordingOptions(recordsBugReport: true, showsTouches: false))
+    let capture = await fixture.startRecording(for: devices[0], options: RecordingOptions(recordsBugReport: true, showsTouches: false))
     do {
       _ = try fixture.coordinator.acquire(target: devices[0].requireConnection(), for: .livePreview)
       preconditionFailure("A bug-report recording must exclude previews on its connection")
     } catch CaptureCoordinationError.deviceBusy {}
-    await batch.close()
+    await capture.close()
     let resumed = try fixture.coordinator.acquire(target: devices[0].requireConnection(), for: .livePreview)
     fixture.coordinator.release(resumed)
     await fixture.coordinator.waitUntilIdle()
   }
 
   static func failedDeviceLeavesHealthyRecordingActive(root: URL, video: URL) async throws {
+    let devices = makeDevices()
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: devices, options: options)
+    let failed = await fixture.startRecording(for: devices[0])
+    let healthy = await fixture.startRecording(for: devices[1])
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure(in: batch)
+    await fixture.waitForFailure(in: failed)
+    guard case .recording = healthy.state else { preconditionFailure("Another window must keep recording") }
     let stops = await fixture.adb.stops
-    precondition(stops.isEmpty, "A device failure must not stop healthy recordings")
-    await batch.close()
+    precondition(stops.isEmpty)
+    await failed.close()
+    await healthy.close()
   }
 
   static func collectionFailurePreservesHealthyRecording(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: devices)
+    let failed = await fixture.startRecording(for: devices[0])
+    let healthy = await fixture.startRecording(for: devices[1])
     await fixture.adb.failCollection(devices[0].id)
-    await batch.beginFinalization(discarding: false).value
-    let media = batch.items.compactMap(\.media)
-    precondition(media.map(\.device.id) == [devices[1].id])
-    guard let url = media[0].media.url else { preconditionFailure("Missing recording file") }
+    await failed.beginFinalization(discarding: false).value
+    guard case .failed = failed.state else { preconditionFailure("Failed download must remain visible") }
+    guard case .recording = healthy.state else { preconditionFailure("Another window must keep recording") }
+    await healthy.beginFinalization(discarding: false).value
+    guard let url = healthy.media?.media.url else { preconditionFailure("Missing healthy recording") }
     precondition(FileManager.default.fileExists(atPath: url.path))
-    guard case .failed = batch.items[0].state else { preconditionFailure("Failed download must remain visible") }
-    await batch.close()
+    await failed.close()
+    await healthy.close()
   }
 
   static func disconnectedDeviceLeavesHealthyRecordingActive(root: URL, video: URL) async throws {
     let devices = makeDevices()
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: devices, options: options)
+    let failed = await fixture.startRecording(for: devices[0])
+    let healthy = await fixture.startRecording(for: devices[1])
     devices[0].connection?.invalidate()
-    await fixture.waitForFailure(in: batch)
+    await fixture.waitForFailure(in: failed)
+    guard case .recording = healthy.state else { preconditionFailure("Another window must keep recording") }
     let stops = await fixture.adb.stops
-    precondition(stops.isEmpty, "Disconnect must leave the other recording active")
-    await batch.close()
+    precondition(stops.isEmpty)
+    await failed.close()
+    await healthy.close()
   }
 
   static func replacementDoesNotJoinRecording(root: URL, video: URL) async throws {
     let devices = makeDevices()
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: devices, options: options)
+    let capture = await fixture.startRecording(for: devices[0], options: options)
     let replacement = Device(
       id: devices[0].id, model: "Replacement", androidVersion: "16", vendorModel: nil,
       manufacturer: nil, avdName: nil, connection: DeviceTarget(serial: devices[0].id, transportID: "2")
     )
     devices[0].connection?.invalidate()
-    await fixture.waitForFailure(in: batch)
-    await batch.close()
+    await fixture.waitForFailure(in: capture)
+    await capture.close()
     let stops = await fixture.adb.stops
-    precondition(stops == [devices[1].id], "Replacement must end only its original recording and never rejoin")
-    let next = await fixture.startRecording(for: [replacement], options: options)
+    precondition(stops.isEmpty, "The replacement must never join the old recording")
+    let next = await fixture.startRecording(for: replacement, options: options)
     await next.close()
   }
 
   static func cancellationDoesNotSignalEndedSession(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: devices, options: options)
+    let capture = await fixture.startRecording(for: devices[0], options: options)
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure(in: batch)
+    await fixture.waitForFailure(in: capture)
 
-    await batch.close()
+    await capture.close()
     let stops = await fixture.adb.stops
-    precondition(stops == [devices[1].id], "Only the active recording may receive a stop signal")
+    precondition(stops.isEmpty, "An ended recording must not receive a stop signal")
   }
 
   static func endedSessionRestoresTouchIndicators(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(
-      for: devices, options: RecordingOptions(recordsBugReport: false, showsTouches: true)
-    )
+    let options = RecordingOptions(recordsBugReport: false, showsTouches: true)
+    let ended = await fixture.startRecording(for: devices[0], options: options)
+    let healthy = await fixture.startRecording(for: devices[1], options: options)
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await fixture.waitForFailure(in: batch)
-
+    await fixture.waitForFailure(in: ended)
     await waitForActorTestState { await fixture.adb.touchSettings[devices[0].id] == false }
     let settings = await fixture.adb.touchSettings
-    precondition(settings == [devices[0].id: false, devices[1].id: true], "Restore only the ended device's setting")
-    await batch.close()
+    precondition(settings == [devices[0].id: false, devices[1].id: true])
+    await ended.close()
+    await healthy.close()
   }
 
   static func unconfirmedStopPreservesRemoteRecording(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: [devices[0]], options: options)
+    let capture = await fixture.startRecording(for: devices[0], options: options)
     await fixture.adb.failStop(devices[0].id)
-    await batch.beginFinalization(discarding: false).value
+    await capture.beginFinalization(discarding: false).value
 
     let removed = await fixture.adb.removedRecordings
     precondition(removed.isEmpty, "An unconfirmed stop must preserve the device copy")
@@ -577,8 +514,8 @@ struct RecordingTests {
     let invalidVideo = root.appendingPathComponent("incomplete.mp4")
     try Data("incomplete recording".utf8).write(to: invalidVideo)
     let fixture = Fixture(root: root, video: invalidVideo)
-    let batch = await fixture.startRecording(for: [devices[0]], options: options)
-    await batch.beginFinalization(discarding: false).value
+    let capture = await fixture.startRecording(for: devices[0], options: options)
+    await capture.beginFinalization(discarding: false).value
 
     let removed = await fixture.adb.removedRecordings
     precondition(removed.isEmpty, "An unusable download must preserve the device copy")
@@ -586,8 +523,8 @@ struct RecordingTests {
 
   static func confirmedRecordingRemovesRemoteCopy(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: [devices[0]], options: options)
-    await batch.beginFinalization(discarding: false).value
+    let capture = await fixture.startRecording(for: devices[0], options: options)
+    await capture.beginFinalization(discarding: false).value
 
     let removed = await fixture.adb.removedRecordings
     precondition(removed == [devices[0].id], "A confirmed stop and usable local copy allow remote cleanup")
@@ -595,23 +532,22 @@ struct RecordingTests {
 
   static func finalDeviceFailureCompletesRecording(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: [devices[0]])
+    let capture = await fixture.startRecording(for: devices[0])
     await fixture.adb.endUnexpectedly(devices[0].id)
-    await waitForObservedTestState { batch.isComplete }
+    await waitForObservedTestState { capture.isComplete }
     let removed = await fixture.adb.removedRecordings
-    precondition(batch.items.compactMap(\.media).count == 1 && removed.isEmpty)
-    precondition(batch.items[0].warning != nil, "A recovered file must keep its unexpected-stop warning")
-    await batch.close()
+    precondition(capture.media != nil && removed.isEmpty)
+    precondition(capture.warning != nil, "A recovered file must keep its unexpected-stop warning")
+    await capture.close()
     await fixture.coordinator.waitUntilIdle()
   }
 
   static func unstartedRecordingCanBeClosed(root: URL, video: URL) async throws {
-    let fixture = Fixture(root: root, video: video) { _, _ in preconditionFailure("Unstarted batch must not acquire a device") }
-    let batch = fixture.recording(for: devices)
-    precondition(batch.items.count == devices.count)
-    await batch.close()
-    batch.start()
-    precondition(batch.isComplete && batch.items.allSatisfy { $0.media == nil })
+    let fixture = Fixture(root: root, video: video) { _, _ in preconditionFailure("Unstarted capture must not acquire a device") }
+    let capture = fixture.recording(for: devices[0])
+    await capture.close()
+    capture.start()
+    precondition(capture.isComplete && capture.media == nil)
     await fixture.coordinator.waitUntilIdle()
   }
 
@@ -624,24 +560,24 @@ struct RecordingTests {
         let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
         return ADBScreenRecording(session: session, adb: adb)
       }
-      let batch = fixture.recording(for: [devices[0]])
-      batch.start()
+      let capture = fixture.recording(for: devices[0])
+      capture.start()
       await gate.waitUntilEntered()
       if shutdown { fixture.coordinator.beginShutdown() }
-      let ending = Task { await batch.close() }
-      await waitForObservedTestState { batch.phase == .cancelling }
+      let ending = Task { await capture.close() }
+      await waitForObservedTestState { capture.phase == .cancelling }
       if !shutdown {
         try fixture.expectReserved(devices[0])
       } else {
-        let rejected = await fixture.startRecording(for: [devices[1]])
+        let rejected = await fixture.startRecording(for: devices[1])
         await waitForObservedTestState { rejected.isComplete }
-        guard case .failed = rejected.items[0].state else { preconditionFailure("Shutdown must reject new work") }
+        guard case .failed = rejected.state else { preconditionFailure("Shutdown must reject new work") }
         await rejected.close()
       }
       await gate.open()
       await ending.value
       let removed = await adb.removedRecordings
-      precondition(batch.items.allSatisfy { $0.media == nil } && removed == [devices[0].id])
+      precondition(capture.media == nil && removed == [devices[0].id])
       await fixture.coordinator.waitUntilIdle()
     }
   }
@@ -654,28 +590,29 @@ struct RecordingTests {
       let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
       return ADBScreenRecording(session: session, adb: adb)
     }
-    let batch = await fixture.startRecording(for: devices)
+    let failed = await fixture.startRecording(for: devices[1])
+    let healthy = await fixture.startRecording(for: devices[0])
+    guard case .failed = failed.state else { preconditionFailure("The startup error must remain visible") }
+    guard case .recording = healthy.state else { preconditionFailure("Another device can still record") }
     let stops = await adb.stops
     precondition(stops.isEmpty)
-    await batch.beginFinalization(discarding: false).value
-    precondition(batch.items.compactMap(\.media).map(\.device.id) == [devices[0].id])
-    guard case .failed = batch.items[1].state else { preconditionFailure("Keep the failed target's item") }
-    await batch.close()
+    await failed.close()
+    await healthy.close()
   }
 
   static func finishAndCancelJoinCollection(root: URL, video: URL) async throws {
     let fixture = Fixture(root: root, video: video)
-    let batch = await fixture.startRecording(for: [devices[0]])
+    let capture = await fixture.startRecording(for: devices[0])
     let gate = TestGate()
     await fixture.adb.blockDownload(on: gate)
-    let first = batch.beginFinalization(discarding: false)
+    let first = capture.beginFinalization(discarding: false)
     await gate.waitUntilEntered()
     let finished = TestValue(false)
-    let again = await startTestTask { await batch.beginFinalization(discarding: false).value
+    let again = await startTestTask { await capture.beginFinalization(discarding: false).value
       finished.value = true
     }
     let closed = TestValue(false)
-    let close = await startTestTask { await batch.close()
+    let close = await startTestTask { await capture.close()
       closed.value = true
     }
     precondition(!finished.value && !closed.value)
@@ -684,7 +621,7 @@ struct RecordingTests {
     await again.value
     await close.value
     let removed = await fixture.adb.removedRecordings
-    precondition(batch.items.compactMap(\.media).count == 1 && removed == [devices[0].id])
+    precondition(capture.media != nil && removed == [devices[0].id])
     await fixture.coordinator.waitUntilIdle()
   }
 
@@ -697,16 +634,16 @@ struct RecordingTests {
       let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
       return ADBScreenRecording(session: session, adb: adb)
     }
-    let batch = fixture.recording(for: devices)
-    batch.start()
-    await gate.waitUntilEntered(2)
+    let capture = fixture.recording(for: devices[0])
+    capture.start()
+    await gate.waitUntilEntered()
     devices[0].connection?.invalidate()
     await gate.open()
-    _ = await batch.startup?.value
-    await batch.beginFinalization(discarding: false).value
-    guard case .failed = batch.items[0].state else { preconditionFailure("An old connection cannot rejoin") }
-    precondition(batch.items.compactMap(\.media).map(\.device.id) == [devices[1].id])
-    await batch.close()
+    _ = await capture.startup?.value
+    await capture.beginFinalization(discarding: false).value
+    guard case .failed = capture.state else { preconditionFailure("An old connection cannot rejoin") }
+    precondition(capture.media == nil)
+    await capture.close()
     await fixture.coordinator.waitUntilIdle()
   }
 }

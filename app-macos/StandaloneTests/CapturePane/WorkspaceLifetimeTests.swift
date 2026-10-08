@@ -16,7 +16,7 @@ extension CapturePaneTests {
     await workspaces.shutdown()
     let late = workspaces.makeSession()
     #expect(late.isClosed)
-    late.perform(.record)
+    late.showLivePreview()
     late.openDevice(.serial("A"))
     late.startIfNeeded()
     await late.close().value
@@ -59,15 +59,13 @@ extension CapturePaneTests {
     await fixture.close()
   }
 
-  @Test(.enabled(if: CommandLine.arguments.contains("--windows")), arguments: [
-    SnapOCommand.capture, .record, .livepreview
-  ])
-  func hiddenLaunchWindowCanBeReusedThenClosed(command: SnapOCommand) async throws {
+  @Test(.enabled(if: CommandLine.arguments.contains("--windows")))
+  func hiddenLaunchWindowCanBeReusedThenClosed() async throws {
     _ = NSApplication.shared
     let fixture = Fixture()
     let pane = fixture.pane()
     let session = fixture.window(pane, showsCapture: false, showsTool: true)
-    session.perform(command)
+    session.showLivePreview()
     let window = Self.testWindow()
     session.attach(to: window)
     #expect(!window.isVisible && !session.isClosed)
@@ -77,11 +75,7 @@ extension CapturePaneTests {
     session.attach(to: window)
     window.orderFront(nil)
     NotificationCenter.default.post(name: NSWindow.didUpdateNotification, object: window)
-    switch command {
-    case .capture: try await waitForState { pane.review != nil }
-    case .record: try await waitForState { pane.recording != nil }
-    case .livepreview: try await waitForState { pane.currentPreview != nil }
-    }
+    try await waitForState { pane.currentPreview != nil }
     #expect(session.tools.starts == 1)
     window.close()
     #expect(session.isClosed)
@@ -114,7 +108,7 @@ extension CapturePaneTests {
     await session.close().value
     #expect(ownAttachment.isClosed && !otherAttachment.isClosed)
     session.startIfNeeded()
-    session.perform(.record)
+    session.showLivePreview()
     #expect(fixture.recordings.value.isEmpty)
     await other.close()
     await fixture.close()

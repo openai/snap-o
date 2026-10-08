@@ -173,7 +173,7 @@ struct CaptureCropExportTests {
       #expect(drag.isReady(for: request))
       drag.stop()
       let history = CaptureHistoryRepository(root: root.appendingPathComponent("History"))
-      try await store.saveReview([request], name: "Edited video", selectedID: capture.id, history: history)
+      try await store.saveReview(request, name: "Edited video", history: history)
     }
     let settings = received.withLock { $0 }
     #expect(settings.count == 3)

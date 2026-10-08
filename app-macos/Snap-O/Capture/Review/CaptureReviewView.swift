@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct CaptureReviewView: View {
-  @Environment(CaptureHistory.self)
-  private var history
   @Bindable var review: CaptureReviewState
   let returnToLive: () -> Void
   @State private var isNaming = false
@@ -19,9 +17,7 @@ struct CaptureReviewView: View {
             CaptureTrimToolbar(canApply: trimFieldsValid) {
               review.playback.cancelTrimming()
             } apply: {
-              if let id = review.selectedItemID {
-                review.setTrim(review.playback.confirmTrim(), for: id)
-              }
+              review.setTrim(review.playback.confirmTrim())
             }
           } else {
             toolbar
@@ -61,28 +57,28 @@ struct CaptureReviewView: View {
 
   @ViewBuilder
   private func content(in size: CGSize) -> some View {
-    if let item = review.selectedItem, let capture = item.media {
+    if let capture = review.currentCapture {
       let frame = CaptureReviewLayout.mediaFrame(
         in: size, aspectRatio: capture.media.aspectRatio,
         showsPlayback: capture.media.isVideo, isTrimming: review.playback.isTrimming
       )
-      let request = try? review.exportRequest(for: item.id)
+      let request = try? review.exportRequest()
       ZStack(alignment: .topLeading) {
         if case .video(let url, _) = capture.media {
           CaptureReviewVideo(
             url: url, mediaFrame: frame,
             controlsFrame: CaptureReviewLayout.playbackFrame(in: size, isTrimming: review.playback.isTrimming),
-            playback: review.playback, trim: review.trim(for: item.id),
-            load: { await review.loadPlayback(for: item.id) },
+            playback: review.playback, trim: review.trim,
+            load: { await review.loadPlayback() },
             onTrimValidityChange: { trimFieldsValid = $0 }
           )
         } else if case .image(let url, _) = capture.media {
           ImageCaptureView(
             fileStore: review.fileStore, url: url,
             exportFilename: FileStore.exportFilename(
-              capturedAt: capture.media.capturedAt, kind: .image, name: history.name(for: capture.id)
+              capturedAt: capture.media.capturedAt, kind: .image
             ),
-            allowsFileDrag: false, crop: review.crop(for: item.id)
+            allowsFileDrag: false, crop: review.crop
           ) { nil }
             .id(capture.id)
             .frame(width: frame.width, height: frame.height)
@@ -93,28 +89,32 @@ struct CaptureReviewView: View {
         CaptureCropOverlay(
           imageFrame: frame,
           crop: Binding(
-            get: { review.crop(for: item.id) },
-            set: { review.setCrop($0, for: item.id) }
+            get: { review.crop },
+            set: { review.setCrop($0) }
           ),
           isEnabled: !review.playback.isTrimming && !isNaming && !review.isClosing && !review.isSaving,
           allowsFileDrag: !capture.media.isVideo || request.map { review.dragExport.isReady(for: $0) } == true
-        ) { try? review.makeDragItem(for: item.id, frame: $0) }
-          .id(item.id)
+        ) { try? review.makeDragItem(frame: $0) }
+          .id(capture.id)
       }
-      .task(id: request) { await review.prepareDrag(for: item.id) }
-    } else if let item = review.selectedItem {
+      .task(id: request) { await review.prepareDrag() }
+    } else {
       VStack(spacing: 12) {
-        switch item.state {
+        switch review.operation.state {
         case .failed(let message):
           Image(systemName: "exclamationmark.triangle").font(.title2)
           Text(message).multilineTextAlignment(.center).textSelection(.enabled)
         case .cancelled:
           Text("Capture cancelled")
         default:
-          ProgressView()
-          Text(review.batch.kind == .recording ? "Preparing recording" : "Taking screenshot")
+          Image("Aperture")
+            .renderingMode(.template)
+            .resizable()
+            .foregroundStyle(.secondary)
+            .frame(width: 64, height: 64)
+            .infiniteRotate(animated: true)
+            .accessibilityLabel(review.operation.kind == .recording ? "Preparing recording" : "Taking screenshot")
         }
-        Text(item.device.displayTitle).foregroundStyle(.secondary)
       }
       .padding(24)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -122,8 +122,7 @@ struct CaptureReviewView: View {
   }
 
   private var mediaName: String {
-    if review.batch.kind == .recording { return review.items.count > 1 ? "Recordings" : "Recording" }
-    return review.items.count > 1 ? "Screenshots" : "Screenshot"
+    review.operation.kind == .recording ? "Recording" : "Screenshot"
   }
 
   private var toolbar: some View {
@@ -139,13 +138,9 @@ struct CaptureReviewView: View {
       .help("Discard \(mediaName)")
       .accessibilityLabel("Discard \(mediaName)")
 
-      if review.items.count > 1 {
-        ReviewItemStrip(items: review.items, selectedID: review.selectedItemID, select: review.select)
-      } else {
-        Spacer(minLength: 0)
-      }
+      Spacer(minLength: 0)
 
-      if let warning = review.selectedItem?.warning {
+      if let warning = review.operation.warning {
         Image(systemName: "exclamationmark.triangle")
           .foregroundStyle(.orange)
           .help(warning)
@@ -188,7 +183,7 @@ struct CaptureReviewView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.white)
       .glassEffect(.regular.tint(.accentColor).interactive(), in: Circle())
-      .disabled(review.batch.isComplete && review.mediaList.isEmpty)
+      .disabled(review.operation.isComplete && review.currentCapture == nil)
       .help("Save \(mediaName) to History")
       .accessibilityLabel("Save \(mediaName) to History")
     }
@@ -206,72 +201,6 @@ struct CaptureReviewView: View {
       review.playback.cancelTrimming()
     case .confirmDiscard:
       isConfirmingDiscard = true
-    }
-  }
-}
-
-private struct ReviewItemStrip: View {
-  let items: [CaptureItem]
-  let selectedID: UUID?
-  let select: (UUID) -> Void
-
-  var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView(.horizontal) {
-        HStack(spacing: 8) {
-          ForEach(items) { item in
-            Button { select(item.id) } label: {
-              ReviewItemThumbnail(item: item)
-                .frame(width: 32, height: 32)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay {
-                  RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(item.id == selectedID ? Color.accentColor : .clear, lineWidth: 2)
-                }
-            }
-            .buttonStyle(.plain)
-            .help(item.device.displayTitle)
-            .accessibilityLabel(item.device.displayTitle)
-            .accessibilityAddTraits(item.id == selectedID ? .isSelected : [])
-            .id(item.id)
-          }
-        }
-        .padding(2)
-      }
-      .scrollIndicators(.hidden)
-      .defaultScrollAnchor(.center, for: .alignment)
-      .onChange(of: selectedID, initial: true) {
-        if let selectedID { proxy.scrollTo(selectedID, anchor: .center) }
-      }
-    }
-    .frame(maxWidth: .infinity)
-  }
-}
-
-private struct ReviewItemThumbnail: View {
-  let item: CaptureItem
-  @State private var imageLoader = ImageLoader()
-
-  var body: some View {
-    GeometryReader { geometry in
-      ZStack {
-        switch item.state {
-        case .ready(let capture, _):
-          if case .image(let url, _) = capture.media, let image = imageLoader.image(url: url) {
-            Image(nsImage: image).resizable().scaledToFill()
-          } else if case .video(let url, _) = capture.media {
-            VideoPreviewThumbnail(url: url)
-          }
-        case .failed:
-          Image(systemName: "exclamationmark.triangle").accessibilityLabel("Capture failed")
-        case .cancelled:
-          Image(systemName: "xmark").accessibilityLabel("Capture cancelled")
-        default:
-          ProgressView().controlSize(.mini).accessibilityLabel("Capture pending")
-        }
-      }
-      .frame(width: geometry.size.width, height: geometry.size.height)
-      .clipped()
     }
   }
 }
