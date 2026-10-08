@@ -103,6 +103,7 @@ struct VideoStreamTests {
     precondition(!fresh.value, "Recording must wait for a fresh timestamp")
     socket.append(Data(packet.dropFirst(17)))
     await waitForObservedTestState { fresh.value }
+    await waitForActorTestState { socket.acknowledgmentCount == 2 }
     recorder.stop()
     await recorder.waitUntilStopped()
     first.stop()

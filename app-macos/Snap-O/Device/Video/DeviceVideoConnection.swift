@@ -51,6 +51,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     let target = target
     let deviceID = target.serial
     let clock = clock
+    let commands = commands
     timeout = Task { [weak self] in
       guard !Task.isCancelled else { return }
       do { try await clock.sleep(for: .seconds(8)) } catch { return }
@@ -71,10 +72,15 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
         trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
         (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
           chmod 444 "$directory/helper.jar" || exit 1
-        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-fallback 2>/dev/null
+        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-fallback rgba-flow-control 2>/dev/null
         """
         let connection = try await ADBClient().bound(to: target).makeConnection()
         socket = connection
+        let acknowledgeRGBAFrame = {
+          try commands.sync {
+            try connection.writeFully(ADBShellV2Stream.standardInput(Data([3])))
+          }
+        }
         guard await self?.install(connection) == true else { connection.close()
           return
         }
@@ -106,7 +112,10 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
             }
             guard let sample = try rgbaBuilder.makeSample(
               rgba: pixels, width: width, height: height, timestamp: UInt64(timestamp)
-            ) else { continue }
+            ) else {
+              try acknowledgeRGBAFrame()
+              continue
+            }
             await self?.useIndependentFrames()
             if rgbaSize?.width != width || rgbaSize?.height != height,
                let format = CMSampleBufferGetFormatDescription(sample) {
@@ -114,6 +123,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
               rgbaSize = (width, height)
             }
             await self?.receive(.sample(sample, isKeyFrame: true))
+            try acknowledgeRGBAFrame()
           case .frame(let flags, let timestamp, let data):
             let oldFormat = builder.format
             let sample = try builder.sample(data: data, timestamp: timestamp, flags: flags)

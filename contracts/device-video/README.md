@@ -10,6 +10,7 @@ are little-endian. Stderr is discarded; exit status or a truncated packet ends t
 Shell packet boundaries are independent of the video packets below.
 The first argument is the temporary helper directory. An optional `rgba-fallback` argument
 allows compressed RGBA if AVC encoder startup fails. Every device tries AVC first.
+With `rgba-fallback`, a third argument, `rgba-flow-control`, enables frame acknowledgments.
 Fallback handles missing encoders, unsupported capabilities or configuration, and permanent
 codec failures during encoder startup. Resource exhaustion, reclaimed codecs, transient or
 recoverable codec errors, and display, mirror, transport, or streaming failures do not trigger it.
@@ -59,15 +60,27 @@ width × height × 4, and dimensions must match the preceding display packet. Tr
 bytes, invalid checksums, and incomplete frames are rejected. Capture is capped at about 30 fps.
 The Mac expands RGBA and converts it into BGRA pixel buffers. Recordings encode H.264 on the Mac.
 A display change recreates the reader and sends new display metadata before the next frame.
+With flow control enabled, at most two RGBA frames may be unacknowledged across the
+transport. The helper waits for capacity before acquiring the latest ImageReader image.
+Intermediate images are discarded by `acquireLatestImage()`. The Mac acknowledges each
+valid RGBA frame after delivery to consumers, including frames dropped due to buffer limits.
+This bounds stale frames in SSH and socket buffers, at the cost of frame rate on slow links.
+The two-frame limit persists across display changes. AVC behavior is unchanged.
 
-The reverse channel accepts single-byte commands: `1` requests a keyframe; `2` stops.
+The reverse channel accepts single-byte commands: `1` requests a keyframe; `2` stops;
+`3` acknowledges one RGBA frame when `rgba-flow-control` was requested.
 A keyframe request also reattaches the display mirror so an idle screen submits a fresh image.
 It preserves the encoder and its timestamps.
 In RGBA mode, command `1` resends the latest image with a new monotonic timestamp.
 Every RGBA frame is independent, so a new subscriber can immediately use the cached frame.
-EOF also stops the helper. There are no acknowledgments, installed APKs, or listening sockets.
+EOF also stops the helper. There are no installed APKs or listening sockets.
 Subscribers wait for a keyframe before receiving dependent frames. Connection startup has
 an eight-second deadline; a stopped or malformed stream fails its subscribers explicitly.
+
+Flow control is an additive, opt-in change; the protocol remains version 1. Older callers
+retain the unacknowledged stream by omitting the new argument. A new client requires its
+matching bundled helper; an older helper rejects the unknown argument at startup.
+Network and Tweaks protocols, frontends, and Python CLIs are unaffected.
 
 Validation includes parser bounds, native MP4 timing and disconnect recovery, independent
 preview/recording ownership, and physical-device startup. Device tests must also cover
