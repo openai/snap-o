@@ -11,7 +11,7 @@ import type {
 export function makeCurlCommand(request: RequestRecord): string {
   const warnings: string[] = [];
   const parts = [
-    `--request ${singleQuoted(request.method)}`,
+    request.method === "HEAD" && !request.requestBody ? "--head" : `--request ${singleQuoted(request.method)}`,
     `--url ${singleQuoted(request.url)}`,
     ...request.requestHeaders.map((header) => `--header ${singleQuoted(`${header.name}: ${header.value}`)}`)
   ];
