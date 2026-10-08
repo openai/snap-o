@@ -155,11 +155,13 @@ struct ADBServersWindow: View {
   }
 }
 
-private struct ADBServerEditor: View {
+struct ADBServerEditor: View {
   @Environment(\.dismiss)
   private var dismiss
   let profile: RemoteADBServer
   let isNew: Bool
+  let opensDevice: Bool
+  let onClose: (() -> Void)?
   let save: (RemoteADBServer) async throws -> Void
   @State private var destination: String
   @State private var sshPort: String
@@ -167,9 +169,14 @@ private struct ADBServerEditor: View {
   @State private var isSaving = false
   @State private var error: String?
 
-  init(profile: RemoteADBServer, isNew: Bool, save: @escaping (RemoteADBServer) async throws -> Void) {
+  init(
+    profile: RemoteADBServer, isNew: Bool, opensDevice: Bool = false,
+    onClose: (() -> Void)? = nil, save: @escaping (RemoteADBServer) async throws -> Void
+  ) {
     self.profile = profile
     self.isNew = isNew
+    self.opensDevice = opensDevice
+    self.onClose = onClose
     self.save = save
     switch profile.connection {
     case .ssh(let configuration):
@@ -197,24 +204,35 @@ private struct ADBServerEditor: View {
       if let error { Text(error).foregroundStyle(.red).font(.callout) }
       HStack {
         Spacer()
-        Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-        Button(isNew ? "Add" : "Save") {
-          isSaving = true
-          Task {
-            defer { isSaving = false }
-            do {
-              try await save(configuration())
-              dismiss()
-            } catch { self.error = error.localizedDescription }
-          }
+        Button("Cancel", role: .cancel) { close() }.keyboardShortcut(.cancelAction)
+        if !opensDevice {
+          saveButton.keyboardShortcut(.defaultAction)
+        } else {
+          saveButton
         }
-        .keyboardShortcut(.defaultAction)
-        .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       }
     }
     .padding(24).frame(width: 440)
     .disabled(isSaving)
     .interactiveDismissDisabled(isSaving)
+  }
+
+  private var saveButton: some View {
+    Button(opensDevice ? "Add and Open" : (isNew ? "Add" : "Save")) {
+      isSaving = true
+      Task {
+        defer { isSaving = false }
+        do {
+          try await save(configuration())
+          close()
+        } catch { self.error = error.localizedDescription }
+      }
+    }
+    .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  }
+
+  private func close() {
+    if let onClose { onClose() } else { dismiss() }
   }
 
   private func configuration() throws -> RemoteADBServer {

@@ -23,7 +23,8 @@ final class SnapOCommandCoordinator {
 
   private var pendingLivePreview = false
 
-  var authorizeDeviceLink: ((DeviceOpenRequest, URL) async -> DeviceOpenRequest?)?
+  var requiresDeviceLinkApproval: (DeviceOpenRequest) -> Bool = { _ in true }
+  var authorizeDeviceLink: ((DeviceOpenRequest) async -> DeviceOpenRequest?)?
   private(set) var deviceLinkTask: Task<Void, Never>?
 
   init() {}
@@ -33,9 +34,9 @@ final class SnapOCommandCoordinator {
     guard deviceLinkTask == nil else { return true }
     switch link {
     case .target(let request):
-      if let authorizeDeviceLink {
+      if let authorizeDeviceLink, requiresDeviceLinkApproval(request) {
         deviceLinkTask = Task {
-          let approved = await authorizeDeviceLink(request, url)
+          let approved = await authorizeDeviceLink(request)
           self.deviceLinkTask = nil
           if let approved { self.openDevice(approved) }
         }

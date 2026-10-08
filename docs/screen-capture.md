@@ -113,7 +113,13 @@ open 'snapo://open?serial=emulator-5554&server=devbox&port=2222&adb_port=5038'
 
 `server` matches the saved destination exactly, including an SSH config alias or `user@host`. `port` matches the saved SSH port override; omit it when no override is configured. If omitted, the destination and ADB port must identify one enabled server. `adb_port` defaults to `5037`.
 
-Omit `server` or use `server=localhost` for the local ADB server. These connection parameters apply only to `serial` links; `port` applies only to SSH servers. For a saved but disabled SSH server, Snap-O asks you to enable it and open the requested device. Cancel leaves the server disabled. Links wait for connection and device discovery after approval. Unknown servers must still be added in ADB Servers first.
+Omit `server` or use `server=localhost` for the local ADB server. These connection parameters apply only to `serial` links; `port` applies only to SSH servers.
+
+For a saved but disabled SSH server, Snap-O asks you to enable it and open the requested device. Cancel leaves the server disabled. Links wait for connection and device discovery after approval.
+
+For an unknown SSH server, Snap-O first warns that an external link requested a new server. **Review Server** opens a prefilled **Add ADB Server** dialog without connecting. Review or edit the connection, then choose **Add and Open** to save it, connect, and open the requested device. Cancel at either step discards the request.
+
+Incoming confirmations do not accept Enter as approval. Additional device links are ignored while a request is being reviewed or saved. Once approved, the request stays bound to that server and reports connection or device discovery errors without selecting another device. Choose **Retry** to try the request again, or **Cancel** to return to the available preview. When multiple devices are available, you can also select one in the preview picker.
 
 </details>
 

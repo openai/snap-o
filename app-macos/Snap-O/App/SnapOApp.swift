@@ -21,12 +21,20 @@ struct SnapOApp: App {
       }
       try await runtime.adbServers.setEnabled(true, for: profile)
     }
+    let addServer: (DeviceLinkServer) async throws -> (id: ADBServerID, server: DeviceLinkServer)? = { server in
+      guard let profile = await DeviceLinkDialogs.addServer(server: server, save: runtime.adbServers.save),
+            case .ssh(let configuration) = profile.connection else { return nil }
+      return (.remote(profile.id), .ssh(destination: configuration.destination, port: configuration.port, adbPort: configuration.adbPort))
+    }
     let authorization = DeviceLinkAuthorization(
       servers: { runtime.adbServers.deviceLinkServers },
       confirmEnable: DeviceLinkDialogs.confirmEnable,
+      confirmAdd: DeviceLinkDialogs.confirmAdd,
+      addServer: addServer,
       enable: enableServer
     )
-    SnapOCommandCoordinator.shared.authorizeDeviceLink = { request, _ in
+    SnapOCommandCoordinator.shared.requiresDeviceLinkApproval = authorization.requiresApproval
+    SnapOCommandCoordinator.shared.authorizeDeviceLink = { request in
       do { return try await authorization.authorize(request) } catch {
         DeviceLinkDialogs.showError(error)
         return nil
