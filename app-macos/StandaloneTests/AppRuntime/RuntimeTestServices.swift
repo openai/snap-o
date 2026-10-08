@@ -144,6 +144,7 @@ final class DeviceTracker: DeviceTracking {
 @MainActor
 final class DeviceManager {
   var inventory = DeviceInventory()
+  var linkServers: () -> [ADBServerID: DeviceLinkConnection] = { [:] }
   private var shutdownTask: Task<Void, Never>?
   var isShuttingDown: Bool {
     shutdownTask != nil
@@ -316,8 +317,11 @@ enum ADBServerConnection {
   }
 }
 
+struct DeviceLinkConnection {}
+
 @MainActor
 final class ADBServers {
+  var deviceLinkServers: [ADBServerID: DeviceLinkConnection] = [:]
   let configuredServerIDs: Set<ADBServerID>
   init(
     service: ADBService,
