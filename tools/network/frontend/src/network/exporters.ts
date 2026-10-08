@@ -16,22 +16,27 @@ export function makeCurlCommand(request: RequestRecord): string {
     ...request.requestHeaders.map((header) => `--header ${singleQuoted(`${header.name}: ${header.value}`)}`)
   ];
 
+  let inputCommand: string | undefined;
   if (request.requestBody != null && request.requestBody.length > 0) {
+    const body = request.requestBody;
     const encoding = request.requestBodyEncoding?.toLowerCase();
-    if (encoding === "base64") {
-      const decoded = decodeBase64Bytes(request.requestBody);
-      if (decoded == null) {
-        warnings.push("Unable to decode base64 body - copied data uses raw text");
-        parts.push(`--data-binary ${singleQuoted(request.requestBody)}`);
-      } else {
-        parts.push(`--data-binary ${makeBinaryLiteral(decoded)}`);
-      }
+    const decoded = encoding === "base64" ? decodeBase64Bytes(body) : null;
+    if (encoding === "base64" && decoded == null) {
+      warnings.push("Unable to decode base64 body - copied data uses raw text");
+    }
+    const bytes = decoded ?? (body.includes("\0") ? new TextEncoder().encode(body) : null);
+    if (bytes != null) {
+      inputCommand = binaryInputCommand(bytes);
+      parts.push("--data-binary @-");
     } else {
-      parts.push(`--data-binary ${singleQuoted(request.requestBody)}`);
+      // --data-binary interprets a leading @ as a filename, even when quoted.
+      const option = body.startsWith("@") ? "--data-raw" : "--data-binary";
+      parts.push(`${option} ${singleQuoted(body)}`);
     }
   }
 
-  const command = joinCurlParts(parts);
+  const curl = joinCurlParts(parts);
+  const command = inputCommand == null ? curl : `${inputCommand} | ${curl}`;
   if (warnings.length === 0) return command;
   return [...warnings.map((warning) => `# ${warning}`), command].join("\n");
 }
@@ -321,22 +326,10 @@ function singleQuoted(value: string): string {
   return `'${value.replace(/'/gu, "'\"'\"'")}'`;
 }
 
-function makeBinaryLiteral(data: Uint8Array): string {
-  let out = "$'";
-  for (const byte of data) {
-    if (byte === 0x07) out += "\\a";
-    else if (byte === 0x08) out += "\\b";
-    else if (byte === 0x09) out += "\\t";
-    else if (byte === 0x0a) out += "\\n";
-    else if (byte === 0x0b) out += "\\v";
-    else if (byte === 0x0c) out += "\\f";
-    else if (byte === 0x0d) out += "\\r";
-    else if (byte === 0x5c) out += "\\\\";
-    else if (byte === 0x27) out += "\\'";
-    else if (byte >= 0x20 && byte <= 0x7e) out += String.fromCharCode(byte);
-    else out += `\\x${byte.toString(16).toUpperCase().padStart(2, "0")}`;
-  }
-  return `${out}'`;
+function binaryInputCommand(data: Uint8Array): string {
+  // Shell arguments cannot contain NUL. Decode portable octal escapes into stdin.
+  const escaped = Array.from(data, (byte) => `\\0${byte.toString(8).padStart(3, "0")}`).join("");
+  return `printf '%b' '${escaped}'`;
 }
 
 function equalsHeader(a: string, b: string): boolean {
