@@ -13,6 +13,8 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions.unitTests.isIncludeAndroidResources = true
 }
 
 dependencies {
@@ -21,4 +23,7 @@ dependencies {
     api(project(":tweaks-core"))
 
     testImplementation(libs.junit4)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
