@@ -29,6 +29,7 @@ struct LiveDevicePreviewStrip: View {
   let selectedDeviceID: String?
   let attachment: LivePreviewAttachment?
   let loadSnapshot: (String) async throws -> Data
+  let serverName: (Device) -> String?
   let selectDevice: (String) -> Void
 
   var body: some View {
@@ -37,7 +38,8 @@ struct LiveDevicePreviewStrip: View {
         Button { selectDevice(preview.device.id) } label: {
           LiveDeviceThumbnail(
             preview: preview, attachment: attachment?.target == preview.device.connection ? attachment : nil,
-            loadSnapshot: loadSnapshot, isSelected: preview.device.id == selectedDeviceID
+            loadSnapshot: loadSnapshot, serverName: serverName(preview.device),
+            isSelected: preview.device.id == selectedDeviceID
           )
         }
         .buttonStyle(.plain)
@@ -50,6 +52,7 @@ private struct LiveDeviceThumbnail: View {
   let preview: LivePreviewDevice
   let attachment: LivePreviewAttachment?
   let loadSnapshot: (String) async throws -> Data
+  let serverName: String?
   let isSelected: Bool
   @State private var isHovered = false
 
@@ -65,9 +68,10 @@ private struct LiveDeviceThumbnail: View {
     .onHover { isHovered = $0 }
     .overlay(alignment: .bottom) {
       if isHovered {
-        TextBubble(text: preview.device.displayTitle)
+        TextBubble(text: preview.device.displayTitle, subtitle: serverName)
           .fixedSize(horizontal: true, vertical: true)
-          .offset(y: 32)
+          .frame(height: 0, alignment: .top)
+          .offset(y: 4)
           .allowsHitTesting(false)
       }
     }
@@ -90,16 +94,24 @@ private struct PreviewSelectionBoundsKey: PreferenceKey {
 
 private struct TextBubble: View {
   let text: String
+  let subtitle: String?
 
   var body: some View {
-    Text(text)
-      .multilineTextAlignment(.center)
-      .font(.system(size: 13, weight: .medium))
-      .padding(.horizontal, 14)
-      .padding(.vertical, 6)
-      .background(
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-          .fill(.ultraThinMaterial)
-      )
+    VStack(spacing: 2) {
+      Text(text)
+      if let subtitle {
+        Text(subtitle)
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+      }
+    }
+    .multilineTextAlignment(.center)
+    .font(.system(size: 13, weight: .medium))
+    .padding(.horizontal, 14)
+    .padding(.vertical, 6)
+    .background(
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .fill(.ultraThinMaterial)
+    )
   }
 }

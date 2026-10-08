@@ -134,32 +134,58 @@ struct CaptureWindow: View {
       )
   }
 
-  private var captureDeviceTitle: String? {
+  private var captureDeviceLabel: (name: String, server: String?)? {
     if let request = controller.deviceOpenRequest {
       switch request {
-      case .serial(let serial, _, _):
-        return deviceTitle(for: serial)
+      case .serial(let serial, let server, let serverID):
+        if let serverID {
+          return deviceLabel(for: DeviceID(serverID: serverID, serial: serial).storedValue)
+        }
+        let matches = deviceManager.linkServers().filter { $0.value.isEnabled && server.matches($0.value.server) }
+        if matches.count == 1, let match = matches.first {
+          return deviceLabel(for: DeviceID(serverID: match.key, serial: serial).storedValue)
+        }
+        switch server {
+        case .local:
+          return deviceLabel(for: serial)
+        case .ssh(let destination, let port, let adbPort):
+          let address = SSHConfiguration(destination: destination, port: port, adbPort: adbPort).displayAddress
+          return (serial, address)
+        }
       case .device(let id):
-        return deviceTitle(for: id.storedValue)
+        return deviceLabel(for: id.storedValue)
       case .avd(let name, _):
-        return deviceManager.emulators.first { $0.avdName == name }?.title ?? name
+        return (deviceManager.emulators.first { $0.avdName == name }?.title ?? name, nil)
       }
     }
     if controller.isLivePreviewActive, let serial = controller.loadingPreviewDeviceID {
-      return deviceTitle(for: serial)
+      return deviceLabel(for: serial)
     }
-    return controller.currentCaptureDeviceTitle
+    guard let title = controller.currentCaptureDeviceTitle else { return nil }
+    return labelWithServer(title, deviceID: controller.selectedDeviceID)
   }
 
-  private func deviceTitle(for serial: String) -> String {
-    deviceManager.entries.first { $0.serial == serial }?.title
-      ?? deviceManager.connectedDevices.first { $0.id == serial }?.displayTitle
-      ?? serial
+  private func deviceLabel(for storedID: String) -> (name: String, server: String?) {
+    let title = deviceManager.entries.first { $0.serial == storedID }?.title
+      ?? deviceManager.connectedDevices.first { $0.id == storedID }?.displayTitle
+      ?? DeviceID(storedValue: storedID).serial
+    return labelWithServer(title, deviceID: storedID)
+  }
+
+  private func labelWithServer(_ title: String, deviceID: String?) -> (name: String, server: String?) {
+    let server = deviceID.flatMap { deviceManager.remoteServerLabel(for: DeviceID(storedValue: $0)) }
+    return (title, server)
+  }
+
+  private var captureDeviceTitle: String? {
+    guard let label = captureDeviceLabel else { return nil }
+    return [label.name, label.server].compactMap(\.self).joined(separator: " ")
   }
 
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
-    return CapturePaneTitle(title: captureDeviceTitle ?? "Snap-O") {
+    let label = captureDeviceLabel
+    return CapturePaneTitle(title: label?.name ?? "Snap-O", serverName: label?.server) {
       openWindow(id: "device-manager")
     }
   }
@@ -467,7 +493,9 @@ struct CaptureWindow: View {
         LiveDevicePreviewStrip(
           previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
           attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
-          loadSnapshot: controller.livePreviewScreenshot, selectDevice: controller.selectDevice
+          loadSnapshot: controller.livePreviewScreenshot,
+          serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
+          selectDevice: controller.selectDevice
         )
         .padding(.top, 12)
         .onHover { controller.hint.setHovered($0) }
