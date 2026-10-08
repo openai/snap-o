@@ -32,7 +32,7 @@
 
         <h1 id="screen-capture">Screen capture</h1>
 
-<p class="lead">Capture screenshots or recordings from all connected Android devices, then crop images or trim recordings before sharing. Save the captures you want to keep in Capture History.</p>
+<p class="lead">Capture a screenshot or recording of the selected Android device, then crop or trim it before sharing. Save captures you want to keep in Capture History.</p>
 
       </div>
     </div>
@@ -118,11 +118,23 @@
 <p class="prose">When the local ADB server is missing, Snap-O starts it using your Android SDK. Existing ADB connections, including remote tunnels, are left in place. If startup fails, the Capture pane shows the error and a <strong>Start ADB server</strong> button.</p>
 <p class="prose">Quitting Snap-O leaves running emulators available to other tools.</p>
 <h3 id="open-a-device-from-a-link">Open a device from a link</h3>
-<p class="prose">Use a <code>snapo://open</code> URL to open a connected device by its ADB serial:</p>
+<p class="prose">Use <code>snapo://open</code> without parameters to show the current device’s Live Preview. To select a connected device, include its ADB serial:</p>
 <div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">open 'snapo://open?serial=emulator-5554'</code></pre></div>
 <p class="prose">You can also open an emulator by its AVD name. Add <code>start=true</code> to start it if it is stopped:</p>
 <div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">open 'snapo://open?avd=Pixel_8&amp;start=true'</code></pre></div>
 <p class="prose">Use either <code>serial</code> or <code>avd</code>, and percent-encode spaces or other special characters in its value.</p>
+<details id="remote-adb"><summary>ADB servers</summary><div class="details-body">
+
+<p class="prose">If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open <strong>Device → ADB Servers…</strong> and click <strong>Add Server</strong>.</p>
+<p class="prose">Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (<code>127.0.0.1</code>, port <code>5037</code> by default).</p>
+<p class="prose">To open a device on an already-connected SSH server, use its saved SSH destination:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">open 'snapo://open?serial=emulator-5554&amp;server=devbox&amp;port=2222&amp;adb_port=5038'</code></pre></div>
+<p class="prose"><code>server</code> matches the saved destination exactly, including an SSH config alias or <code>user@host</code>. <code>port</code> matches the saved SSH port override; omit it when no override is configured. If omitted, the destination and ADB port must identify one enabled server. <code>adb_port</code> defaults to <code>5037</code>.</p>
+<p class="prose">Omit <code>server</code> or use <code>server=localhost</code> for the local ADB server. These connection parameters apply only to <code>serial</code> links; <code>port</code> applies only to SSH servers.</p>
+<p class="prose">For a saved but disabled SSH server, Snap-O asks you to enable it and open the requested device. Cancel leaves the server disabled. Links wait for connection and device discovery after approval.</p>
+<p class="prose">For an unknown SSH server, Snap-O first warns that an external link requested a new server. <strong>Review Server</strong> opens a prefilled <strong>Add ADB Server</strong> dialog without connecting. Review or edit the connection, then choose <strong>Add and Open</strong> to save it, connect, and open the requested device. Cancel at either step discards the request.</p>
+<p class="prose">Incoming confirmations do not accept Enter as approval. Additional device links are ignored while a request is being reviewed or saved. Once approved, the request stays bound to that server and reports connection or device discovery errors without selecting another device. Choose <strong>Retry</strong> to try the request again, or <strong>Cancel</strong> to return to the available preview. When multiple devices are available, you can also select one in the preview picker.</p>
+</div></details>
 </div>
       </section>
 
@@ -132,7 +144,7 @@
           <h2>Take a screenshot</h2>
         </div>
         <div class="section-body">
-<p class="prose">Press <code>⇧⌘S</code> to capture a screenshot from all connected Android devices. The screenshots open for review. Use the thumbnails or <code>⌘[</code> and <code>⌘]</code> to switch between devices.</p>
+<p class="prose">Press <code>⇧⌘S</code> to capture a screenshot of the device shown in the window. The screenshot opens for review.</p>
 </div>
       </section>
 
@@ -142,8 +154,8 @@
           <h2>Record the screen</h2>
         </div>
         <div class="section-body">
-<p class="prose">Press <code>⇧⌘V</code> to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling <strong>Record Screen as Bug Report</strong> stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.</p>
-<p class="prose">During recording, the hover picker and <code>⌘[</code> / <code>⌘]</code> switch between devices in that recording. Newly connected devices join Live Preview, but do not join a recording already in progress.</p>
+<p class="prose">Press <code>⇧⌘V</code> to start recording the device shown in the window. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling <strong>Record Screen as Bug Report</strong> stops Live Preview during recording. The finished recording opens for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.</p>
+<p class="prose">The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.</p>
 </div>
       </section>
 
@@ -153,9 +165,9 @@
           <h2>Review, crop, and trim</h2>
         </div>
         <div class="section-body">
-<p class="prose">New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.</p>
+<p class="prose">New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop.</p>
 <p class="prose">For a recording, click the scissors to trim it. Drag the timeline handles or edit <strong>Start</strong> and <strong>End</strong>, then click <strong>Apply Trim</strong>. Press <code>Esc</code> to cancel the trim edit. Saved and shared copies use the selected crop and trim.</p>
-<p class="prose">Click the checkmark (<strong>Save to History</strong>) to keep all captures in the review with their crops and trims. Enter an optional name, then click <strong>Save</strong>. Click the cross (<strong>Discard</strong>) to remove the unsaved captures and return to Live Preview.</p>
+<p class="prose">Click the checkmark (<strong>Save to History</strong>) to keep the capture with its crop and trim. Enter an optional name, then click <strong>Save</strong>. Click the cross (<strong>Discard</strong>) to remove the unsaved capture and return to Live Preview.</p>
 <p class="prose">Press <code>Esc</code> to open a discard confirmation. Press <code>Enter</code> to discard, or <code>Esc</code> again to keep editing. During a crop drag or while trimming a recording, <code>Esc</code> cancels that edit first.</p>
 <p class="prose">Starting another capture, pressing <code>⇧⌘L</code> to return to Live Preview, closing the window, or quitting discards unsaved captures without a prompt. Save them to Capture History first if you want to keep them.</p>
 </div>
@@ -181,8 +193,8 @@
         <div class="section-body">
 <p class="prose">Capture History keeps the screenshots and recordings you save from review, along with frames shared from Live Preview. They remain on your Mac after you close their windows or restart Snap-O, so you can revisit them without the original device connected.</p>
 <p class="prose">Open <strong>Window → Capture History</strong> (<code>⌘Y</code>) to browse captures by day, newest first.</p>
-<p class="prose">Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or <code>⌘[</code> and <code>⌘]</code> to switch devices. Press <code>Esc</code> to return to history.</p>
-<p class="prose">Captures saved without a name appear as <strong>Untitled</strong>. Click the name in the history preview to rename it, or choose <strong>Rename</strong> from the history grid's context menu. The name applies to all devices in that capture.</p>
+<p class="prose">Each new capture creates one entry. Existing entries can contain multiple captures. Double-click an entry to preview it. For a grouped entry, use the toolbar thumbnails, Left and Right Arrow keys, or <code>⌘[</code> and <code>⌘]</code> to switch captures. Press <code>Esc</code> to return to history.</p>
+<p class="prose">Captures saved without a name appear as <strong>Untitled</strong>. Click the name in the history preview to rename it, or choose <strong>Rename</strong> from the history grid's context menu. The name applies to all captures in the entry.</p>
 <p class="prose">Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or <code>⌘Delete</code>, or right-click a selected entry and choose <strong>Delete…</strong>, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.</p>
 <details id="manage-history-storage"><summary>Manage history storage</summary><div class="details-body">
 
@@ -190,17 +202,6 @@
 <p class="prose">Snap-O removes the oldest captures when either limit is reached. All devices in an entry are removed together. Captures that are recording or in use are kept. The newest capture is kept for 24 hours if it exceeds the storage limit, so usage can temporarily exceed the limit.</p>
 <p class="prose">To remove a group, open it and choose <strong>Delete Capture</strong>. <strong>Clear History…</strong> removes all entries that are no longer recording or in use. Close other viewers first if a capture cannot be deleted. Snap-O asks for confirmation before applying storage settings that remove older captures.</p>
 </div></details>
-</div>
-      </section>
-
-      <section class="guide-section" id="remote-adb">
-        <div class="section-heading">
-
-          <h2>Remote ADB servers</h2>
-        </div>
-        <div class="section-body">
-<p class="prose">If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open <strong>Device → ADB Servers…</strong> and click <strong>Add Server</strong>.</p>
-<p class="prose">Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (<code>127.0.0.1</code>, port <code>5037</code> by default).</p>
 </div>
       </section>
 
@@ -336,8 +337,6 @@ They also work when the control bar is hidden.</p>
           <li><a class="quick-jump-link" href="#drag-and-drop">Drag & drop, and sharing</a></li>
 
           <li><a class="quick-jump-link" href="#capture-history">Capture History</a></li>
-
-          <li><a class="quick-jump-link" href="#remote-adb">Remote ADB servers</a></li>
 
           <li><a class="quick-jump-link" href="#keyboard-shortcuts">Keyboard shortcuts</a></li>
 

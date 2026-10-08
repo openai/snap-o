@@ -62,7 +62,7 @@ You’ll need an Android app and an Android library module for your tool. Manual
 <p class="prose">Apply the Tool Packager Gradle Plugin in your tool’s Android library module. It builds the frontend and generates the metadata Snap-O needs to find your tool.</p>
 <p class="prose"><span id="the-build-plugin-comopenaisnapoplugin"></span>Add dependencies to your version catalog:</p>
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="toml">[versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [plugins]
 snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }
@@ -128,7 +128,7 @@ snapoTool {
 </div>
 <div aria-labelledby="tool-sdk-direct-tab" class="dependency-format-panel" hidden="" id="tool-sdk-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>Your Android module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
-    implementation("com.openai.snapo:tool-core:13.1.0")
+    implementation("com.openai.snapo:tool-core:14.1.1")
 }</code></pre></div>
 </div>
 

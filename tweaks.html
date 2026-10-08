@@ -62,12 +62,12 @@
           <h2>Add the Android dependencies</h2>
         </div>
         <div class="section-body">
-<p class="prose">Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary tweaks return their defaults; app-owned tweaks return their source’s current value without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.</p>
+<p class="prose">Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary Compose tweaks keep writable local state initialized from their defaults. App-owned Compose tweaks read and write their source without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.</p>
 <p class="prose">The overlay dependencies are optional. Add both only if you want an on-device floating panel. Their matching public APIs let the same app-root code compile in debug and release.</p>
 <div aria-label="Tweaks dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="tweaks-catalog-panel" aria-selected="true" class="dependency-format-tab" id="tweaks-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="tweaks-direct-panel" aria-selected="false" class="dependency-format-tab" id="tweaks-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="tweaks-catalog-tab" class="dependency-format-panel" id="tweaks-catalog-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,5,6,8,9,10" data-language="toml">[versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -87,17 +87,17 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
 </div>
 <div aria-labelledby="tweaks-direct-tab" class="dependency-format-panel" hidden="" id="tweaks-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,3,5,6,7" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-noop:14.1.1")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:14.1.1")
 }</code></pre></div>
 </div>
 
 <p class="prose">Add the Tweaks dependencies to each Android module that calls the <code>tweak(...)</code> function. In a multi-module app, a shared Gradle convention plugin can apply the debug and release pair consistently. Only the module that installs the optional overlay needs its additional overlay dependencies.</p>
-<p class="notice">If a real Tweaks artifact is included in a nondebuggable app, ordinary tweaks still return their defaults and app-owned tweaks return their source’s current value. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.</p>
+<p class="notice">If a real Tweaks artifact is included in a nondebuggable app, its Compose functions behave like the no-op implementation: ordinary tweaks keep writable local state, and app-owned tweaks read and write their source. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.</p>
 <details><summary>Enable Tweaks in release builds</summary><div class="details-body">
 
 <p class="prose">Only when you intentionally include the real Tweaks artifacts in a release build, add this metadata directly to your application's <code>&lt;application&gt;</code> element. It enables the Tweaks server and, if installed and enabled, the on-device overlay.</p>
@@ -121,10 +121,10 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
         <div class="section-body">
 <p class="prose">Use <code>tweaks-core</code> in Views, ViewModels, services, and ordinary Kotlin classes. It has no Compose dependency and shares the registry with the Compose API. Use matching versions for all Snap-O artifacts. Existing Compose apps keep using <code>tweaks</code> and <code>tweaks-noop</code>; these bring in <code>tweaks-core</code> and <code>tweaks-core-noop</code> transitively. Add the core dependencies directly only when using tweaks without Compose.</p>
 <div class="code-block"><div class="code-head"><span>build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-core:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:14.1.1")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:13.1.0")
+    implementation("com.openai.snapo:tweaks-views:14.1.1")
 }</code></pre></div>
 <p class="prose">A <code>TweakScope</code> registers values immediately and returns read-only <code>StateFlow</code> values. Read <code>.value</code> directly or collect changes. Close the scope when its owner is disposed. A ViewModel can own the scope across Activity recreation:</p>
 <div class="code-block"><div class="code-head"><span>ViewModel</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.lifecycle.ViewModel
@@ -161,7 +161,7 @@ binding.close()</code></pre></div>
           <h2>Expose values from Compose</h2>
         </div>
         <div class="section-body">
-<p class="prose">Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable <code>State&lt;T&gt;</code> that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support <a href="#bezier-curves">Bézier curves</a>.</p>
+<p class="prose">Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable <code>MutableState&lt;T&gt;</code> that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support <a href="#bezier-curves">Bézier curves</a>.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · typography</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -186,14 +186,14 @@ fun TypographyPreview() {
     )
 }</code></pre></div>
 <h3 id="compose-function-reference">Compose function reference</h3>
-<p class="prose">Import <code>com.openai.snapo.tweaks.tweak</code> and call the overload matching your default value from composition. Every overload returns <code>State&lt;T&gt;</code>. Delegate the state with <code>by</code>, or read <code>tweak(...).value</code> immediately. Numeric ranges and increments are optional. Enum options follow declaration order and use each constant’s name. For strings, name the <code>name</code> argument to distinguish it from the default value.</p>
+<p class="prose">Import <code>com.openai.snapo.tweaks.tweak</code> and call the overload matching your default value from composition. Every overload returns <code>MutableState&lt;T&gt;</code>. Use <code>val value by tweak(...)</code> to read it, or <code>var value by tweak(...)</code> to read and write it. Import <code>androidx.compose.runtime.setValue</code> for writable delegates. Numeric ranges and increments are optional. Enum options follow declaration order and use each constant’s name. For strings, name the <code>name</code> argument to distinguish it from the default value.</p>
 <div class="code-block"><div class="code-head"><span>com.openai.snapo.tweaks · Kotlin</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">@Composable
 fun tweak(
     default: Int,
     name: String,
     range: IntRange? = null,
     step: Int? = null,
-): State&lt;Int&gt;
+): MutableState&lt;Int&gt;
 
 @Composable
 fun tweak(
@@ -201,43 +201,52 @@ fun tweak(
     name: String,
     range: ClosedFloatingPointRange&lt;Float&gt;? = null,
     step: Float? = null,
-): State&lt;Float&gt;
+): MutableState&lt;Float&gt;
 
 @Composable
 fun tweak(
     default: Color,
     name: String,
-): State&lt;Color&gt;
+): MutableState&lt;Color&gt;
 
 @Composable
 fun tweak(
     default: Boolean,
     name: String,
-): State&lt;Boolean&gt;
+): MutableState&lt;Boolean&gt;
 
 @Composable
 fun tweak(
     default: String,
     name: String,
-): State&lt;String&gt;
+): MutableState&lt;String&gt;
 
 @Composable
 fun &lt;E : Enum&lt;E&gt;&gt; tweak(
     default: E,
     name: String,
-): State&lt;E&gt;</code></pre></div>
-<div class="code-block"><div class="code-head"><span>Kotlin · enum options</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Text
+): MutableState&lt;E&gt;</code></pre></div>
+<div class="code-block"><div class="code-head"><span>Kotlin · enum options</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.openai.snapo.tweaks.tweak
 
 enum class MarkerShape { Circle, RoundedSquare, Square }
 
 @Composable
 fun MarkerPreview() {
-    val shape by tweak(MarkerShape.Circle, "Motion/Marker shape")
-    Text(shape.name)
+    var shape by tweak(MarkerShape.Circle, "Motion/Marker shape")
+    Column {
+        Text(shape.name)
+        Button(onClick = { shape = MarkerShape.Square }) {
+            Text("Use square")
+        }
+    }
 }</code></pre></div>
+<p class="prose">In live builds, app writes use the same validation, shared value, and change notifications as tool edits. The no-op implementation retains local edits across recompositions. A changed name, default, or numeric constraint starts a new ordinary declaration.</p>
 <p class="prose">Keep the returned state unread until the phase that needs it. For a value used only during drawing or layout, read the delegated value inside the draw or layout callback to avoid recomposing the caller.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · deferred draw read</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -300,7 +309,7 @@ See the <a href="tweaks-protocol.html#bezier-curves">protocol reference</a> for 
           <h2>Delegate to app-owned settings</h2>
         </div>
         <div class="section-body">
-<p class="prose">Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement <code>TweakSource&lt;T&gt;</code> and call <code>tweak(source, name)</code> from composition. The source can own a boolean, integer, floating-point number, string, color, or Bézier curve; enum values are supported only by ordinary tweaks.</p>
+<p class="prose">Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement <code>TweakSource&lt;T&gt;</code> and call <code>tweak(source, name)</code> from composition. The source can own a boolean, integer, floating-point number, string, color, enum, or Bézier curve. Enum sources expose every constant in declaration order, using its exact name.</p>
 <div class="code-block"><div class="code-head"><span>com.openai.snapo.tweaks · source contract</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">interface TweakSource&lt;T : Any&gt; {
     var value: T
     val isModified: Boolean
@@ -313,12 +322,12 @@ See the <a href="tweaks-protocol.html#bezier-curves">protocol reference</a> for 
 fun &lt;T : Any&gt; tweak(
     source: TweakSource&lt;T&gt;,
     name: String,
-): State&lt;T&gt;</code></pre></div>
+): MutableState&lt;T&gt;</code></pre></div>
 <h3 id="shared-preferences-source">Example: SharedPreferences-backed settings</h3>
 <p class="prose">This source reads and writes an existing preference. A stored key is an override, so resetting removes the key instead of writing the originally observed value back into the app.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · app-owned boolean preference</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import com.openai.snapo.tweaks.TweakSource
 import com.openai.snapo.tweaks.tweak
@@ -358,13 +367,13 @@ fun SharedPreferences.tweak(
     key: String,
     default: Boolean,
     name: String = key,
-): State&lt;Boolean&gt; {
+): MutableState&lt;Boolean&gt; {
     val source = remember(this, key, default) {
         SharedPreferencesBooleanSource(this, key, default)
     }
     return tweak(source, name)
 }</code></pre></div>
-<p class="prose">Use it from composition with <code>preferences.tweak("motion_show", true, "Motion/Show")</code>. Snap-O edits <code>source.value</code>, calls <code>source.reset()</code> for resets, and uses <code>source.isModified</code> to decide whether an override exists. The initial value is shown as the tool default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.</p>
+<p class="prose">Use it from composition with <code>preferences.tweak("motion_show", true, "Motion/Show")</code>. Assigning the returned state writes to the source; make these assignments on the main thread. Snap-O edits <code>source.value</code>, calls <code>source.reset()</code> for resets, and uses <code>source.isModified</code> to decide whether an override exists. The initial value is shown as the tool default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.</p>
 <h3 id="source-lifecycle">Source updates and lifecycle</h3>
 <p class="prose">Compose source values are read lazily when your app reads the returned state or a tool first requests the tweak. Snap-O reads and writes the source, checks its modification status, resets it, and collects <code>observe()</code> on the Android main thread. After the initial read, tools use a cached snapshot instead of polling the source.</p>
 <p class="notice"><strong>Notify on value and status changes.</strong> <code>observe(): Flow&lt;Unit&gt;</code> must emit when either <code>value</code> or <code>isModified</code> may have changed. A preference can become modified even when its effective value remains the same, so value-only notifications are not sufficient.</p>
@@ -443,6 +452,7 @@ fun MotionSection(isExpanded: Boolean) {
 }</code></pre></div>
 <p class="notice"><strong>One name, one tweak.</strong> Reusing the exact same name in multiple active owners shares one control and current value. Ordinary tweaks must use matching types, defaults, numeric constraints, and enum options. App-owned sources must represent the same underlying setting and value type.</p>
 <p class="prose">Controls appear only while their composables are in composition. In the example, turning off <code>Motion/Show</code> removes the motion controls; changing <code>Motion/Use spring</code> swaps the spring settings for the duration control. When the same UI returns during the app process, ordinary controls register again with their last edited values and original ordering. App-owned controls use the current value from their source instead.</p>
+<p class="prose">In the Compose sample, <code>Motion/State</code> is a writable enum tweak. <strong>Tap to animate</strong> changes it directly, and the dropdown follows the animation state. Selecting <code>A</code> or <code>B</code> in Snap-O also animates the marker. Reset returns it to state <code>A</code>.</p>
 </div>
       </section>
 
@@ -568,6 +578,7 @@ fun ProfileScreen() {
         fontSize = fontSize.sp,
     )
 }</code></pre></div>
+<p class="prose">The panel and its color and curve pickers follow the system’s light or dark appearance, independently of the app’s theme.</p>
 <p class="prose">The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.</p>
 <p class="notice"><strong>Visibility follows registered tweaks.</strong> The button appears only when the real overlay is installed, the Tweaks runtime is enabled, <code>SnapOTweakOverlaySettings.isEnabled</code> is <code>true</code> and at least one tweak has an active owner. The setting defaults to off and survives app restarts. As screens and sections appear or disappear, the panel updates automatically. The no-op overlay never appears, and its setting remains disabled. No manually supplied values, update callback, or build-specific root layout is required.</p>
 </div>
