@@ -38,7 +38,7 @@ dependencyResolutionManagement {
 
 Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary Compose tweaks keep writable local state initialized from their defaults. App-owned Compose tweaks read and write their source without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.
 
-When upgrading from 13.x, rebuild any precompiled module that calls Compose `tweak(...)` functions. Their return type is now `MutableState<T>`.
+When upgrading from any version before 14.1.1, rebuild precompiled modules that call Compose `tweak(...)` functions. Their return type is now `MutableState<T>`.
 
 The overlay dependencies are optional. Add both only if you want an on-device floating panel. Their matching public APIs let the same app-root code compile in debug and release.
 
