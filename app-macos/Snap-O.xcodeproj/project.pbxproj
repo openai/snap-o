@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B9121A000000000000000001 /* ToolConnectionHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9121A000000000000000002 /* ToolConnectionHealth.swift */; };
 		02288FF1C74A76762433FA67 /* Snap-O/UI/PlaybackVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9790185B1E1B29271ACBC6C /* Snap-O/UI/PlaybackVisibility.swift */; };
 		023C84EF38EFEB972DB4D8C3 /* Snap-O/Device/Emulators/EmulatorConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 798562CA2312562E7E77FB80 /* Snap-O/Device/Emulators/EmulatorConnection.swift */; };
 		052CE11598CB1173E2CA4254 /* Snap-O/App/SnapOCommandCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C039F6179E36ECD4EB3C2DBD /* Snap-O/App/SnapOCommandCoordinator.swift */; };
@@ -150,6 +151,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B9121A000000000000000002 /* ToolConnectionHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Tools/ToolConnectionHealth.swift"; sourceTree = SOURCE_ROOT; };
 		006BBE20874F0E47B3195714 /* Snap-O/History/CaptureHistoryGridSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/History/CaptureHistoryGridSelection.swift"; sourceTree = SOURCE_ROOT; };
 		01E2C64D296CEE09BB0E970E /* AndroidHostService/EmulatorDisplayReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AndroidHostService/EmulatorDisplayReader.swift; sourceTree = SOURCE_ROOT; };
 		02951C0032B4F22CCB6D60B4 /* Snap-O/Device/ADB/DeviceKeyboardTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/DeviceKeyboardTransport.swift"; sourceTree = SOURCE_ROOT; };
@@ -417,6 +419,7 @@
 				9FC18FC6751A3F31EBDAF3BF /* Snap-O/Tools/ToolWebPolicy.swift */,
 				F576FC0B32EC48B6C4EED725 /* Snap-O/Tools/ToolModels.swift */,
 				91EC3340C14DCB8C9EBC97C4 /* Snap-O/Tools/ToolMetadata.swift */,
+				B9121A000000000000000002 /* ToolConnectionHealth.swift */,
 				1689AF1A1ECE67F1ED4185E1 /* Snap-O/Device/LegacyPluginMetadata.swift */,
 				816DEDE70B14000C717842DE /* Snap-O/Device/ToolManifest.swift */,
 				9A18C700FE0FEF4B8BDC8001 /* Snap-O/Device/ToolServerReference.swift */,
@@ -772,6 +775,7 @@
 				6E04F3182A00AE10FD9E2042 /* Snap-O/Device/ToolManifest.swift in Sources */,
 				43A2ED20AC1DAC95F46EFA98 /* Snap-O/Device/LegacyPluginMetadata.swift in Sources */,
 				F2C339C65F703B6C63D15538 /* Snap-O/Tools/ToolMetadata.swift in Sources */,
+				B9121A000000000000000001 /* ToolConnectionHealth.swift in Sources */,
 				3122E61B46E167263595109F /* Snap-O/Tools/ToolModels.swift in Sources */,
 				9C46C7E5744A23937A62EB8C /* Snap-O/Tools/ToolWebPolicy.swift in Sources */,
 				3033A9A2D2B5F8819322389C /* Snap-O/LivePreview/Rendering/LivePreviewThumbnail.swift in Sources */,

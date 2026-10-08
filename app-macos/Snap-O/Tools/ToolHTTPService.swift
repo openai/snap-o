@@ -69,6 +69,7 @@ actor ToolHTTPService {
     let id: UUID
     let reference: ToolServerReference
     let target: DeviceTarget
+    let health: ToolConnectionHealth
     var isReady = false
     var healthTask: Task<Void, Never>?
   }
@@ -215,6 +216,7 @@ actor ToolHTTPService {
     let reference: ToolServerReference
     let adb: ADBClient
     let target: DeviceTarget
+    var health: ToolConnectionHealth?
   }
 
   func target(for reference: ToolServerReference) throws -> DeviceTarget {
@@ -228,7 +230,7 @@ actor ToolHTTPService {
     let connection = try connection(for: reference)
     let adb = await adbService.exec().bound(to: connection.target)
     _ = try connection.target.requireTransport(for: connection.target.serial)
-    return Endpoint(id: connection.id, reference: reference, adb: adb, target: connection.target)
+    return Endpoint(id: connection.id, reference: reference, adb: adb, target: connection.target, health: connection.health)
   }
 
   func stop() async {
@@ -279,7 +281,7 @@ actor ToolHTTPService {
     }
 
     guard let app = knownApps[key], app.isVisible, app.target.isValid else { return }
-    connections[key] = Connection(id: UUID(), reference: reference, target: app.target)
+    connections[key] = Connection(id: UUID(), reference: reference, target: app.target, health: ToolConnectionHealth(clock: clock))
     checkHealth(for: key)
   }
 
@@ -359,6 +361,7 @@ actor ToolHTTPService {
   private func checkHealth(for key: String) {
     guard let app = knownApps[key], app.isVisible, !app.metadata.isLegacy else { return }
     guard let connection = connections[key], connection.healthTask == nil else { return }
+    guard connection.health.needsProbe else { return }
     connections[key]?.healthTask = startWork { [weak self] in
       await self?.loadHealth(for: key, connectionID: connection.id)
     }
@@ -369,6 +372,7 @@ actor ToolHTTPService {
       if connections[key]?.id == connectionID { connections[key]?.healthTask = nil }
     }
     guard let connection = connections[key], connection.id == connectionID else { return }
+    let activityRevision = connection.health.revision
     var request = URLRequest(url: ToolURL.api)
     request.httpMethod = "OPTIONS"
     do {
@@ -381,11 +385,13 @@ actor ToolHTTPService {
         guard (200 ... 299).contains(response.status.code) else { throw ToolHTTPTransportError.invalidResponse }
       }, onData: { _ in })
       guard !Task.isCancelled, connections[key]?.id == connectionID else { return }
+      connection.health.recordActivity()
       let changed = connections[key]?.isReady != true
       connections[key]?.isReady = true
       if changed { notifyChange() }
     } catch {
-      if connections[key]?.id == connectionID {
+      // A response received during this probe is stronger evidence than its failure.
+      if !Task.isCancelled, connections[key]?.id == connectionID, connection.health.revision == activityRevision {
         retryAfter[key] = clock.now.advanced(by: Self.retryCooldown)
         connections.removeValue(forKey: key)
         notifyChange()
