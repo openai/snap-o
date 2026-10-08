@@ -193,6 +193,17 @@
 </div>
       </section>
 
+      <section class="guide-section" id="remote-adb">
+        <div class="section-heading">
+
+          <h2>Remote ADB servers</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open <strong>Device → ADB Servers…</strong> and click <strong>Add Server</strong>.</p>
+<p class="prose">Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (<code>127.0.0.1</code>, port <code>5037</code> by default).</p>
+</div>
+      </section>
+
       <section class="guide-section" id="keyboard-shortcuts">
         <div class="section-heading">
 
@@ -325,6 +336,8 @@ They also work when the control bar is hidden.</p>
           <li><a class="quick-jump-link" href="#drag-and-drop">Drag & drop, and sharing</a></li>
 
           <li><a class="quick-jump-link" href="#capture-history">Capture History</a></li>
+
+          <li><a class="quick-jump-link" href="#remote-adb">Remote ADB servers</a></li>
 
           <li><a class="quick-jump-link" href="#keyboard-shortcuts">Keyboard shortcuts</a></li>
 
