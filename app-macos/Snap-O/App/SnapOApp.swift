@@ -13,6 +13,25 @@ struct SnapOApp: App {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
     let runtime = AppRuntime()
     self.runtime = runtime
+    let enableServer: (ADBServerID, DeviceLinkServer) async throws -> Void = { id, connection in
+      guard case .remote(let profileID) = id,
+            let profile = runtime.adbServers.profiles.first(where: { $0.id == profileID }),
+            runtime.adbServers.deviceLinkServers[id]?.server == connection else {
+        throw DeviceOpenError(message: "The server configuration changed. Open the link again to review it.")
+      }
+      try await runtime.adbServers.setEnabled(true, for: profile)
+    }
+    let authorization = DeviceLinkAuthorization(
+      servers: { runtime.adbServers.deviceLinkServers },
+      confirmEnable: DeviceLinkDialogs.confirmEnable,
+      enable: enableServer
+    )
+    SnapOCommandCoordinator.shared.authorizeDeviceLink = { request, _ in
+      do { return try await authorization.authorize(request) } catch {
+        DeviceLinkDialogs.showError(error)
+        return nil
+      }
+    }
     appDelegate.prepareForTermination = {
       await runtime.shutdown()
     }

@@ -36,8 +36,8 @@ struct DeviceOpenResolver {
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
     let deadline = ContinuousClock.now.advanced(by: timeout)
     switch request {
-    case .serial(let serial, let server):
-      return try await resolveSerial(serial, server: server, deadline: deadline, progress: progress)
+    case .serial(let serial, let server, let serverID):
+      return try await resolveSerial(serial, server: server, serverID: serverID, deadline: deadline, progress: progress)
     case .device(let id):
       return try await resolveDevice(id, deadline: deadline, progress: progress)
     case .avd(let name, let shouldStart):
@@ -61,10 +61,11 @@ struct DeviceOpenResolver {
   }
 
   private func resolveSerial(
-    _ serial: String, server: DeviceLinkServer, deadline: ContinuousClock.Instant, progress: (String) -> Void
+    _ serial: String, server: DeviceLinkServer, serverID: ADBServerID?,
+    deadline: ContinuousClock.Instant, progress: (String) -> Void
   ) async throws -> String {
     try Task.checkCancellation()
-    let selectedServer = try selectServer(matching: server)
+    let selectedServer = try serverID.map { (id: $0, server: server) } ?? selectServer(matching: server)
     var serverWasOnline = false
     while true {
       try Task.checkCancellation()
