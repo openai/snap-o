@@ -151,6 +151,12 @@ To remove a group, open it and choose **Delete Capture**. **Clear History…** r
 
 </details>
 
+## Remote ADB servers {#remote-adb}
+
+If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open **Device → ADB Servers…** and click **Add Server**.
+
+Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (`127.0.0.1`, port `5037` by default).
+
 ## Keyboard shortcuts
 
 | Action                    | Shortcut |
