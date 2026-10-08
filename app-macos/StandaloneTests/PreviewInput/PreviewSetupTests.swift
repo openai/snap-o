@@ -175,7 +175,7 @@ struct PreviewSetupTests {
       id: fixture.target.serial, model: "Test", androidVersion: "16",
       vendorModel: nil, manufacturer: nil, avdName: nil, connection: fixture.target
     )
-    startup.prepare(mode: .livePreview, devices: [device])
+    startup.prepare(mode: .livePreview, device: device)
     if changeDuringSetup {
       await gate.waitUntilEntered()
     } else {

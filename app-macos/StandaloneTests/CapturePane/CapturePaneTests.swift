@@ -16,13 +16,13 @@ struct CapturePaneTests {
     let first = try #require(pane.livePreviewAttachment(for: "A"))
     pane.startRecording()
     let batch = try #require(pane.recording)
-    #expect(batch.items.map(\.device.id) == ["A", "B", "C"])
+    #expect(batch.device.id == "A")
     #expect(fixture.previews.attachments.count == 1)
     pane.selectDevice(id: "B")
-    try #require(pane.livePreviewAttachment(for: "A") == nil)
-    #expect(pane.livePreviewAttachment(for: "B") != nil)
+    try #require(pane.livePreviewAttachment(for: "A") === first)
+    #expect(pane.livePreviewAttachment(for: "B") == nil)
     #expect(pane.livePreviewAttachment(for: "C") == nil)
-    try await waitForState { first.isClosed }
+    #expect(!first.isClosed)
     #expect(batch.closeCount == 0)
     await pane.close()
     await fixture.close()
@@ -40,7 +40,7 @@ struct CapturePaneTests {
     pane.openDevice(.serial(requestedDevice))
     try await waitForState { pane.deviceOpenRequest == nil }
 
-    #expect(pane.selectedPreviewDeviceID == (requestedDevice == "B" ? "B" : "A"))
+    #expect(pane.selectedPreviewDeviceID == "A")
     #expect(pane.recording === batch)
     #expect(batch.closeCount == 0)
     await pane.close()
@@ -101,10 +101,10 @@ struct CapturePaneTests {
     right.selectDevice(id: "A")
     left.startRecording()
     let batch = try #require(left.recording)
-    #expect(left.previews.map(\.device.id) == ["A", "B"], "Pending recording targets remain visible")
-    batch.items[1].update(.failed("Could not record"))
-    try await waitForState { left.currentPreview?.device.id == "A" }
-    #expect(left.previews.map(\.device.id) == ["A"])
+    #expect(left.previews.map(\.device.id) == ["B"], "Only the recording target remains visible")
+    batch.state = .failed("Could not record")
+    try await waitForState { left.currentPreview == nil }
+    #expect(left.previews.isEmpty)
     #expect(right.previews.map(\.device.id) == ["A", "B"])
     #expect(right.selectedPreviewDeviceID == "A")
     await left.close()
@@ -114,24 +114,24 @@ struct CapturePaneTests {
   }
 
   @Test(arguments: ["B", "C"])
-  func failedRecordingSelectsNextOriginalTarget(selected: String) async throws {
+  func failedRecordingDoesNotSwitchToAnotherDevice(selected: String) async throws {
     let fixture = Fixture(deviceIDs: ["A", "B", "C"])
     let pane = fixture.pane()
     await fixture.start(pane)
-    pane.startRecording()
     pane.selectDevice(id: selected)
+    pane.startRecording()
     let batch = try #require(pane.recording)
-    let item = try #require(batch.items.first { $0.device.id == selected })
+    let operation = batch
     let oldAttachment = try #require(pane.livePreviewAttachment(for: selected))
-    item.update(.failed("Recording failed"))
+    operation.state = .failed("Recording failed")
     try await waitForState { oldAttachment.isClosed }
-    #expect(pane.selectedPreviewDeviceID == (selected == "B" ? "C" : "A"))
+    #expect(pane.selectedPreviewDeviceID == selected)
     await pane.close()
     await fixture.close()
   }
 
   @Test(arguments: ["B", "C"])
-  func returningFromReviewPrefersOriginalTargetOrder(selected: String) async throws {
+  func returningFromReviewSelectsAnAvailableDevice(selected: String) async throws {
     let fixture = Fixture(deviceIDs: ["A", "B", "C", "D"])
     let discovered = fixture.devices.inventory.connected ?? []
     fixture.devices.inventory.connected = Array(discovered.prefix(3))
@@ -141,16 +141,16 @@ struct CapturePaneTests {
     pane.selectDevice(id: selected)
     pane.takeScreenshot()
     let review = try #require(pane.review)
-    // D appeared after capture. Current discovery order must not replace batch order.
+    // When the captured device is gone, return to the first available preview.
     fixture.devices.inventory.connected = discovered.reversed().filter { $0.id != selected }
     pane.returnToLive(from: review)
-    #expect(pane.selectedPreviewDeviceID == (selected == "B" ? "C" : "A"))
+    #expect(pane.selectedPreviewDeviceID == "D")
     await pane.close()
     await fixture.close()
   }
 
   @Test
-  func returningFromReviewUsesNewDeviceWhenAllBatchTargetsAreGone() async throws {
+  func returningFromReviewUsesNewDeviceWhenCapturedDeviceIsGone() async throws {
     let fixture = Fixture(deviceIDs: ["A", "B", "C", "D"])
     let discovered = fixture.devices.inventory.connected ?? []
     fixture.devices.inventory.connected = Array(discovered.prefix(3))
@@ -172,16 +172,16 @@ struct CapturePaneTests {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
-    pane.startRecording()
     pane.selectDevice(id: "B")
+    pane.startRecording()
     let batch = try #require(pane.recording)
     pane.stopRecording()
     let review = try #require(pane.review)
-    #expect(review.batch === batch)
-    #expect(review.selectedItem?.device.id == "B")
+    #expect(review.operation === batch)
+    #expect(review.operation.device.id == "B")
     #expect(review.currentCapture == nil)
-    batch.items[0].update(.failed("Unavailable"))
-    #expect(review.selectedItem?.device.id == "B")
+    batch.state = .failed("Unavailable")
+    #expect(review.operation.device.id == "B")
     await pane.close()
     await fixture.close()
   }
@@ -195,10 +195,9 @@ struct CapturePaneTests {
     let batch = try #require(pane.recording)
     pane.stopRecording()
     let review = try #require(pane.review)
-    review.select(batch.items[1].id)
     pane.returnToLive(from: review)
     #expect(pane.isLivePreviewActive)
-    #expect(pane.selectedPreviewDeviceID == "B")
+    #expect(pane.selectedPreviewDeviceID == "A")
     #expect(batch.closeCount == 0 && !batch.isComplete)
     batch.isComplete = true
     try await waitForState { batch.closeCount == 1 }
@@ -267,39 +266,10 @@ struct CapturePaneTests {
     pane.selectDevice(id: "B")
     pane.takeScreenshot()
     let review = try #require(pane.review)
-    #expect(review.selectedItem?.device.id == "B")
+    #expect(review.operation.device.id == "B")
     fixture.devices.inventory.connected?.removeAll { $0.id == "B" }
     pane.returnToLive(from: review)
     #expect(pane.currentPreview?.device.id == "A")
-    await pane.close()
-    await fixture.close()
-  }
-
-  @Test(arguments: [false, true])
-  func deletingSelectedHistoryItemReturnsToLive(disconnected: Bool) async throws {
-    let fixture = Fixture()
-    let pane = fixture.pane()
-    await fixture.start(pane)
-    pane.takeScreenshot()
-    let batch = try #require(fixture.screenshots.value.first)
-    let item = try #require(batch.items.first)
-    let entryID = try #require(await fixture.history.repository.begin(kind: .image, devices: [item.device]))
-    let url = fixture.store.makePreviewDestination(deviceID: item.device.id, capturedAt: Date(), kind: .image)
-    try Data([1]).write(to: url)
-    let media = CaptureMedia(device: item.device, media: .image(
-      url: url, capturedAt: Date(), display: DisplayInfo(size: CGSize(width: 1, height: 1), densityScale: 1)
-    ))
-    await item.update(.ready(fixture.history.repository.record(media, in: entryID)))
-    batch.isComplete = true
-    await fixture.history.repository.finish(entryID)
-    fixture.history.start()
-    try await waitForState { fixture.history.isLoaded }
-    if disconnected {
-      fixture.devices.inventory = DeviceInventory(connected: [], ready: [])
-    }
-    await fixture.history.repository.delete([entryID])
-    try await waitForState { pane.isLivePreviewActive }
-    #expect(disconnected ? pane.currentPreview == nil : pane.currentPreview?.device.id == "A")
     await pane.close()
     await fixture.close()
   }
@@ -476,8 +446,8 @@ struct CapturePaneTests {
     await fixture.close()
   }
 
-  @Test(arguments: [SnapOCommand.capture, .record, .livepreview])
-  func savingReviewRejectsReplacementUntilSaveCompletes(command: SnapOCommand) async throws {
+  @Test(arguments: [CapturePaneSession.UIAction.screenshot, .startRecording, .livePreview])
+  func savingReviewRejectsReplacementUntilSaveCompletes(action: CapturePaneSession.UIAction) async throws {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
@@ -490,19 +460,17 @@ struct CapturePaneTests {
     pane.returnToLive(from: review)
     let available = fixture.devices.inventory
     fixture.devices.inventory = DeviceInventory()
-    pane.enqueue(command)
+    pane.launch(action)
     #expect(pane.review === review)
     #expect(fixture.screenshots.value.count == 1 && fixture.recordings.value.isEmpty)
     let batch = try #require(fixture.screenshots.value.first)
-    for item in batch.items {
-      item.update(.failed("Unavailable"))
-    }
+    batch.state = .failed("Unavailable")
     batch.isComplete = true
     await #expect(throws: (any Error).self) { try await save.value }
     #expect(pane.review === review, "A failed save keeps review available")
     fixture.devices.inventory = available
     let attachments = fixture.previews.attachments.count
-    pane.enqueue(.capture)
+    pane.takeScreenshot()
     #expect(pane.review !== review && fixture.screenshots.value.count == 2)
     #expect(fixture.recordings.value.isEmpty)
     #expect(fixture.previews.attachments.count == attachments, "An ignored preview command must not run later")
@@ -553,7 +521,7 @@ struct CapturePaneTests {
     let fixture = Fixture()
     let pane = fixture.pane()
     let session = fixture.window(pane, showsCapture: false, showsTool: true)
-    session.perform(.livepreview)
+    session.showLivePreview()
     #expect(fixture.previews.attachments.isEmpty && session.tools.starts == 0)
     session.startIfNeeded()
     try await waitForState { pane.livePreviewAttachment(for: "A") != nil }
@@ -599,7 +567,7 @@ struct CapturePaneTests {
     await gate.waitUntilStarted()
     try await waitForState { session.tools.isClosed }
     #expect(!batch.isComplete)
-    session.perform(.capture)
+    session.showLivePreview()
     #expect(pane.review == nil, "Closing windows reject new commands")
     gate.resume()
     await closing.value
@@ -683,7 +651,7 @@ struct CapturePaneTests {
 
     func start(_ panes: CapturePaneSession...) async {
       for pane in panes {
-        pane.enqueue(.livepreview)
+        pane.requestLivePreview()
         await pane.start()
         try? await waitForState {
           guard let selected = pane.selectedPreviewDeviceID else { return false }

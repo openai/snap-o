@@ -3,40 +3,32 @@ import Observation
 
 @Observable
 @MainActor
-final class ScreenshotCapture: CaptureBatch {
-  enum Phase { case starting, capturing, finishing, cancelling }
-
+final class ScreenshotCapture: CaptureOperation {
   let id = UUID()
-  let items: [CaptureItem]
-  let kind: CaptureKind = .screenshots
+  let device: Device
+  let kind: CaptureKind = .screenshot
+  private(set) var state: CaptureState = .pending
   private(set) var isComplete = false
-  private(set) var phase: Phase = .starting
   private let screenshots: ScreenshotService
   private let fileStore: FileStore
   private let coordinator: CaptureCoordinator?
   @ObservationIgnored private var work: Task<Void, Never>?
-  @ObservationIgnored private var finalization: Task<Void, Never>?
   @ObservationIgnored private var closeTask: Task<Void, Never>?
 
   init(
-    devices: [Device], screenshots: ScreenshotService, fileStore: FileStore,
+    device: Device, screenshots: ScreenshotService, fileStore: FileStore,
     coordinator: CaptureCoordinator? = nil
   ) {
-    items = devices.map(CaptureItem.init)
+    self.device = device
     self.fileStore = fileStore
     self.screenshots = screenshots
     self.coordinator = coordinator
   }
 
   func start() {
-    start(reusing: [])
-  }
-
-  func start(reusing media: [CaptureMedia]) {
-    guard phase == .starting, work == nil else { return }
-    phase = .capturing
+    guard work == nil, closeTask == nil else { return }
     work = Task {
-      await loadScreenshots(reusing: media)
+      await capture()
       isComplete = true
     }
   }
@@ -45,83 +37,31 @@ final class ScreenshotCapture: CaptureBatch {
     await work?.value
   }
 
-  func beginFinalization(discarding: Bool) -> Task<Void, Never> {
-    if let finalization { return finalization }
-    phase = discarding ? .cancelling : .finishing
-    if discarding { work?.cancel() }
-    let task = Task {
-      if let work {
-        // Keep completed screenshots when the remaining requests are cancelled.
-        await work.value
-      } else {
-        for item in items {
-          item.update(.cancelled)
-        }
-        isComplete = true
-      }
-    }
-    finalization = task
-    return task
-  }
-
   func close() async {
     if let closeTask { await closeTask.value
       return
     }
-    let completion = beginFinalization(discarding: true)
+    work?.cancel()
     let task = Task {
-      await completion.value
-      fileStore.discardPreviews(items.compactMap(\.media))
+      await work?.value
+      if work == nil { state = .cancelled }
+      isComplete = true
+      if let media { fileStore.discardPreviews([media]) }
     }
     closeTask = task
     await task.value
   }
 
-  private func loadScreenshots(reusing media: [CaptureMedia]) async {
-    let now = Date()
-    for item in items {
-      if let capture = media.first(where: {
-        $0.device.id == item.device.id && $0.device.connection == item.target
-          && item.target?.isValid == true && now.timeIntervalSince($0.media.capturedAt) <= 1
-      }) {
-        item.update(.ready(capture))
-      }
-    }
-    let missing = items.filter { $0.media == nil }
-    guard !missing.isEmpty else {
-      Perf.step(.appFirstSnapshot, "using preloaded screenshots")
-      return
-    }
-
-    let screenshots = screenshots
-    let coordinator = coordinator
-    await withTaskGroup(of: (UUID, Result<CaptureMedia, Error>).self) { group in
-      for item in missing {
-        let id = item.id
-        let device = item.device
-        group.addTask {
-          var lease: DeviceCaptureLease?
-          do {
-            let target = try device.requireConnection()
-            lease = try await coordinator?.acquire(target: target, for: .screenshot)
-            let media = try await screenshots.capture(device: device)
-            if let lease { await coordinator?.release(lease) }
-            return (id, .success(media))
-          } catch {
-            if let lease { await coordinator?.release(lease) }
-            return (id, .failure(error))
-          }
-        }
-      }
-      for await (id, outcome) in group {
-        guard let item = items.first(where: { $0.id == id }) else { continue }
-        switch outcome {
-        case .success(let capture):
-          item.update(.ready(capture))
-        case .failure(let error):
-          item.update(error is CancellationError ? .cancelled : .failed(error.localizedDescription))
-        }
-      }
+  private func capture() async {
+    var lease: DeviceCaptureLease?
+    defer { if let lease { coordinator?.release(lease) } }
+    do {
+      try Task.checkCancellation()
+      let target = try device.requireConnection()
+      lease = try coordinator?.acquire(target: target, for: .screenshot)
+      state = try await .ready(screenshots.capture(device: device))
+    } catch {
+      state = error is CancellationError ? .cancelled : .failed(error.localizedDescription)
     }
   }
 }

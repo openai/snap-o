@@ -6,12 +6,12 @@ import Foundation
 @MainActor
 final class StartupCapturePreparation {
   private enum Preparation {
-    case screenshots(devices: [Device], batch: ScreenshotCapture, startedAt: AnyClock<Duration>.Instant)
+    case screenshots(device: Device, capture: ScreenshotCapture, startedAt: AnyClock<Duration>.Instant)
     case livePreview(device: Device, attachment: LivePreviewAttachment)
   }
 
   private let clock: AnyClock<Duration>
-  private let screenshots: @MainActor ([Device]) -> ScreenshotCapture
+  private let screenshots: @MainActor (Device) -> ScreenshotCapture
   private let livePreview: LivePreviewService
   private let makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController?
   private var preparation: Preparation?
@@ -20,7 +20,7 @@ final class StartupCapturePreparation {
   private(set) var isAvailable = true
 
   init(
-    screenshots: @escaping @MainActor ([Device]) -> ScreenshotCapture, livePreview: LivePreviewService,
+    screenshots: @escaping @MainActor (Device) -> ScreenshotCapture, livePreview: LivePreviewService,
     makeEmulatorControls: @escaping @MainActor (DeviceTarget) -> EmulatorControlsController? = { _ in nil }
   ) {
     @Dependency(\.continuousClock)
@@ -31,31 +31,34 @@ final class StartupCapturePreparation {
     self.makeEmulatorControls = makeEmulatorControls
   }
 
-  func prepare(mode: StartupCaptureMode, devices: [Device]) {
+  func prepare(mode: StartupCaptureMode, device: Device?) {
     guard isAvailable else { return }
+    guard let device else {
+      discardCurrentPreparation()
+      return
+    }
     switch (mode, preparation) {
     case (.screenshot, .screenshots(let prepared, _, _))
-      where prepared.map(\.id) == devices.map(\.id) && prepared.map(\.connection) == devices.map(\.connection):
+      where prepared.id == device.id && prepared.connection == device.connection:
       return
-    case (.livePreview, .livePreview(let device, _))
-      where device.id == devices.first?.id && device.connection == devices.first?.connection:
+    case (.livePreview, .livePreview(let prepared, _))
+      where prepared.id == device.id && prepared.connection == device.connection:
       return
     default:
       break
     }
 
     discardCurrentPreparation()
-    guard let firstDevice = devices.first else { return }
     switch mode {
     case .screenshot:
       Perf.step(.appFirstSnapshot, "preload screenshot")
-      let batch = screenshots(devices)
-      batch.start()
-      preparation = .screenshots(devices: devices, batch: batch, startedAt: clock.now)
+      let capture = screenshots(device)
+      capture.start()
+      preparation = .screenshots(device: device, capture: capture, startedAt: clock.now)
     case .livePreview:
       Perf.step(.appFirstSnapshot, "preload live preview")
-      if let attachment = livePreview.attach(to: firstDevice, makeEmulatorControls: makeEmulatorControls) {
-        preparation = .livePreview(device: firstDevice, attachment: attachment)
+      if let attachment = livePreview.attach(to: device, makeEmulatorControls: makeEmulatorControls) {
+        preparation = .livePreview(device: device, attachment: attachment)
         expirationTask = Task { [clock] in
           do { try await clock.sleep(for: .seconds(5)) } catch { return }
           guard !Task.isCancelled else { return }
@@ -66,23 +69,23 @@ final class StartupCapturePreparation {
     }
   }
 
-  func claimScreenshots(for devices: [Device]) -> ScreenshotCapture? {
+  func claimScreenshots(for device: Device) -> ScreenshotCapture? {
     guard isAvailable else { return nil }
-    if case .screenshots(_, let batch, let startedAt) = preparation,
-       batch.isComplete, startedAt.duration(to: clock.now) > .seconds(1) {
+    if case .screenshots(_, let capture, let startedAt) = preparation,
+       capture.isComplete, startedAt.duration(to: clock.now) > .seconds(1) {
       discardCurrentPreparation()
     }
-    prepare(mode: .screenshot, devices: devices)
+    prepare(mode: .screenshot, device: device)
     isAvailable = false
-    guard case .screenshots(_, let batch, _) = preparation else { return nil }
+    guard case .screenshots(_, let capture, _) = preparation else { return nil }
     preparation = nil
     Perf.step(.appFirstSnapshot, "claim preloaded screenshot")
-    return batch
+    return capture
   }
 
   func claimLivePreview(for device: Device) -> LivePreviewAttachment? {
     guard isAvailable else { return nil }
-    prepare(mode: .livePreview, devices: [device])
+    prepare(mode: .livePreview, device: device)
     isAvailable = false
     guard case .livePreview(_, let attachment) = preparation else { return nil }
     preparation = nil
@@ -105,9 +108,9 @@ final class StartupCapturePreparation {
     self.preparation = nil
     let previous = cleanupTask
     switch preparation {
-    case .screenshots(_, let batch, _):
+    case .screenshots(_, let capture, _):
       cleanupTask = Task.immediate {
-        await batch.close()
+        await capture.close()
         await previous?.value
       }
     case .livePreview(_, let attachment):

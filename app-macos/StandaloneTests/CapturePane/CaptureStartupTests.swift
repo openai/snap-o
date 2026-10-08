@@ -3,85 +3,118 @@ import Testing
 
 extension CapturePaneTests {
   @Test(arguments: [false, true])
-  func recordingWaitsForReadyDevices(readinessKnown: Bool) async throws {
+  func captureUsesOnlyTheSelectedDevice(recording: Bool) async {
     let fixture = Fixture()
-    fixture.devices.inventory.ready = readinessKnown ? [] : nil
     let pane = fixture.pane()
     await fixture.start(pane)
-
-    #expect(!pane.canStartRecordingNow)
-    pane.launch(.startRecording)
-    #expect(fixture.recordings.value.isEmpty)
-    pane.enqueue(.record)
-    #expect(fixture.recordings.value.isEmpty)
-
-    fixture.devices.inventory.ready = fixture.devices.inventory.connected
-    try await waitForState { pane.recording != nil }
-    #expect(fixture.recordings.value.count == 1, "The queued command must survive the wait for boot")
+    pane.selectDevice(id: "B")
+    if recording { pane.startRecording() } else { pane.takeScreenshot() }
+    let operation: (any CaptureOperation)? = recording ? pane.recording : pane.review?.operation
+    #expect(operation?.device.id == "B")
+    #expect(fixture.recordings.value.count + fixture.screenshots.value.count == 1)
+    #expect(!pane.hasAlternativeMedia())
     await pane.close()
     await fixture.close()
   }
 
   @Test(arguments: [false, true])
-  func recordingIncludesOnlyReadyDevices(queued: Bool) async throws {
+  func unreadySelectionDoesNotCaptureAnotherDevice(recording: Bool) async {
     let fixture = Fixture()
-    fixture.devices.inventory.ready = fixture.devices.inventory.connected?.filter { $0.id == "A" }
     let pane = fixture.pane()
     await fixture.start(pane)
-    #expect(pane.canStartRecordingNow)
-    if queued { pane.enqueue(.record) } else { pane.launch(.startRecording) }
-    let batch = try #require(pane.recording)
-    #expect(batch.items.map(\.device.id) == ["A"])
+    pane.selectDevice(id: "B")
+    fixture.devices.inventory.ready = fixture.devices.inventory.connected?.filter { $0.id == "A" }
+    #expect(!pane.canCaptureNow && !pane.canStartRecordingNow)
+    if recording { pane.startRecording() } else { pane.takeScreenshot() }
+    #expect(fixture.recordings.value.isEmpty && fixture.screenshots.value.isEmpty)
     await pane.close()
     await fixture.close()
   }
 
-  @Test(arguments: [StartupCaptureMode.screenshot, .livePreview], [nil, SnapOCommand.capture, .record, .livepreview])
-  func startupCommandTakesPriorityWithoutDuplicateCapture(mode: StartupCaptureMode, command: SnapOCommand?) async throws {
+  @Test
+  func staleReadyConnectionCannotCaptureTheReplacement() async throws {
+    let fixture = Fixture()
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    pane.selectDevice(id: "B")
+    let old = try #require(fixture.devices.inventory.connected?.last)
+    let replacement = Device(
+      id: old.id, model: old.model, androidVersion: old.androidVersion,
+      vendorModel: nil, manufacturer: nil, avdName: nil,
+      connection: DeviceTarget(serial: "B", transportID: "replacement")
+    )
+    fixture.devices.inventory.connected = [replacement]
+    #expect(!pane.canCaptureNow && !pane.canStartRecordingNow)
+    pane.takeScreenshot()
+    #expect(fixture.screenshots.value.isEmpty)
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: ["B", "missing"])
+  func startupScreenshotResolvesOnePreferredDevice(preferred: String) async throws {
+    let fixture = Fixture()
+    AppSettings.shared.startupCaptureMode = .screenshot
+    AppSettings.shared.lastViewedDeviceID = preferred
+    let pane = fixture.pane()
+    await pane.start()
+    try await waitForState { pane.review != nil }
+    #expect(pane.review?.operation.device.id == (preferred == "B" ? "B" : "A"))
+    #expect(fixture.screenshots.value.count == 1)
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: [false, true])
+  func recordingRequiresReadyDevice(readinessKnown: Bool) async {
+    let fixture = Fixture()
+    fixture.devices.inventory.ready = readinessKnown ? [] : nil
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    #expect(!pane.canStartRecordingNow)
+    pane.launch(.startRecording)
+    #expect(fixture.recordings.value.isEmpty)
+    fixture.devices.inventory.ready = fixture.devices.inventory.connected
+    #expect(pane.canStartRecordingNow)
+    #expect(fixture.recordings.value.isEmpty, "Becoming ready must not start a rejected recording")
+    pane.launch(.startRecording)
+    #expect(fixture.recordings.value.count == 1)
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test
+  func recordingIncludesOnlyReadyDevice() async {
+    let fixture = Fixture()
+    fixture.devices.inventory.ready = fixture.devices.inventory.connected?.filter { $0.id == "A" }
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    pane.launch(.startRecording)
+    #expect(pane.recording?.device.id == "A")
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: [StartupCaptureMode.screenshot, .livePreview], [false, true])
+  func livePreviewRequestOverridesStartupMode(mode: StartupCaptureMode, wantsPreview: Bool) async throws {
     let fixture = Fixture()
     AppSettings.shared.startupCaptureMode = mode
     let available = fixture.devices.inventory
     fixture.devices.inventory = DeviceInventory()
     let pane = fixture.pane()
-    if let command { pane.enqueue(command) }
+    if wantsPreview { pane.requestLivePreview() }
     await pane.start()
     await pane.start()
     #expect(fixture.screenshots.value.isEmpty && fixture.recordings.value.isEmpty)
     fixture.devices.inventory = available
-    let expected = command ?? (mode == .screenshot ? .capture : .livepreview)
-    switch expected {
-    case .capture:
+    if !wantsPreview, mode == .screenshot {
       try await waitForState { pane.review != nil }
-      #expect(fixture.screenshots.value.count == 1 && fixture.recordings.value.isEmpty)
+      #expect(fixture.screenshots.value.count == 1)
       #expect(fixture.previews.attachments.isEmpty)
-    case .record:
-      try await waitForState { pane.recording?.phase == .recording }
-      #expect(fixture.recordings.value.count == 1 && fixture.screenshots.value.isEmpty)
-    case .livepreview:
+    } else {
       try await waitForState { pane.currentPreview != nil }
-      #expect(fixture.screenshots.value.isEmpty && fixture.recordings.value.isEmpty)
+      #expect(fixture.screenshots.value.isEmpty)
     }
-    await pane.close()
-    await fixture.close()
-  }
-
-  @Test(arguments: [false, true])
-  func previewCommandCannotPassScreenshotWaitingForBoot(sendAfterStart: Bool) async throws {
-    let fixture = Fixture()
-    let connected = fixture.devices.inventory.connected
-    fixture.devices.inventory = DeviceInventory()
-    let pane = fixture.pane()
-    pane.enqueue(.capture)
-    if !sendAfterStart { pane.enqueue(.livepreview) }
-    await pane.start()
-    fixture.devices.inventory.connected = connected
-    if sendAfterStart { pane.enqueue(.livepreview) }
-    #expect(fixture.screenshots.value.isEmpty)
-    #expect(pane.previews.isEmpty, "The queued screenshot takes priority over preview startup")
-    #expect(fixture.previews.attachments.isEmpty)
-    fixture.devices.inventory.ready = connected
-    try await waitForState { fixture.screenshots.value.count == 1 }
-    #expect(pane.currentPreview != nil, "The later preview command runs after the screenshot starts")
     #expect(fixture.recordings.value.isEmpty)
     await pane.close()
     await fixture.close()
@@ -93,7 +126,7 @@ extension CapturePaneTests {
     fixture.devices.inventory.ready = nil
     AppSettings.shared.startupCaptureMode = .screenshot
     let pane = fixture.pane()
-    pane.enqueue(.livepreview)
+    pane.requestLivePreview()
     await pane.start()
     try await waitForState { pane.currentPreview != nil }
     #expect(fixture.screenshots.value.isEmpty)
@@ -118,16 +151,16 @@ extension CapturePaneTests {
   }
 
   @Test
-  func closingDropsACommandWaitingForDevices() async {
+  func closingRejectsLivePreviewRequests() async {
     let fixture = Fixture()
     let available = fixture.devices.inventory
     fixture.devices.inventory = DeviceInventory()
     let pane = fixture.pane()
-    pane.enqueue(.capture)
+    pane.requestLivePreview()
     await pane.start()
     await pane.close()
     fixture.devices.inventory = available
-    pane.enqueue(.record)
+    pane.requestLivePreview()
     await pane.start()
     #expect(fixture.screenshots.value.isEmpty && fixture.recordings.value.isEmpty)
     #expect(fixture.previews.attachments.isEmpty)
@@ -141,23 +174,23 @@ extension CapturePaneTests {
     await fixture.start(pane)
     let attachment = try #require(pane.livePreviewAttachment(for: "A"))
     #expect(attachment.preview?.display == nil)
-    pane.enqueue(.record)
+    pane.startRecording()
     try await waitForState { pane.recording?.phase == .recording }
     let batch = try #require(pane.recording)
     #expect(pane.livePreviewAttachment(for: "A") === attachment)
     #expect(!attachment.isClosed)
-    pane.enqueue(.capture)
-    pane.enqueue(.livepreview)
+    pane.takeScreenshot()
+    pane.requestLivePreview()
     #expect(pane.recording === batch && fixture.screenshots.value.isEmpty)
     pane.stopRecording()
-    #expect(pane.review?.batch === batch)
+    #expect(pane.review?.operation === batch)
     #expect(batch.phase == .finishing)
     await pane.close()
     await fixture.close()
   }
 
-  @Test(arguments: [SnapOCommand.capture, .record, .livepreview])
-  func commandsDuringRecordingDoNotRunLater(command: SnapOCommand) async throws {
+  @Test(arguments: [CapturePaneSession.UIAction.screenshot, .startRecording, .livePreview])
+  func actionsDuringRecordingDoNotRunLater(action: CapturePaneSession.UIAction) async throws {
     let fixture = Fixture()
     let pane = fixture.pane()
     await fixture.start(pane)
@@ -165,14 +198,14 @@ extension CapturePaneTests {
     let batch = try #require(pane.recording)
     let available = fixture.devices.inventory
     fixture.devices.inventory = DeviceInventory()
-    pane.enqueue(command)
+    pane.launch(action)
     #expect(pane.recording === batch)
 
     pane.stopRecording()
     fixture.devices.inventory = available
     let attachments = fixture.previews.attachments.count
-    // A new command drains queued work without waiting for an observation task.
-    pane.enqueue(.capture)
+    // A rejected action must not start work after the recording ends.
+    pane.takeScreenshot()
     #expect(fixture.screenshots.value.count == 1)
     #expect(fixture.recordings.value.count == 1)
     #expect(fixture.previews.attachments.count == attachments, "An ignored preview command must not run later")

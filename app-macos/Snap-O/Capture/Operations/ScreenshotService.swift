@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Captures one device. The caller owns batching and history.
+/// Captures one device into a temporary file owned by the caller.
 struct ScreenshotService {
   private let adb: ADBService
   private let fileStore: FileStore

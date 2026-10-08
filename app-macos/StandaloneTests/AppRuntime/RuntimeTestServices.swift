@@ -21,7 +21,7 @@ final class ShutdownProbe {
 
   struct StartupRequest {
     let mode: StartupCaptureMode
-    let devices: [Device]
+    let device: Device?
   }
 
   func finish(_ owner: Owner) async {
@@ -203,7 +203,7 @@ final class CaptureHistory {
 final class RecordingCapture {
   typealias StartRecording = @Sendable (Device, Bool) async throws -> any ScreenRecording
   init(
-    devices: [Device], options: RecordingOptions, adb: ADBService, fileStore: FileStore,
+    device: Device, options: RecordingOptions, adb: ADBService, fileStore: FileStore,
     coordinator: CaptureCoordinator, startRecording: @escaping StartRecording,
     loadRecording: (@Sendable (URL, Device, Date) async throws -> CaptureMedia)?, timestampSource: CaptureTimestampSource
   ) {}
@@ -216,7 +216,7 @@ struct ScreenshotService {
 @MainActor
 final class ScreenshotCapture {
   init(
-    devices: [Device], screenshots: ScreenshotService, fileStore: FileStore,
+    device: Device, screenshots: ScreenshotService, fileStore: FileStore,
     coordinator: CaptureCoordinator
   ) {}
 }
@@ -248,12 +248,12 @@ final class StartupCapturePreparation {
   private let probe = RuntimeTestEnvironment.probe
   var isAvailable = true
   init(
-    screenshots: @escaping @MainActor ([Device]) -> ScreenshotCapture,
+    screenshots: @escaping @MainActor (Device) -> ScreenshotCapture,
     livePreview: LivePreviewService,
     makeEmulatorControls: @escaping @MainActor (DeviceTarget) -> EmulatorControlsController?
   ) {}
-  func prepare(mode: StartupCaptureMode, devices: [Device]) {
-    probe.startupRequests.value.append(.init(mode: mode, devices: devices))
+  func prepare(mode: StartupCaptureMode, device: Device?) {
+    probe.startupRequests.value.append(.init(mode: mode, device: device))
   }
 
   func discard() async {

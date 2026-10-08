@@ -181,7 +181,7 @@ Paths are relative to `app-macos/`:
 | Pane selection, startup and capture transitions | `scripts/test-media-lifetime.sh` |
 | Preview visibility, setup and teardown | `scripts/test-preview-input.sh` |
 | View remount input ownership, without windows | `scripts/test-live-preview-frame-export.sh --ownership-only` |
-| Recording batch failures, deadlines, and cleanup | `scripts/test-recording.sh` |
+| Recording failures, deadlines, and cleanup | `scripts/test-recording.sh` |
 | App shutdown order, target lifetime, and deadline reporting | `scripts/test-app-runtime.sh` |
 | Emulator frame conversion, launch arguments, and discovery parsing | `scripts/test-emulator-preview.sh` |
 | Device discovery and tool reconnection | `scripts/test-tool-recovery.sh` |
@@ -300,12 +300,12 @@ The current preview checks use the shared owners. They do not run a saved copy o
 | Attachment hide/show, remount, repeated close | `LivePreviewAttachmentTests` |
 | Clipboard focus, late messages, remount, close | `LivePreviewClipboardTests` |
 | Old view discarding the current keyboard's work | `test-live-preview-frame-export.sh --ownership-only` |
-| Capture results, per-device failures, recording cleanup | `test-recording.sh` |
+| Capture results, independent-window failures, recording cleanup | `test-recording.sh` |
 | Pane selection, pending review, background finalization, window visibility | `CapturePaneTests` in `test-media-lifetime.sh` |
 | Only the displayed device has a preview attachment; thumbnails use snapshots | `CapturePaneTests` in `test-media-lifetime.sh` |
 | Thumbnail refresh, cached images, and selection changes | `LivePreviewThumbnailTests` in `Snap-OUnitTests` |
-| Next-device selection, wraparound, batch order before new devices | Three-device cases in `CapturePaneTests` |
-| Startup mode, queued command order, device readiness, saved selection | `CaptureStartupTests` in `test-media-lifetime.sh` |
+| Device selection, single-device capture, and return to available previews | Three-device cases in `CapturePaneTests` |
+| Startup mode, Live Preview requests, device readiness, saved selection | `CaptureStartupTests` in `test-media-lifetime.sh` |
 | Unused windows and shutdown through pending cleanup | `WorkspaceLifetimeTests` in `test-media-lifetime.sh` |
 | Native hidden-window reuse, remount and close | `WorkspaceLifetimeTests` with `test-media-lifetime.sh --windows` |
 | Repeated termination, deadline reply and late cleanup | `AppTerminationTests` in `test-app-runtime.sh` |
@@ -314,8 +314,7 @@ The current preview checks use the shared owners. They do not run a saved copy o
 | Pending screenshots and key commands, stale results | `PreviewRequestTests` in `test-preview-input.sh` |
 | Superseded device-open requests, late errors, close | `CapturePaneTests.closeJoinsSupersededDeviceOpen` |
 | Saving blocks new captures; old callbacks cannot replace a new review | `CapturePaneTests` |
-| History deletion, window-local selection, fixed export edits | `CaptureReviewOwnershipTests` |
-| Deleting selected history returns to live with or without devices | `CapturePaneTests.deletingSelectedHistoryItemReturnsToLive` |
+| Draft isolation, accepted saves, fixed export edits | `CaptureReviewOwnershipTests` |
 | Rotation writes, restoration, cancellation and emulator behavior | `LivePreviewRotationTests` |
 
 The old session harness expected a separate stream and keyboard for each preview.
@@ -334,24 +333,20 @@ Close waits for cancelled device-open requests; late progress and errors cannot 
 A failed device-open request keeps its target for retry. Cancel restores the previous content.
 Starting a new capture cancels the request and rejects any late result.
 An accepted save blocks new captures until it finishes.
-History changes from another window do not rewrite this review's selection.
+Fresh review owns a temporary capture and does not observe saved history.
 Export requests keep their crop and trim values when later edits change.
 
 Some old expectations changed with the approved design:
 
 - Capture admission is per device, with no global capture slot.
-- Command callers no longer own a cancellable task. The pane owns pending commands until they run or close drops them.
-- Each failed device updates its own batch item. It does not abort healthy recordings.
-- Stop opens review with pending items. Return to Live lets finalization finish in the background.
-- Deleting the selected saved item returns to live, even with no connected device.
+- Capture actions run through the window controls. A Live Preview request can arrive before the pane starts.
+- Each window owns one capture operation. A failed capture does not abort another window’s recording.
+- Stop opens review with one pending capture. Return to Live lets finalization finish in the background.
 - Deleting history leaves unsaved review items alone.
 
-The review's existing history task remembers the last selection it wrote.
-It writes again only when its own selection changes, including when pending media becomes ready.
-This needs no extra observer or owner.
-New results stay visible while history refreshes.
-The deletion filter hides only sources confirmed missing by the current history check.
-`CaptureReviewOwnershipTests.arrivingMediaStaysVisibleWhileHistoryRefreshes` covers a result arriving after an older history snapshot.
+Capture operations expose one result directly. Screenshot close cancels and joins its task.
+Fresh review saves one edited copy into history. The history viewer retains grouped entries.
+Tests use single operations, with explicit pairs where independent windows matter.
 The legacy attachment fixture has been removed. File-drop and control tests use the shared service.
 Command-routing and thumbnail checks now run only in `Snap-OUnitTests`; the redundant
 `test-preview-lifetime.sh` runner was removed.

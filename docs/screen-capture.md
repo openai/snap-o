@@ -15,7 +15,7 @@ breadcrumbs:
 
 # Screen capture
 
-Capture screenshots or recordings from all connected Android devices, then crop images or trim recordings before sharing. Save the captures you want to keep in Capture History.
+Capture a screenshot or recording of the selected Android device, then crop or trim it before sharing. Save captures you want to keep in Capture History.
 {.lead}
 
 ## Live Preview
@@ -84,7 +84,8 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ### Open a device from a link
 
-Use a `snapo://open` URL to open a connected device by its ADB serial:
+Use `snapo://open` without parameters to show the current device’s Live Preview.
+To select a connected device, include its ADB serial:
 
 ```bash
 open 'snapo://open?serial=emulator-5554'
@@ -100,21 +101,21 @@ Use either `serial` or `avd`, and percent-encode spaces or other special charact
 
 ## Take a screenshot
 
-Press `⇧⌘S` to capture a screenshot from all connected Android devices. The screenshots open for review. Use the thumbnails or `⌘[` and `⌘]` to switch between devices.
+Press `⇧⌘S` to capture a screenshot of the device shown in the window. The screenshot opens for review.
 
 ## Record the screen
 
-Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
+Press `⇧⌘V` to start recording the device shown in the window. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recording opens for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
 
-During recording, the hover picker and `⌘[` / `⌘]` switch between devices in that recording. Newly connected devices join Live Preview, but do not join a recording already in progress.
+The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.
 
 ## Review, crop, and trim {#review-and-crop}
 
-New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.
+New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop.
 
 For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Saved and shared copies use the selected crop and trim.
 
-Click the checkmark (**Save to History**) to keep all captures in the review with their crops and trims. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
+Click the checkmark (**Save to History**) to keep the capture with its crop and trim. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved capture and return to Live Preview.
 
 Press `Esc` to open a discard confirmation. Press `Enter` to discard, or `Esc` again to keep editing. During a crop drag or while trimming a recording, `Esc` cancels that edit first.
 
@@ -134,9 +135,9 @@ Capture History keeps the screenshots and recordings you save from review, along
 
 Open **Window → Capture History** (`⌘Y`) to browse captures by day, newest first.
 
-Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
+Each new capture creates one entry. Existing entries can contain multiple captures. Double-click an entry to preview it. For a grouped entry, use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch captures. Press `Esc` to return to history.
 
-Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all devices in that capture.
+Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all captures in the entry.
 
 Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or `⌘Delete`, or right-click a selected entry and choose **Delete…**, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
 

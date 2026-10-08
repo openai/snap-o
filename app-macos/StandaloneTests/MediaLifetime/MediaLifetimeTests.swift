@@ -22,32 +22,29 @@ struct MediaLifetimeTests {
   func discardKeepsActiveSources(forceCopy: Bool) async throws {
     let fixture = Fixture(forceCopy: forceCopy)
     defer { fixture.cleanup() }
-    let first = try fixture.capture()
-    let second = try fixture.capture(video: true)
-    let requests = [
-      CaptureExportRequest(capture: first, crop: CGRect(x: 0, y: 0, width: 0.5, height: 1)),
-      CaptureExportRequest(capture: second, trim: CaptureTrimRange(start: 1, end: 2))
-    ]
+    let capture = try fixture.capture(video: forceCopy)
+    let request = CaptureExportRequest(
+      capture: capture,
+      crop: CGRect(x: 0, y: 0, width: 0.5, height: 1),
+      trim: CaptureTrimRange(start: 1, end: 2)
+    )
     let gate = TestGate()
-    let retained = TestValue<[CaptureExportRequest]>([])
+    let retained = TestValue<CaptureExportRequest?>(nil)
     let task = Task {
-      try await fixture.store.withRetainedSources(requests) { copies in
-        retained.value = copies
+      try await fixture.store.withRetainedSource(request) { copy in
+        retained.value = copy
         await gate.wait()
-        for (index, copy) in copies.enumerated() {
-          #expect(copy.capture.id == requests[index].capture.id)
-          #expect(copy.capture.device == requests[index].capture.device)
-          #expect(copy.capture.media.common == requests[index].capture.media.common)
-          #expect(copy.edits == requests[index].edits)
-          let data = try Data(contentsOf: #require(copy.capture.media.url))
-          #expect(data == fixture.bytes)
-        }
+        #expect(copy.capture.id == request.capture.id)
+        #expect(copy.capture.device == request.capture.device)
+        #expect(copy.capture.media.common == request.capture.media.common)
+        #expect(copy.edits == request.edits)
+        let data = try Data(contentsOf: #require(copy.capture.media.url))
+        #expect(data == fixture.bytes)
       }
     }
-    try await waitForState { retained.value.count == 2 }
-    fixture.store.discardPreviews([first, second])
-    #expect(!fixture.exists(first))
-    #expect(!fixture.exists(second))
+    try await waitForState { retained.value != nil }
+    fixture.store.discardPreviews([capture])
+    #expect(!fixture.exists(capture))
     await gate.open()
     try await task.value
     #expect(fixture.files.isEmpty)
@@ -67,8 +64,8 @@ struct MediaLifetimeTests {
     let gate = TestGate()
     let retained = TestValue<URL?>(nil)
     let task = Task {
-      try await fixture.store.withRetainedSources([request]) { copies in
-        retained.value = copies[0].capture.media.url
+      try await fixture.store.withRetainedSource(request) { copies in
+        retained.value = copies.capture.media.url
         await gate.wait()
         let data = try Data(contentsOf: #require(retained.value))
         #expect(data == fixture.bytes)
@@ -83,14 +80,14 @@ struct MediaLifetimeTests {
   }
 
   @Test
-  func retentionFailureRemovesEarlierLinksWithoutStartingWork() async throws {
+  func retentionFailureRemovesEarlierLinksWithoutStartingWork() throws {
     let fixture = Fixture()
     defer { fixture.cleanup() }
     let capture = try fixture.capture()
-    let missing = CaptureExportRequest(capture: capture).replacingSource(with: fixture.root.appendingPathComponent("missing"))
+    let missing = fixture.root.appendingPathComponent("missing")
     var started = false
     do {
-      try await fixture.store.withRetainedSources([CaptureExportRequest(capture: capture), missing]) { _ in
+      try fixture.store.withRetainedFiles([#require(capture.media.url), missing]) { _ in
         started = true
       }
       Issue.record("Missing source should fail retention")
@@ -123,7 +120,7 @@ struct MediaLifetimeTests {
     defer { fixture.cleanup() }
     let capture = try fixture.capture()
     do {
-      try await fixture.store.withRetainedSources([CaptureExportRequest(capture: capture)]) { _ in
+      try await fixture.store.withRetainedSource(CaptureExportRequest(capture: capture)) { _ in
         fixture.store.discardPreviews([capture])
         throw CocoaError(.fileWriteUnknown)
       }
@@ -189,43 +186,34 @@ struct MediaLifetimeTests {
   func historyCommitSurvivesDraftDiscardAndReopening() async throws {
     let fixture = Fixture()
     defer { fixture.cleanup() }
-    let first = try fixture.capture()
-    let second = try fixture.capture()
-    let requests = [first, second].map { CaptureExportRequest(capture: $0) }
-    try await fixture.store.saveReview(requests, name: "Batch", selectedID: second.id, history: fixture.history)
-    #expect(fixture.files.count == 2)
-    fixture.store.discardPreviews([first, second])
+    let capture = try fixture.capture()
+    try await fixture.store.saveReview(CaptureExportRequest(capture: capture), name: "Saved", history: fixture.history)
+    #expect(fixture.files.count == 1)
+    fixture.store.discardPreviews([capture])
     #expect(fixture.files.isEmpty)
     let reopened = CaptureHistoryRepository(root: fixture.history.root)
     let snapshot = await reopened.currentSnapshot()
-    #expect(snapshot.entries.count == 1)
     let entry = try #require(snapshot.entries.first)
-    #expect(entry.name == "Batch")
-    #expect(entry.items.compactMap(\.captureID) == [first.id, second.id])
-    #expect(entry.frontItem?.captureID == second.id)
-    for item in entry.items {
-      #expect(try Data(contentsOf: entry.fileURL(for: item, in: reopened.root)) == fixture.bytes)
-    }
+    #expect(snapshot.entries.count == 1 && entry.name == "Saved")
+    #expect(entry.items.compactMap(\.captureID) == [capture.id])
+    let item = try #require(entry.frontItem)
+    #expect(try Data(contentsOf: entry.fileURL(for: item, in: reopened.root)) == fixture.bytes)
   }
 
   @Test(arguments: [false, true])
   func failedSavePreservesDraftsAndRemovesAllIntermediates(failCommit: Bool) async throws {
     let fixture = Fixture()
     defer { fixture.cleanup() }
-    let first = try fixture.capture()
-    let second = try fixture.capture()
+    let capture = try fixture.capture()
     let invalid = CGRect(x: 0, y: 0, width: 0.5, height: 1)
-    let requests = [
-      CaptureExportRequest(capture: first),
-      CaptureExportRequest(capture: second, crop: failCommit ? CaptureCropGeometry.fullImage : invalid)
-    ]
+    let request = CaptureExportRequest(capture: capture, crop: failCommit ? CaptureCropGeometry.fullImage : invalid)
     if failCommit { try fixture.bytes.write(to: fixture.history.root) }
     do {
-      try await fixture.store.saveReview(requests, name: "Batch", selectedID: first.id, history: fixture.history)
+      try await fixture.store.saveReview(request, name: "Saved", history: fixture.history)
       Issue.record("Export or commit should fail")
     } catch {}
-    #expect(fixture.exists(first) && fixture.exists(second))
-    #expect(fixture.files.count == 2)
+    #expect(fixture.exists(capture))
+    #expect(fixture.files.count == 1)
     #expect(await fixture.history.currentSnapshot().entries.isEmpty)
   }
 
@@ -247,7 +235,7 @@ struct MediaLifetimeTests {
     let drag = try fixture.store.makeImageDrag(request)
     let save = fixture.root.appendingPathComponent("saved.png")
     try fixture.store.saveImage(at: source, crop: request.crop, to: save)
-    try await fixture.store.saveReview([request], name: "Cropped", selectedID: capture.id, history: fixture.history)
+    try await fixture.store.saveReview(request, name: "Cropped", history: fixture.history)
     fixture.store.discardPreviews([capture])
     let snapshot = await fixture.history.currentSnapshot()
     #expect(snapshot.entries.count == 1)
@@ -297,9 +285,9 @@ struct MediaLifetimeTests {
     let request = CaptureExportRequest(capture: capture)
     let gate = TestGate()
     let export = Task {
-      try await fixture.store.withRetainedSources([request]) { retained in
+      try await fixture.store.withRetainedSource(request) { retained in
         await gate.wait()
-        let bytes = try Data(contentsOf: #require(retained[0].capture.media.url))
+        let bytes = try Data(contentsOf: #require(retained.capture.media.url))
         #expect(bytes == fixture.bytes)
       }
     }
@@ -324,7 +312,7 @@ struct MediaLifetimeTests {
       try fixture.store.withExport { Issue.record("New frame export should be rejected") }
     }
     do {
-      try await fixture.store.withRetainedSources([request]) { _ in
+      try await fixture.store.withRetainedSource(request) { _ in
         Issue.record("New file export should be rejected")
       }
       Issue.record("Expected closed export admission")

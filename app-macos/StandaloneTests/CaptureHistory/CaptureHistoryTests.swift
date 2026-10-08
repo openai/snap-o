@@ -64,16 +64,24 @@ struct CaptureHistoryTests {
     let root = try temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
     let fileStore = FileStore(baseDir: root)
-    let batch = ScreenshotCapture(
-      devices: [firstDevice, secondDevice],
-      screenshots: ScreenshotService(adb: ADBService(timesOut: true), fileStore: fileStore),
-      fileStore: fileStore
-    )
-    batch.start()
-    await batch.waitForCompletion()
-    precondition(batch.items.compactMap(\.media).map(\.device.id) == [firstDevice.id], "Keep the healthy device's screenshot")
-    guard case .failed = batch.items[1].state else { preconditionFailure("The timed-out device must report failure") }
-    await batch.close()
+    let captures = [firstDevice, secondDevice].map {
+      ScreenshotCapture(
+        device: $0,
+        screenshots: ScreenshotService(adb: ADBService(timesOut: true), fileStore: fileStore),
+        fileStore: fileStore
+      )
+    }
+    for capture in captures {
+      capture.start()
+    }
+    for capture in captures {
+      await capture.waitForCompletion()
+    }
+    precondition(captures[0].media?.device.id == firstDevice.id)
+    guard case .failed = captures[1].state else { preconditionFailure("The timed-out device must report failure") }
+    for capture in captures {
+      await capture.close()
+    }
   }
 
   @MainActor
@@ -86,27 +94,36 @@ struct CaptureHistoryTests {
       let adb = ADBService()
       let fileStore = FileStore(baseDir: directory.appendingPathComponent("temporary"))
       let devices = keepsCompletedScreenshot ? [firstDevice, secondDevice] : [secondDevice]
-      let batch = ScreenshotCapture(
-        devices: devices, screenshots: ScreenshotService(adb: adb, fileStore: fileStore),
-        fileStore: fileStore
-      )
-      batch.start()
+      let captures = devices.map { device in
+        ScreenshotCapture(
+          device: device, screenshots: ScreenshotService(adb: adb, fileStore: fileStore),
+          fileStore: fileStore
+        )
+      }
+      for capture in captures {
+        capture.start()
+      }
       await waitForActorTestState { await adb.waitingForCancellation }
       if keepsCompletedScreenshot {
-        await waitForObservedTestState { batch.items[0].media != nil }
+        await waitForObservedTestState { captures[0].media != nil }
       }
-      await batch.beginFinalization(discarding: true).value
-      let media = batch.items.compactMap(\.media)
-      let drafts = media.compactMap(\.media.url)
+      let completed = captures.compactMap(\.media)
+      let drafts = completed.compactMap(\.media.url)
+      for capture in captures {
+        await capture.close()
+      }
+      let media = captures.compactMap(\.media)
       let snapshot = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
       if keepsCompletedScreenshot {
         precondition(media.count == 1)
-        precondition(drafts.count == 1 && FileManager.default.fileExists(atPath: drafts[0].path))
+        precondition(drafts.count == 1 && !FileManager.default.fileExists(atPath: drafts[0].path))
       } else {
         precondition(media.isEmpty, "Cancelled requests produce no draft")
       }
       precondition(snapshot.entries.isEmpty, "Completed screenshots remain drafts until Save")
-      await batch.close()
+      for capture in captures {
+        await capture.close()
+      }
       for draft in drafts {
         precondition(!FileManager.default.fileExists(atPath: draft.path), "Discard removes completed drafts")
       }
@@ -123,12 +140,12 @@ struct CaptureHistoryTests {
       avdName: nil
     )
     let batch = ScreenshotCapture(
-      devices: [device], screenshots: ScreenshotService(adb: ADBService(), fileStore: fileStore),
+      device: device, screenshots: ScreenshotService(adb: ADBService(), fileStore: fileStore),
       fileStore: fileStore
     )
     batch.start()
     await batch.waitForCompletion()
-    guard case .failed = batch.items[0].state else { preconditionFailure("An unavailable device must report failure") }
+    guard case .failed = batch.state else { preconditionFailure("An unavailable device must report failure") }
     let snapshot = await repository.currentSnapshot()
     precondition(snapshot.entries.isEmpty, "Failures reach the caller without entering history")
     let reopened = await CaptureHistoryRepository(root: repository.root).currentSnapshot()

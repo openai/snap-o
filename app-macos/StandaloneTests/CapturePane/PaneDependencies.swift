@@ -86,7 +86,7 @@ final class LivePreviewService {
 @MainActor
 final class StartupCapturePreparation {
   init(
-    screenshots: @escaping @MainActor ([Device]) -> ScreenshotCapture,
+    screenshots: @escaping @MainActor (Device) -> ScreenshotCapture,
     livePreview: LivePreviewService,
     makeEmulatorControls: @escaping @MainActor (DeviceTarget) -> EmulatorControlsController?
   ) {}
@@ -94,7 +94,7 @@ final class StartupCapturePreparation {
     nil
   }
 
-  func claimScreenshots(for devices: [Device]) -> ScreenshotCapture? {
+  func claimScreenshots(for device: Device) -> ScreenshotCapture? {
     nil
   }
 
@@ -103,14 +103,15 @@ final class StartupCapturePreparation {
 
 @Observable
 @MainActor
-final class ScreenshotCapture: CaptureBatch {
+final class ScreenshotCapture: CaptureOperation {
   let id = UUID()
-  let kind = CaptureKind.screenshots
-  let items: [CaptureItem]
+  let kind = CaptureKind.screenshot
+  let device: Device
+  var state: CaptureState = .pending
   var isComplete = false
   var closeCount = 0
-  init(_ devices: [Device]) {
-    items = devices.map(CaptureItem.init)
+  init(_ device: Device) {
+    self.device = device
   }
 
   func start() {}
@@ -122,18 +123,19 @@ final class ScreenshotCapture: CaptureBatch {
 
 @Observable
 @MainActor
-final class RecordingCapture: CaptureBatch {
+final class RecordingCapture: CaptureOperation {
   enum Phase { case starting, recording, finishing }
   let id = UUID()
   let kind = CaptureKind.recording
-  let items: [CaptureItem]
+  let device: Device
+  var state: CaptureState = .pending
   let options: RecordingOptions
   var phase = Phase.starting
   var isComplete = false
   var closeCount = 0
   var closeGate: TestSuspension?
-  init(_ devices: [Device], options: RecordingOptions) {
-    items = devices.map(CaptureItem.init)
+  init(_ device: Device, options: RecordingOptions) {
+    self.device = device
     self.options = options
   }
 

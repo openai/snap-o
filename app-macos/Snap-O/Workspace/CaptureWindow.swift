@@ -72,7 +72,7 @@ struct CaptureWindow: View {
       .focusedSceneValue(\.captureController, controller)
       .background {
         CaptureReviewCloseGuard(
-          captureIDs: controller.review?.mediaList.map(\.id) ?? [],
+          captureID: controller.review?.operation.id,
           isSaving: controller.review?.isSaving == true
         ) {
           controller.discardCaptureReview()
@@ -119,8 +119,8 @@ struct CaptureWindow: View {
         .frame(width: 0, height: 0)
       )
       .background(
-        WindowCommandRegistration { command in
-          session.perform(command)
+        WindowCommandRegistration {
+          session.showLivePreview()
         } openDevice: { request in
           session.openDevice(request)
         } attached: { window in

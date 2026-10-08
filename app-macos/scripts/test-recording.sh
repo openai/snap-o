@@ -13,11 +13,11 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Capture/Operations/CaptureTimestampSource.swift Snap-O/App/StartupCapturePreparation.swift \
   Snap-O/Capture/Operations/CaptureCoordinator.swift Snap-O/Device/ShowTouchesOverride.swift \
   Snap-O/Capture/Operations/ScreenRecording.swift Snap-O/Capture/Operations/ADBScreenRecording.swift Snap-O/Capture/Operations/ADBRecordingFile.swift \
-  Snap-O/Capture/Operations/CaptureBatch.swift Snap-O/Capture/Operations/ScreenshotCapture.swift Snap-O/Capture/Operations/RecordingCapture.swift \
+  Snap-O/Capture/Operations/CaptureOperation.swift Snap-O/Capture/Operations/ScreenshotCapture.swift Snap-O/Capture/Operations/RecordingCapture.swift \
   Snap-O/Capture/Operations/ScreenshotService.swift Snap-O/Device/ScreenshotDeadline.swift Snap-O/Utilities/Perf.swift \
   Snap-O/History/CaptureHistoryEntry.swift Snap-O/History/CaptureHistoryRepository.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Utilities/Logging.swift \
   Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \
-  StandaloneTests/Support/RecordingSessionDouble.swift StandaloneTests/Recording/RecordingTestADB.swift StandaloneTests/Recording/RecordingTests.swift StandaloneTests/Recording/CaptureBatchTests.swift StandaloneTests/Recording/RecordingTeardownTests.swift \
+  StandaloneTests/Support/RecordingSessionDouble.swift StandaloneTests/Recording/RecordingTestADB.swift StandaloneTests/Recording/RecordingTests.swift StandaloneTests/Recording/RecordingTeardownTests.swift \
   -o "$TEST_DIR/recording-tests"
 run_test "$TEST_DIR/recording-tests"

@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 struct CaptureReviewCloseGuard: NSViewRepresentable {
-  let captureIDs: [UUID]
+  let captureID: UUID?
   var isSaving = false
   let discard: () -> Void
 
@@ -16,8 +16,8 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   }
 
   func updateNSView(_ view: GuardView, context: Context) {
-    if view.captureIDs != captureIDs { view.didDiscard = false }
-    view.captureIDs = captureIDs
+    if view.captureID != captureID { view.didDiscard = false }
+    view.captureID = captureID
     view.isSaving = isSaving
     view.discard = discard
   }
@@ -25,7 +25,7 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   static func prepareToClose(in window: NSWindow? = nil) -> Bool {
     let pending = views.allObjects.filter {
       $0.window != nil && (window == nil || $0.window === window)
-        && !$0.captureIDs.isEmpty && !$0.didDiscard
+        && $0.captureID != nil && !$0.didDiscard
     }
     guard !pending.isEmpty else { return true }
     guard !pending.contains(where: \.isSaving) else { return false }
@@ -41,7 +41,7 @@ struct CaptureReviewCloseGuard: NSViewRepresentable {
   }
 
   final class GuardView: NSView {
-    var captureIDs: [UUID] = []
+    var captureID: UUID?
     var isSaving = false
     var didDiscard = false
     var discard: (() -> Void)?

@@ -86,15 +86,15 @@ final class AppRuntime {
     }
     let captureServices = CaptureServices(
       livePreview: livePreview,
-      screenshots: { devices in
+      screenshots: { device in
         ScreenshotCapture(
-          devices: devices, screenshots: screenshots, fileStore: fileStore,
+          device: device, screenshots: screenshots, fileStore: fileStore,
           coordinator: captureCoordinator
         )
       },
-      recording: { devices, options in
+      recording: { device, options in
         RecordingCapture(
-          devices: devices, options: options, adb: adbService, fileStore: fileStore,
+          device: device, options: options, adb: adbService, fileStore: fileStore,
           coordinator: captureCoordinator,
           startRecording: startRecording, loadRecording: nil, timestampSource: timestamps
         )
@@ -128,16 +128,15 @@ final class AppRuntime {
       }
       for await (mode, preferredID, inventory, isShuttingDown) in updates {
         guard !Task.isCancelled, !isShuttingDown, let self, captureServices.startup.isAvailable else { return }
-        let devices: [Device]
-        switch mode {
+        let connected = inventory.connected ?? []
+        let preferred = connected.first { $0.id == preferredID } ?? connected.first
+        let device: Device? = switch mode {
         case .livePreview:
-          let connected = inventory.connected ?? []
-          let preferred = connected.first { $0.id == preferredID } ?? connected.first
-          devices = preferred.map { [$0] } ?? []
+          preferred
         case .screenshot:
-          devices = inventory.ready ?? []
+          inventory.ready?.first { $0.id == preferred?.id && $0.connection == preferred?.connection }
         }
-        captureServices.startup.prepare(mode: mode, devices: devices)
+        captureServices.startup.prepare(mode: mode, device: device)
       }
     }
     captureHistory.start()

@@ -2,26 +2,21 @@ import AppKit
 import Foundation
 import Observation
 
-/// Owns review selection, edits, readers, and accepted exports for one batch.
+/// Owns edits, readers, and accepted exports for one capture.
 @Observable
 @MainActor
 final class CaptureReviewState {
-  let batch: any CaptureBatch
+  let operation: any CaptureOperation
   let fileStore: FileStore
   let playback: CaptureReviewPlayback
   let dragExport: CaptureReviewDragExport
-  let hint = PreviewHint()
-  private(set) var selectedItemID: UUID?
-  private(set) var edits: [UUID: MediaEdits] = [:]
+  private(set) var edits = MediaEdits()
   private(set) var isClosing = false
   private(set) var isSaving = false
   private(set) var errorMessage: String?
   private(set) var imageCopyID: UUID?
 
-  private let history: CaptureHistory
-  private let protectionID = UUID()
-  private var deletedHistoryIDs: Set<UUID> = []
-  @ObservationIgnored private var historyTask: Task<Void, Never>?
+  private let history: CaptureHistoryRepository
   private enum Reader { case playback, drag }
   private struct Read {
     let kind: Reader
@@ -33,55 +28,31 @@ final class CaptureReviewState {
   @ObservationIgnored private var closeTask: Task<Void, Never>?
 
   init(
-    batch: any CaptureBatch, selectedDeviceID: String?, fileStore: FileStore,
-    history: CaptureHistory, dragExport: CaptureReviewDragExport = CaptureReviewDragExport(),
+    operation: any CaptureOperation, fileStore: FileStore,
+    history: CaptureHistoryRepository, dragExport: CaptureReviewDragExport = CaptureReviewDragExport(),
     playback: CaptureReviewPlayback = CaptureReviewPlayback()
   ) {
-    self.batch = batch
+    self.operation = operation
     self.fileStore = fileStore
     self.history = history
     self.dragExport = dragExport
     self.playback = playback
-    selectedItemID = batch.items.first { $0.device.id == selectedDeviceID }?.id ?? batch.items.first?.id
-  }
-
-  var items: [CaptureItem] {
-    batch.items.filter { item in
-      guard let media = item.media, let url = media.media.url,
-            url.deletingLastPathComponent().deletingLastPathComponent().path == history.repository.root.path else { return true }
-      return !deletedHistoryIDs.contains(media.id)
-    }
   }
 
   var allowsReplacement: Bool {
     !isSaving
   }
 
-  var selectedItem: CaptureItem? {
-    items.first { $0.id == selectedItemID }
-  }
-
   var currentCapture: CaptureMedia? {
-    selectedItem?.media
+    operation.media
   }
 
-  var mediaList: [CaptureMedia] {
-    items.compactMap(\.media)
+  var crop: CGRect {
+    edits.crop
   }
 
-  var selectedItemWasDeleted: Bool {
-    selectedItemID != nil && selectedItem == nil
-  }
-
-  func start() {
-    guard !isClosing, historyTask == nil else { return }
-    historyTask = Task {
-      var recordedSelection: UUID?
-      for await _ in Observations({ self.historyInput }) {
-        guard !Task.isCancelled else { return }
-        await synchronizeHistory(recordedSelection: &recordedSelection)
-      }
-    }
+  var trim: CaptureTrimRange? {
+    edits.trim
   }
 
   func setVisible(_ visible: Bool) {
@@ -89,52 +60,29 @@ final class CaptureReviewState {
     playback.setPaneVisible(visible)
   }
 
-  func select(_ id: UUID) {
-    guard !isClosing, selectedItemID != id, items.contains(where: { $0.id == id }) else { return }
-    stopReaders()
-    selectedItemID = id
-    hint.show(available: items.count > 1, transient: true)
+  func setCrop(_ crop: CGRect) {
+    guard !isClosing, !isSaving, currentCapture != nil else { return }
+    edits.crop = crop
   }
 
-  func selectNeighbor(offset: Int) {
-    guard !items.isEmpty else { return }
-    let index = items.firstIndex { $0.id == selectedItemID } ?? 0
-    select(items[(index + offset + items.count) % items.count].id)
+  func setTrim(_ range: CaptureTrimRange?) {
+    guard !isClosing, !isSaving, currentCapture != nil else { return }
+    edits.trim = range
   }
 
-  func crop(for id: UUID) -> CGRect {
-    edits[id]?.crop ?? CaptureCropGeometry.fullImage
-  }
-
-  func trim(for id: UUID) -> CaptureTrimRange? {
-    edits[id]?.trim
-  }
-
-  func setCrop(_ crop: CGRect, for id: UUID) {
-    guard !isClosing, !isSaving, items.contains(where: { $0.id == id && $0.media != nil }) else { return }
-    edits[id, default: MediaEdits()].crop = crop
-  }
-
-  func setTrim(_ range: CaptureTrimRange?, for id: UUID) {
-    guard !isClosing, !isSaving, items.contains(where: { $0.id == id && $0.media != nil }) else { return }
-    edits[id, default: MediaEdits()].trim = range
-  }
-
-  func exportRequest(for id: UUID) throws -> CaptureExportRequest {
-    guard let capture = items.first(where: { $0.id == id })?.media else {
-      throw CocoaError(.fileReadNoSuchFile)
-    }
-    return CaptureExportRequest(capture: capture, edits: edits[id] ?? MediaEdits())
+  func exportRequest() throws -> CaptureExportRequest {
+    guard let capture = currentCapture else { throw CocoaError(.fileReadNoSuchFile) }
+    return CaptureExportRequest(capture: capture, edits: edits)
   }
 
   func clearError() {
     errorMessage = nil
   }
 
-  func copySelectedImage(to pasteboard: NSPasteboard = .general) throws {
-    guard !isClosing, let selectedItemID else { return }
+  func copyImage(to pasteboard: NSPasteboard = .general) throws {
+    guard !isClosing else { return }
     do {
-      let request = try exportRequest(for: selectedItemID)
+      let request = try exportRequest()
       guard request.capture.media.isImage, let url = request.capture.media.url else { return }
       let image = try CaptureCropExporter.image(at: url, crop: request.crop)
       pasteboard.clearContents()
@@ -147,9 +95,9 @@ final class CaptureReviewState {
     }
   }
 
-  func exportSelected(to url: URL) async throws {
-    guard !isClosing, let selectedItemID else { throw CancellationError() }
-    let request = try exportRequest(for: selectedItemID)
+  func export(to url: URL) async throws {
+    guard !isClosing else { throw CancellationError() }
+    let request = try exportRequest()
     try await performExport {
       try await self.fileStore.saveExport(request, to: url)
     }
@@ -158,19 +106,16 @@ final class CaptureReviewState {
   func saveToHistory(name: String) async throws {
     guard !isClosing, !isSaving else { throw CancellationError() }
     isSaving = true
-    let selection = selectedItemID
     defer { isSaving = false }
     try await performExport {
-      if !self.batch.isComplete {
-        for await complete in Observations({ self.batch.isComplete }) where complete {
+      if !self.operation.isComplete {
+        for await complete in Observations({ self.operation.isComplete }) where complete {
           break
         }
       }
-      let requests = try self.items.filter { $0.media != nil }.map { try self.exportRequest(for: $0.id) }
-      guard !requests.isEmpty else { throw CocoaError(.fileReadNoSuchFile) }
-      let selectedMediaID = self.items.first { $0.id == selection }?.media?.id
+      let request = try self.exportRequest()
       try await self.fileStore.saveReview(
-        requests, name: name, selectedID: selectedMediaID, history: self.history.repository
+        request, name: name, history: self.history
       )
     }
   }
@@ -189,18 +134,18 @@ final class CaptureReviewState {
     }
   }
 
-  /// New selections start immediately; cancelled readers remain owned until they finish.
-  func loadPlayback(for id: UUID) async {
-    guard !isClosing, !Task.isCancelled, selectedItemID == id,
-          let capture = items.first(where: { $0.id == id })?.media,
+  /// New reads start immediately; cancelled readers remain owned until they finish.
+  func loadPlayback() async {
+    guard !isClosing, !Task.isCancelled,
+          let capture = currentCapture,
           capture.media.isVideo, let url = capture.media.url else { return }
-    let trim = trim(for: id)
+    let trim = trim
     await read(.playback) { await self.playback.load(url, trim: trim) }
   }
 
-  func prepareDrag(for id: UUID) async {
-    guard !isClosing, !Task.isCancelled, selectedItemID == id,
-          let request = try? exportRequest(for: id) else { return }
+  func prepareDrag() async {
+    guard !isClosing, !Task.isCancelled,
+          let request = try? exportRequest() else { return }
     await read(.drag) { await self.dragExport.prepare(request, fileStore: self.fileStore) }
   }
 
@@ -218,10 +163,10 @@ final class CaptureReviewState {
     await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
   }
 
-  func makeDragItem(for id: UUID, frame: CGRect) throws -> NSDraggingItem? {
+  func makeDragItem(frame: CGRect) throws -> NSDraggingItem? {
     guard !isClosing else { return nil }
     do {
-      let request = try exportRequest(for: id)
+      let request = try exportRequest()
       if request.capture.media.isVideo { return dragExport.draggingItem(for: request, frame: frame) }
       let url = try fileStore.makeImageDrag(request)
       let item = NSDraggingItem(pasteboardWriter: url as NSURL)
@@ -237,7 +182,6 @@ final class CaptureReviewState {
     guard !isClosing else { return }
     isClosing = true
     stopReaders()
-    hint.cancel()
   }
 
   private func stopReaders() {
@@ -262,45 +206,9 @@ final class CaptureReviewState {
       for export in acceptedExports {
         _ = try? await export.value
       }
-      await batch.close()
-      historyTask?.cancel()
-      await historyTask?.value
-      await history.repository.protect([], owner: protectionID)
+      await operation.close()
     }
     closeTask = task
     await task.value
-  }
-
-  private struct HistoryInput: Equatable {
-    let sourceIDs: Set<UUID>
-    let selectedID: UUID?
-    let entries: [CaptureHistoryEntry]
-  }
-
-  private var historyInput: HistoryInput {
-    HistoryInput(
-      sourceIDs: Set(batch.items.compactMap { $0.media?.id }),
-      selectedID: currentCapture?.id, entries: history.entries
-    )
-  }
-
-  private func synchronizeHistory(recordedSelection: inout UUID?) async {
-    while !Task.isCancelled {
-      let input = historyInput
-      await history.repository.protect(input.sourceIDs, owner: protectionID)
-      let snapshot = await history.repository.currentSnapshot()
-      guard !Task.isCancelled else { return }
-      guard input == historyInput else { continue }
-      let available = Set(snapshot.entries.flatMap { $0.items.compactMap(\.captureID) })
-      deletedHistoryIDs = input.sourceIDs.subtracting(available)
-      let selectedID = currentCapture?.id
-      if selectedID != recordedSelection {
-        recordedSelection = selectedID
-        if let selectedID {
-          await history.repository.recordCapturePaneSelection(selectedID)
-        }
-      }
-      if input == historyInput { return }
-    }
   }
 }

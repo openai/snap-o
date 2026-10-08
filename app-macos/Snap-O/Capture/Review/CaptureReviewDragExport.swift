@@ -35,7 +35,7 @@ final class CaptureReviewDragExport {
 
     var destination: URL?
     do {
-      try await fileStore.withRetainedSources([request]) { retained in
+      try await fileStore.withRetainedSource(request) { retained in
         // Retain before the debounce; review or History can be discarded while waiting.
         if request.crop != CaptureCropGeometry.fullImage {
           try await clock.sleep(for: .milliseconds(200))
@@ -44,7 +44,7 @@ final class CaptureReviewDragExport {
         guard token == generation else { return }
         let url = try fileStore.makeUniqueDragDestination(capturedAt: request.capture.media.capturedAt, kind: .video)
         destination = url
-        let image = try await prepareFile(retained[0], url)
+        let image = try await prepareFile(retained, url)
         try Task.checkCancellation()
         guard token == generation else {
           fileStore.discardTemporaryFile(at: url)

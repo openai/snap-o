@@ -105,7 +105,7 @@ struct SnapOCommands: Commands {
         if savePanel.runModal() == .OK, let dest = savePanel.url {
           Task {
             do {
-              try await review.exportSelected(to: dest)
+              try await review.export(to: dest)
               SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: saveKind)
             } catch {
               let alert = NSAlert()
