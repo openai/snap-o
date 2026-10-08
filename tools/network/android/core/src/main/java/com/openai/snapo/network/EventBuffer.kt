@@ -1,5 +1,6 @@
 package com.openai.snapo.network
 
+import com.openai.snapo.network.capture.BodyContentType
 import java.util.ArrayList
 import java.util.IdentityHashMap
 
@@ -51,21 +52,52 @@ internal class EventBuffer(
 
     fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
 
+    fun bodySearchSnapshot(requestIds: List<String>): List<SearchableRequest> {
+        val requests = records.filterIsInstance<RequestWillBeSent>().associateBy { it.id }
+        val responses = records.filterIsInstance<ResponseReceived>().associateBy { it.id }
+        val finished = records.filterIsInstance<ResponseFinished>().associateBy { it.id }
+        val failures = records.filterIsInstance<RequestFailed>().associateBy { it.id }
+        return requestIds.map { id ->
+            val request = requests[id]
+            val response = responses[id]
+            val end = finished[id]
+            val requestBody = findRequestBody(id)
+            val responseBody = findResponseBody(id)
+            SearchableRequest(
+                id,
+                SearchableBody(
+                    requestBody,
+                    requestBodyCoverage(request, requestBody),
+                    request?.headers?.let(::hasGzipContentEncoding) == true,
+                    BodyContentType.parse(
+                        request?.headers?.firstOrNull {
+                            it.name.equals("content-type", true)
+                        }?.value
+                    )?.charsetOrUtf8() ?: Charsets.UTF_8,
+                ),
+                SearchableBody(
+                    responseBody,
+                    responseBodyCoverage(request, response, end, failures[id], responseBody),
+                ),
+            )
+        }
+    }
+
     fun updateLatestRequestBody(
         requestId: String,
         body: String?,
         bodyEncoding: String?,
         bodyTruncatedBytes: Long?,
         bodySize: Long?,
-    ): Boolean {
+    ): SequencedNetworkEvent? {
         val index = records.indexOfLast { candidate ->
             (candidate as? RequestWillBeSent)?.id == requestId
         }
-        if (index < 0) return false
+        if (index < 0) return null
         if (!body.isNullOrEmpty()) {
             upsertRequestBody(requestId, body, bodyEncoding)
         }
-        val existing = records[index] as? RequestWillBeSent ?: return false
+        val existing = records[index] as? RequestWillBeSent ?: return null
         val updated = existing.copy(
             body = null,
             bodyEncoding = bodyEncoding,
@@ -73,8 +105,10 @@ internal class EventBuffer(
             bodySize = bodySize ?: existing.bodySize,
         )
         replaceRecord(index, existing, updated)
+        val sequence = ++latestSequence
+        sequenceByRecord[updated] = sequence
         trimToByteLimit()
-        return true
+        return SequencedNetworkEvent(sequence, updated)
     }
 
     fun updateLatestResponseBody(

@@ -40,6 +40,7 @@ export interface RequestRecord {
   encodedDataLength?: number;
   requestHasPostData?: boolean | null;
   requestBodySize?: number | null;
+  requestBodyTruncatedBytes?: number | null;
   requestBody?: string | null;
   requestBodyEncoding?: string | null;
   responseBody?: string | null;
@@ -261,6 +262,7 @@ function reduceRequestWillBeSent(
       requestHeaders: headersFrom(recordFromProtocolHeaders(params.request?.headers)),
       requestHasPostData: hasPostData,
       requestBodySize: postDataLength ?? (hasPostData ? -1 : 0),
+      requestBodyTruncatedBytes: numberAt(params, "request.postDataTruncatedBytes"),
       requestBodyEncoding: stringAt(params, "request.postDataEncoding") ?? existing?.requestBodyEncoding,
       startedAt,
       startedAtMonotonic,

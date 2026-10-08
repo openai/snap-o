@@ -1,3 +1,4 @@
+import { BodySearchContext } from "./components/SearchablePayload";
 import type { JSX } from "preact";
 import { DetailContent } from "./components/DetailPane";
 import { Sidebar } from "./components/Sidebar";
@@ -25,6 +26,9 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
       style={{ "--sidebar-width": `${sidebarWidth}px` } as JSX.CSSProperties}
     >
       <Sidebar
+        searchStatus={model.searchStatus}
+        searchStatusDetail={model.searchStatusDetail}
+        bodyMatches={model.bodyMatches}
         isConnected={model.isConnected}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
@@ -56,15 +60,17 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
       />
 
       <main className="detail-pane">
-        <DetailContent
-          client={model.client}
-          record={model.selectedRecord}
-          isConnected={model.isConnected}
-          totalItems={model.totalItems}
-          streamIsRetrying={model.streamIsRetrying}
-          uiState={model.uiState}
-          onRetryResponseBody={model.retryResponseBody}
-        />
+        <BodySearchContext.Provider value={model.searchText}>
+          <DetailContent
+            client={model.client}
+            record={model.selectedRecord}
+            isConnected={model.isConnected}
+            totalItems={model.totalItems}
+            streamIsRetrying={model.streamIsRetrying}
+            uiState={model.uiState}
+            onRetryResponseBody={model.retryResponseBody}
+          />
+        </BodySearchContext.Provider>
       </main>
     </div>
   );

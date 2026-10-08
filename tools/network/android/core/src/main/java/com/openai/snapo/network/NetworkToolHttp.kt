@@ -17,8 +17,10 @@ internal class NetworkToolHttp(
     private val snapshotProvider: suspend () -> List<CdpMessage> = { emptyList() },
     private val commandHandler: suspend (CdpMessage) -> CdpMessage? = { null },
     private val interception: NetworkInterception = NetworkInterception(),
+    private val bodySearch: suspend (BodySearchQuery) -> BodySearchReply = { BodySearchReply(emptyList()) },
 ) {
     private val streamSlots = Semaphore(16)
+    private val searchSlots = Semaphore(2)
     private val subscribers = ConcurrentHashMap.newKeySet<NetworkEventStream>()
     private val runners = ConcurrentHashMap<String, NetworkEventStream>()
 
@@ -44,6 +46,19 @@ internal class NetworkToolHttp(
         get("/network/protocol") { respondJson("""{"version":$NetworkProtocolVersion}""") }
         get("/network") {
             if (eventStreamRequested(request)) stream(null) else history()
+        }
+        post("/network/search") {
+            val query = try {
+                ProtocolJson.decodeFromJsonElement(BodySearchQuery.serializer(), request.json()).also { it.validate() }
+            } catch (error: IllegalArgumentException) {
+                throw ToolHttpException(400, "Invalid body search query", error)
+            }
+            if (!searchSlots.tryAcquire()) throw ToolHttpException(429, "Too many body searches")
+            try {
+                respondJson(ProtocolJson.encodeToString(BodySearchReply.serializer(), bodySearch(query)))
+            } finally {
+                searchSlots.release()
+            }
         }
         post("/interception") { stream(request.json()) }
         put("/interception/{runnerId}/routes") {

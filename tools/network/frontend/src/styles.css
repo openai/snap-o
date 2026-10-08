@@ -922,3 +922,35 @@ pre {
 .context-menu-item:disabled:hover {
   background: transparent;
 }
+
+.search-status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.payload-search-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.payload-search-controls button {
+  font: inherit;
+}
+
+.paged-payload mark {
+  background: var(--search-highlight);
+  color: inherit;
+}
+
+.record-snippet {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
