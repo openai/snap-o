@@ -66,6 +66,7 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
       return nil
     }
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
+    let activityRevision = endpoint?.health?.revision
     let task = Task {
       defer { tasks[identifier] = nil }
       do {
@@ -79,9 +80,11 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
           }
           try await operation.run(onResponse: { response in
             try Task.checkCancellation()
+            endpoint.health?.recordActivity()
             try urlSchemeTask.didReceive(Self.response(response, url: url))
           }, onData: { data in
             try Task.checkCancellation()
+            if !data.isEmpty { endpoint.health?.recordActivity() }
             urlSchemeTask.didReceive(data)
           })
         } else {
@@ -94,6 +97,9 @@ final class ToolSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionTaskDeleg
         try Task.checkCancellation()
         urlSchemeTask.didFinish()
       } catch {
+        if api, !Task.isCancelled, let activityRevision {
+          endpoint?.health?.requestFailed(since: activityRevision)
+        }
         if !Task.isCancelled { urlSchemeTask.didFailWithError(error) }
       }
     }

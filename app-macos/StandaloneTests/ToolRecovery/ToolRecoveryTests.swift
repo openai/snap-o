@@ -299,8 +299,7 @@ struct ToolRecoveryTests {
     await clock.advance(by: .milliseconds(2999))
     let healthyAttempts = adb.connectionAttempts(to: "healthy")
     try await refresh(service, using: adb, devices: ["frozen", "healthy"])
-    // Wait for this refresh to reach the transport before checking the blocked sockets.
-    try await eventually { adb.connectionAttempts(to: "healthy") == healthyAttempts + 2 }
+    precondition(adb.connectionAttempts(to: "healthy") == healthyAttempts, "Recent health evidence suppresses redundant probes")
     precondition(adb.connectionAttempts(to: "frozen") == 2, "Cooldown must suppress new connections")
     await clock.advance(by: .milliseconds(1))
     try await refresh(service, using: adb, devices: ["frozen", "healthy"])
@@ -308,6 +307,7 @@ struct ToolRecoveryTests {
     _ = try await service.endpoint(for: network)
     let metadata = published.map(\.metadata)
     adb.disconnectNetwork()
+    await clock.advance(by: .seconds(45))
     try await refresh(service, using: adb, devices: ["frozen", "healthy"])
     try await eventually { published.first?.isConnected == false }
     precondition(published.dropFirst().allSatisfy(\.isConnected), "A failed socket must not disconnect its siblings")
