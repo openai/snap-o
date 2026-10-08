@@ -84,8 +84,7 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ### Open a device from a link
 
-Use `snapo://open` without parameters to show the current device’s Live Preview.
-To select a connected device, include its ADB serial:
+Use `snapo://open` without parameters to show the current device’s Live Preview. To select a connected device, include its ADB serial:
 
 ```bash
 open 'snapo://open?serial=emulator-5554'
@@ -98,6 +97,25 @@ open 'snapo://open?avd=Pixel_8&start=true'
 ```
 
 Use either `serial` or `avd`, and percent-encode spaces or other special characters in its value.
+
+<details markdown="1" id="remote-adb">
+<summary>ADB servers</summary>
+
+If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open **Device → ADB Servers…** and click **Add Server**.
+
+Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (`127.0.0.1`, port `5037` by default).
+
+To open a device on an already-connected SSH server, use its saved SSH destination:
+
+```bash
+open 'snapo://open?serial=emulator-5554&server=devbox&port=2222&adb_port=5038'
+```
+
+`server` matches the saved destination exactly, including an SSH config alias or `user@host`. `port` matches the saved SSH port override; omit it when no override is configured. If omitted, the destination and ADB port must identify one enabled server. `adb_port` defaults to `5037`.
+
+Omit `server` or use `server=localhost` for the local ADB server. These connection parameters apply only to `serial` links; `port` applies only to SSH servers. The server must already be enabled in Snap-O. Links wait for its normal startup discovery; they cannot add or enable a server or initiate an SSH connection.
+
+</details>
 
 ## Take a screenshot
 
@@ -151,12 +169,6 @@ Snap-O removes the oldest captures when either limit is reached. All devices in 
 To remove a group, open it and choose **Delete Capture**. **Clear History…** removes all entries that are no longer recording or in use. Close other viewers first if a capture cannot be deleted. Snap-O asks for confirmation before applying storage settings that remove older captures.
 
 </details>
-
-## Remote ADB servers {#remote-adb}
-
-If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open **Device → ADB Servers…** and click **Add Server**.
-
-Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (`127.0.0.1`, port `5037` by default).
 
 ## Keyboard shortcuts
 

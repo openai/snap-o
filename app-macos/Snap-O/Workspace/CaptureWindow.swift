@@ -137,7 +137,7 @@ struct CaptureWindow: View {
   private var captureDeviceTitle: String? {
     if let request = controller.deviceOpenRequest {
       switch request {
-      case .serial(let serial):
+      case .serial(let serial, _):
         return deviceTitle(for: serial)
       case .device(let id):
         return deviceTitle(for: id.storedValue)

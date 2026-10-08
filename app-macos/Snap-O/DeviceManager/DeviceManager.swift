@@ -51,6 +51,8 @@ final class DeviceManager {
     )
   }
 
+  @ObservationIgnored var linkServers: () -> [ADBServerID: DeviceLinkConnection] = { [:] }
+
   private var remoteServerLabels: [ADBServerID: String]
   @ObservationIgnored private let deviceTracker: any DeviceTracking
   @ObservationIgnored private let adb: ADBService
@@ -84,7 +86,8 @@ final class DeviceManager {
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
     let resolver = DeviceOpenResolver {
       DeviceOpenSnapshot(
-        connectedSerials: Set(self.connectedDevices.map(\.id)),
+        connectedDeviceIDs: Set(self.connectedDevices.map(\.id)),
+        servers: self.linkServers(),
         emulators: self.entries.compactMap {
           guard case .emulator(let device) = $0 else { return nil }
           return device

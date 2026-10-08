@@ -5,7 +5,7 @@ import Testing
 struct DeviceOpenResolverTests {
   @Test func opensExactConnectedSerialWithoutSDK() async throws {
     let resolver = DeviceOpenResolver {
-      DeviceOpenSnapshot(connectedSerials: ["other-phone", "phone"], loadError: "SDK missing")
+      DeviceOpenSnapshot(connectedDeviceIDs: ["other-phone", "phone"], servers: [.local: connected(.local())], loadError: "SDK missing")
     } start: { _ in
       Issue.record("Opening a serial must not start an emulator")
     }
@@ -13,10 +13,87 @@ struct DeviceOpenResolverTests {
     #expect(serial == "phone")
   }
 
+  @Test func selectsExistingConnectionByDestinationAndPorts() async throws {
+    let first = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let second = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let third = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(
+        connectedDeviceIDs: ["phone", first.storedValue, second.storedValue, third.storedValue],
+        servers: [
+          .local: connected(.local()),
+          first.serverID: connected(.ssh(destination: "test-host", port: 2222, adbPort: 5038)),
+          second.serverID: connected(.ssh(destination: "test-host", port: 2223, adbPort: 5038)),
+          third.serverID: connected(.ssh(destination: "test-host", port: 2222, adbPort: 5037))
+        ]
+      )
+    }, start: { _ in Issue.record("A connection selector must not launch an emulator") }, wait: {
+      Issue.record("A connection selector must not wait for another connection")
+      throw CancellationError()
+    })
+    let url = try #require(URL(string: "snapo://open?serial=phone&server=test-host&port=2223&adb_port=5038"))
+    let link = try #require(DeviceOpenURL(url: url))
+    guard case .target(let request) = link else {
+      Issue.record("Expected a device target")
+      return
+    }
+    #expect(try await resolver.resolve(request) { _ in } == second.storedValue)
+    #expect(try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host"))) { _ in } == third.storedValue)
+    #expect(try await resolver.resolve(.serial("phone")) { _ in } == "phone")
+    await #expect(throws: DeviceOpenError.self) {
+      try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host", adbPort: 5038))) { _ in }
+    }
+  }
+
+  @Test(arguments: [
+    DeviceLinkServer.local(adbPort: 5038),
+    .ssh(destination: "unknown-host"),
+    .ssh(destination: "test-host", port: 2223),
+    .ssh(destination: "test-host", adbPort: 5038)
+  ])
+  func missingConnectionsFailWithoutWaiting(server: DeviceLinkServer) async {
+    let id = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(
+        connectedDeviceIDs: ["phone", id.storedValue],
+        servers: [.local: connected(.local()), id.serverID: connected(.ssh(destination: "test-host", port: 2222))]
+      )
+    }, start: { _ in Issue.record("A missing server must not launch an emulator") }, wait: {
+      Issue.record("A missing server must not wait for a new connection")
+      throw CancellationError()
+    })
+    await #expect(throws: DeviceOpenError.self) {
+      try await resolver.resolve(.serial("phone", server: server)) { _ in }
+    }
+  }
+
+  @Test func disconnectedServerDoesNotUseStaleDeviceInventory() async {
+    let id = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(connectedDeviceIDs: [id.storedValue])
+    }, start: { _ in Issue.record("A disconnected server must not launch an emulator") })
+    await #expect(throws: DeviceOpenError.self) {
+      try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host"))) { _ in }
+    }
+  }
+
+  @Test func unqualifiedLinkDoesNotFallBackToRemoteServer() async {
+    let id = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(
+        connectedDeviceIDs: [id.storedValue],
+        servers: [id.serverID: connected(.ssh(destination: "test-host"))]
+      )
+    }, start: { _ in Issue.record("A serial link must not launch an emulator") })
+    await #expect(throws: DeviceOpenError.self) {
+      try await resolver.resolve(.serial("phone")) { _ in }
+    }
+  }
+
   @Test func reusesRunningEmulator() async throws {
     let resolver = DeviceOpenResolver {
       DeviceOpenSnapshot(
-        connectedSerials: ["emulator-5556"],
+        connectedDeviceIDs: ["emulator-5556"],
         emulators: [emulator(state: .running, serial: "emulator-5556")],
         hasLoaded: true
       )
@@ -47,7 +124,7 @@ struct DeviceOpenResolverTests {
         case 2:
           state.actions = [:]
           state.emulators = [emulator(state: .starting, serial: "emulator-5558")]
-          state.connectedSerials = ["emulator-5558"]
+          state.connectedDeviceIDs = ["emulator-5558"]
         default:
           state.emulators = [emulator(state: .running, serial: "emulator-5558")]
         }
@@ -68,7 +145,7 @@ struct DeviceOpenResolverTests {
       start: { _ in Issue.record("A booting emulator must not be started again") },
       wait: {
         state.emulators = [emulator(state: .starting, serial: "emulator-5554")]
-        state.connectedSerials = ["emulator-5554"]
+        state.connectedDeviceIDs = ["emulator-5554"]
       }
     )
     let serial = try await resolver.resolve(.avd("Pixel", start: false)) { _ in }
@@ -80,7 +157,7 @@ struct DeviceOpenResolverTests {
     let resolver = DeviceOpenResolver(
       snapshot: {
         DeviceOpenSnapshot(
-          connectedSerials: ["emulator-5554"],
+          connectedDeviceIDs: ["emulator-5554"],
           emulators: [emulator(state: state, serial: "emulator-5554")],
           hasLoaded: true
         )
@@ -97,7 +174,7 @@ struct DeviceOpenResolverTests {
       let resolver = DeviceOpenResolver(
         snapshot: {
           DeviceOpenSnapshot(
-            connectedSerials: ["emulator-5554"],
+            connectedDeviceIDs: ["emulator-5554"],
             emulators: [emulator(state: state, serial: "emulator-5554")],
             hasLoaded: true,
             actions: action.map { ["/synthetic/Pixel.avd": $0] } ?? [:]
@@ -119,7 +196,7 @@ struct DeviceOpenResolverTests {
       start: { _ in Issue.record("Unexpected launch") },
       wait: {
         state = DeviceOpenSnapshot(
-          connectedSerials: ["emulator-5554"],
+          connectedDeviceIDs: ["emulator-5554"],
           emulators: [emulator(state: .running, serial: "emulator-5554")],
           hasLoaded: true
         )
@@ -137,7 +214,7 @@ struct DeviceOpenResolverTests {
       wait: {
         state.isRefreshing = false
         state.emulators = [emulator(state: .running, serial: "emulator-5556")]
-        state.connectedSerials = ["emulator-5556"]
+        state.connectedDeviceIDs = ["emulator-5556"]
       }
     )
     let serial = try await resolver.resolve(.avd("Pixel", start: true)) { _ in }
@@ -167,7 +244,7 @@ struct DeviceOpenResolverTests {
   @Test func rejectsMissingAndAmbiguousAVDs() async {
     for devices in [[], [emulator(), emulator()]] {
       let resolver = DeviceOpenResolver {
-        DeviceOpenSnapshot(connectedSerials: ["other-phone"], emulators: devices, hasLoaded: true)
+        DeviceOpenSnapshot(connectedDeviceIDs: ["other-phone"], emulators: devices, hasLoaded: true)
       } start: { _ in Issue.record("Invalid targets must not launch") }
       await #expect(throws: DeviceOpenError.self) {
         try await resolver.resolve(.avd("Pixel", start: true)) { _ in }
@@ -184,9 +261,9 @@ struct DeviceOpenResolverTests {
     }
   }
 
-  @Test func unavailableTargetTimesOutWithoutSelectingAnother() async {
+  @Test func unavailableTargetFailsWithoutSelectingAnother() async {
     let resolver = DeviceOpenResolver(
-      snapshot: { DeviceOpenSnapshot(connectedSerials: ["other-phone"]) },
+      snapshot: { DeviceOpenSnapshot(connectedDeviceIDs: ["other-phone"], servers: [.local: connected(.local())]) },
       start: { _ in Issue.record("Unexpected launch") },
       timeout: .zero
     )
@@ -198,7 +275,7 @@ struct DeviceOpenResolverTests {
   @Test func cancellationStopsWaiting() async {
     let suspension = TestSuspension()
     let resolver = DeviceOpenResolver(
-      snapshot: { DeviceOpenSnapshot() },
+      snapshot: { DeviceOpenSnapshot(servers: [.local: DeviceLinkConnection(server: .local())]) },
       start: { _ in Issue.record("Unexpected launch") },
       wait: { try await suspension.wait() }
     )
@@ -207,6 +284,142 @@ struct DeviceOpenResolverTests {
     task.cancel()
     suspension.resume()
     await #expect(throws: CancellationError.self) { try await task.value }
+  }
+
+  @Test(arguments: [DeviceLinkServer.local(), .ssh(destination: "test-host", port: 2222)])
+  func waitsForNormalStartupDiscovery(server: DeviceLinkServer) async throws {
+    let id = DeviceID(serverID: server == .local() ? .local : .remote(UUID()), serial: "phone")
+    var state = DeviceOpenSnapshot(servers: [id.serverID: DeviceLinkConnection(server: server)])
+    var waits = 0
+    let resolver = DeviceOpenResolver(snapshot: { state }, start: { _ in
+      Issue.record("Startup discovery must not launch an emulator")
+    }, wait: {
+      waits += 1
+      switch waits {
+      case 1: state.servers[id.serverID]?.state = .online
+      case 2: state.servers[id.serverID]?.connectedSerials = ["phone"]
+      case 3: state.connectedDeviceIDs = [id.storedValue]
+      default: Issue.record("Discovery should have finished")
+        throw CancellationError()
+      }
+    })
+    #expect(try await resolver.resolve(.serial("phone", server: server)) { _ in } == id.storedValue)
+    #expect(waits == 3)
+  }
+
+  @Test func startupStillUsesTheExistingTimeout() async {
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(servers: [.local: DeviceLinkConnection(server: .local())])
+    }, start: { _ in Issue.record("Unexpected launch") }, wait: {
+      Issue.record("An expired deadline must not sleep")
+    }, timeout: .zero)
+    await expectFailure("“phone” did not become available. Check Device Manager and try again.") {
+      try await resolver.resolve(.serial("phone")) { _ in }
+    }
+  }
+
+  @Test func serverErrorsAreDistinct() async {
+    let cases: [(DeviceLinkConnection?, String)] = [
+      (nil, "No configured ADB server matches this link."),
+      (DeviceLinkConnection(server: .local(), isEnabled: false), "The matching ADB server is disabled."),
+      (
+        DeviceLinkConnection(server: .local(), state: .unavailable("Connection refused")),
+        "ADB server connection failed: Connection refused"
+      ),
+      (connected(.local(), serials: []), "“phone” is not connected to the selected ADB server.")
+    ]
+    for (connection, expected) in cases {
+      let resolver = DeviceOpenResolver(snapshot: {
+        DeviceOpenSnapshot(servers: connection.map { [.local: $0] } ?? [:])
+      }, start: { _ in Issue.record("Unexpected launch") }, wait: {
+        Issue.record("A terminal failure must not wait")
+        throw CancellationError()
+      })
+      await expectFailure(expected) { try await resolver.resolve(.serial("phone")) { _ in } }
+    }
+  }
+
+  @Test func ambiguousStartupDoesNotPreferWhicheverServerLoadsFirst() async {
+    let pendingID = ADBServerID.remote(UUID())
+    let readyID = ADBServerID.remote(UUID())
+    let readyDevice = DeviceID(serverID: readyID, serial: "phone")
+    let resolver = DeviceOpenResolver(snapshot: {
+      DeviceOpenSnapshot(connectedDeviceIDs: [readyDevice.storedValue], servers: [
+        pendingID: DeviceLinkConnection(server: .ssh(destination: "test-host", port: 2222)),
+        readyID: connected(.ssh(destination: "test-host", port: 2223))
+      ])
+    }, start: { _ in Issue.record("Unexpected launch") })
+    await expectFailure("More than one enabled ADB server matches this link. Specify its SSH port.") {
+      try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host"))) { _ in }
+    }
+  }
+
+  @Test func waitingRequestKeepsItsServerWhenAnotherMatchAppears() async throws {
+    let first = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let second = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    var state = DeviceOpenSnapshot(servers: [first.serverID: DeviceLinkConnection(server: .ssh(destination: "test-host", port: 2222))])
+    var waits = 0
+    let resolver = DeviceOpenResolver(snapshot: { state }, start: { _ in Issue.record("Unexpected launch") }, wait: {
+      waits += 1
+      if waits == 1 {
+        state.servers[second.serverID] = connected(.ssh(destination: "test-host", port: 2223))
+        state.connectedDeviceIDs = [second.storedValue]
+      } else {
+        state.servers[first.serverID] = connected(.ssh(destination: "test-host", port: 2222))
+        state.connectedDeviceIDs.insert(first.storedValue)
+      }
+    })
+    #expect(try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host"))) { _ in } == first.storedValue)
+    #expect(waits == 2)
+  }
+
+  @Test(arguments: ["removed", "disabled", "changed", "failed", "disconnected"])
+  func waitingRequestDoesNotSwitchServersAfterConnectionLoss(change: String) async {
+    let first = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    let second = DeviceID(serverID: .remote(UUID()), serial: "phone")
+    var state = DeviceOpenSnapshot(servers: [first.serverID: DeviceLinkConnection(server: .ssh(destination: "test-host"), state: .online)])
+    var waits = 0
+    let resolver = DeviceOpenResolver(snapshot: { state }, start: { _ in Issue.record("Unexpected launch") }, wait: {
+      waits += 1
+      guard waits == 1 else { Issue.record("A lost connection must not keep waiting")
+        throw CancellationError()
+      }
+      state.servers[second.serverID] = connected(.ssh(destination: "test-host"))
+      state.connectedDeviceIDs = [second.storedValue]
+      switch change {
+      case "removed": state.servers[first.serverID] = nil
+      case "disabled": state.servers[first.serverID]?.isEnabled = false
+      case "changed": state.servers[first.serverID]?.server = .ssh(destination: "other-host")
+      case "failed": state.servers[first.serverID]?.state = .unavailable("Connection lost")
+      default: state.servers[first.serverID]?.state = .connecting
+      }
+    })
+    await #expect(throws: DeviceOpenError.self) {
+      try await resolver.resolve(.serial("phone", server: .ssh(destination: "test-host"))) { _ in }
+    }
+    #expect(waits == 1)
+  }
+
+  @Test func replacementDoesNotCompleteTheCancelledWait() async throws {
+    let gate = TestSuspension()
+    var state = DeviceOpenSnapshot(servers: [.local: DeviceLinkConnection(server: .local())])
+    let resolver = DeviceOpenResolver(snapshot: { state }, start: { _ in Issue.record("Unexpected launch") }, wait: {
+      try await gate.wait()
+    })
+    let first = Task { try await resolver.resolve(.serial("first")) { _ in } }
+    await gate.waitUntilStarted()
+    first.cancel()
+    state = DeviceOpenSnapshot(
+      connectedDeviceIDs: ["first", "second"],
+      servers: [.local: connected(.local(), serials: ["first", "second"])]
+    )
+    #expect(try await resolver.resolve(.serial("second")) { _ in } == "second")
+    gate.resume()
+    await #expect(throws: CancellationError.self) { try await first.value }
+  }
+
+  private func connected(_ server: DeviceLinkServer, serials: Set<String> = ["phone"]) -> DeviceLinkConnection {
+    DeviceLinkConnection(server: server, state: .online, connectedSerials: serials)
   }
 
   private func expectFailure(_ message: String, operation: () async throws -> String) async {

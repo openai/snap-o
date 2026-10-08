@@ -20,7 +20,7 @@ struct SnapOCommandCoordinatorTests {
     var windowsOpened = 0
     coordinator.openWorkspace = { windowsOpened += 1 }
     for name in ["First", "First", "Second"] {
-      let url = try #require(DeviceOpenRequest.avd(name, start: true).url)
+      let url = try #require(URL(string: "snapo://open?avd=\(name)&start=true"))
       #expect(coordinator.handle(url: url))
     }
     #expect(windowsOpened == 1)
@@ -36,7 +36,7 @@ struct SnapOCommandCoordinatorTests {
     let coordinator = SnapOCommandCoordinator()
     let urlRequest = DeviceOpenRequest.avd("Pixel", start: true)
     let deviceManagerRequest = DeviceOpenRequest.serial("phone")
-    let url = try #require(urlRequest.url)
+    let url = try #require(URL(string: "snapo://open?avd=Pixel&start=true"))
     if urlFirst {
       #expect(coordinator.handle(url: url))
       coordinator.openDevice(deviceManagerRequest)
@@ -61,7 +61,7 @@ struct SnapOCommandCoordinatorTests {
     if appIsInactive { coordinator.deactivate(current) }
 
     for serial in ["phone", "phone", "second-phone"] {
-      let url = try #require(DeviceOpenRequest.serial(serial).url)
+      let url = try #require(URL(string: "snapo://open?serial=\(serial)"))
       #expect(coordinator.handle(url: url))
     }
 
@@ -76,7 +76,7 @@ struct SnapOCommandCoordinatorTests {
     let target = CommandTarget()
     coordinator.activate(target)
     coordinator.deactivate(target)
-    let url = try #require(DeviceOpenRequest.serial("phone").url)
+    let url = try #require(URL(string: "snapo://open?serial=phone"))
     #expect(coordinator.handle(url: url))
     #expect(target.requests == [.serial("phone")])
     coordinator.openDevice(.serial("second-phone"))
@@ -86,7 +86,7 @@ struct SnapOCommandCoordinatorTests {
   @Test
   func coldLaunchRetainsRequest() throws {
     let coordinator = SnapOCommandCoordinator()
-    let url = try #require(DeviceOpenRequest.serial("phone").url)
+    let url = try #require(URL(string: "snapo://open?serial=phone"))
     #expect(coordinator.handle(url: url))
     let target = CommandTarget()
     coordinator.activate(target)

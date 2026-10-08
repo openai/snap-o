@@ -168,6 +168,18 @@ name; a shared build directory can contain both files and stale files from older
 The full native CI run remains the submission check. Report actual results and deferred
 coverage; a unit pass does not verify app integration or visual behavior.
 
+### Device link checks
+
+After changing URL handling or workspace scene declarations, verify routing in a local test build with a connected device or installed AVD. This check opens app windows and requires the same approval as other native UI checks.
+
+1. Open a workspace and note the workspace count in the Window menu.
+2. Open a device link using `open -a /path/to/Snap-O.app` and the URL.
+3. Confirm the existing workspace switches to that device’s Live Preview and the workspace count stays unchanged.
+4. Repeat with Device Manager focused and with the workspace minimized. Confirm the same workspace returns.
+5. Quit the test app, then open the URL again. Confirm it creates one workspace and shows the requested device.
+
+Coordinator unit tests use mock targets, so they do not cover SwiftUI scene creation. See the [device link parameters](https://openai.github.io/snap-o/screen-capture.html#open-a-device-from-a-link) for URL examples.
+
 ### Standalone checks
 
 Use these existing console-only suites when their coverage matches the change.

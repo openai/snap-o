@@ -401,19 +401,108 @@ struct RemoteADBTests {
 
   @MainActor
   @Test
-  func serialLinksRejectAmbiguityAndExplicitLinksResolve() async throws {
+  func localLinksAndInternalRemoteRequestsRemainDistinct() async throws {
     let local = DeviceID(serverID: .local, serial: "emulator-5554")
     let remote = DeviceID(serverID: serverID, serial: local.serial)
     let resolver = DeviceOpenResolver(snapshot: {
-      DeviceOpenSnapshot(connectedSerials: [local.storedValue, remote.storedValue])
+      DeviceOpenSnapshot(
+        connectedDeviceIDs: [local.storedValue, remote.storedValue],
+        servers: [.local: DeviceLinkConnection(server: .local(), state: .online, connectedSerials: [local.serial])]
+      )
     }, start: { _ in Issue.record("Resolving a remote device must not launch a local emulator") })
-    await #expect(throws: DeviceOpenError.self) { try await resolver.resolve(.serial(local.serial)) { _ in } }
-    let result = try await resolver.resolve(.device(remote)) { _ in }
-    #expect(result == remote.storedValue)
-    let request = DeviceOpenRequest.device(remote)
-    #expect(request.url.flatMap(DeviceOpenRequest.init(url:)) == request)
-    let localRequest = DeviceOpenRequest.device(local)
-    #expect(localRequest.url.flatMap(DeviceOpenRequest.init(url:)) == localRequest)
+    #expect(try await resolver.resolve(.serial(local.serial)) { _ in } == local.storedValue)
+    #expect(try await resolver.resolve(.device(remote)) { _ in } == remote.storedValue)
+  }
+
+  @MainActor
+  @Test
+  func linkSelectorsExposeExistingDiscoveryWithoutChangingConnections() async throws {
+    let defaultsName = "snapo-link-server-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: defaultsName))
+    defer { defaults.removePersistentDomain(forName: defaultsName) }
+    let store = ADBServerStore(defaults: defaults)
+    let active = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "test-host", port: 2222, adbPort: 5038)))
+    let disabled = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "disabled-host")), isEnabled: false)
+    let offline = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "offline-host")))
+    let profiles = [active, disabled, offline]
+    try store.save(profiles)
+    let localTracker = Tracker()
+    let activeTracker = Tracker()
+    let disabledTracker = Tracker()
+    let offlineTracker = Tracker()
+    let service = ADBService(trackers: [
+      (.local, localTracker), (.remote(active.id), activeTracker),
+      (.remote(disabled.id), disabledTracker), (.remote(offline.id), offlineTracker)
+    ])
+    let model = ADBServers(service: service, store: store, profiles: profiles, makeTracker: { _ in
+      Issue.record("Reading link selectors must not create a tracker")
+      return Tracker()
+    }, updateLabels: { _ in Issue.record("Reading link selectors must not update profiles") })
+    #expect(model.deviceLinkServers[.remote(active.id)]?.state == .connecting)
+    #expect(model.deviceLinkServers[.remote(active.id)]?.connectedSerials == nil)
+    #expect(model.deviceLinkServers[.remote(disabled.id)]?.isEnabled == false)
+    model.start()
+    await service.startTracking()
+    await localTracker.publishState(.online)
+    await activeTracker.publishState(.online)
+    await disabledTracker.publishState(.online)
+    await offlineTracker.publishState(.unavailable("Disconnected"))
+    try await waitForState {
+      model.snapshots.count(where: { $0.state == .online }) == 3
+        && model.deviceLinkServers[.remote(offline.id)]?.state == .unavailable("Disconnected")
+    }
+    #expect(model.deviceLinkServers[.local]?.state == .online)
+    #expect(model.deviceLinkServers[.remote(active.id)]?.server == .ssh(destination: "test-host", port: 2222, adbPort: 5038))
+    #expect(model.deviceLinkServers[.remote(active.id)]?.connectedSerials == nil)
+    #expect(model.deviceLinkServers[.remote(disabled.id)]?.isEnabled == false)
+    #expect(model.deviceLinkServers[.remote(offline.id)]?.state == .unavailable("Disconnected"))
+    await activeTracker.publish([])
+    try await waitForState { model.deviceLinkServers[.remote(active.id)]?.connectedSerials != nil }
+    #expect(model.deviceLinkServers[.remote(active.id)]?.connectedSerials == [])
+    #expect(try store.load() == profiles)
+    await activeTracker.publishState(.connecting)
+    try await waitForState { model.deviceLinkServers[.remote(active.id)]?.state == .connecting }
+    #expect(model.deviceLinkServers.count == 4)
+    model.beginShutdown()
+    #expect(model.deviceLinkServers.isEmpty)
+    await model.stop()
+    await service.stopTracking()
+  }
+
+  @MainActor
+  @Test
+  func editingConnectionDoesNotRelabelTheOldLiveServer() async throws {
+    let defaultsName = "snapo-link-edit-tests-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: defaultsName))
+    defer { defaults.removePersistentDomain(forName: defaultsName) }
+    let profile = RemoteADBServer(id: UUID(), connection: .ssh(SSHConfiguration(destination: "old-host")))
+    let cleanup = TestSuspension()
+    let oldTracker = Tracker(stopSuspension: cleanup)
+    let newTracker = Tracker()
+    let service = ADBService(trackers: [(.remote(profile.id), oldTracker)])
+    let model = ADBServers(
+      service: service, store: ADBServerStore(defaults: defaults), profiles: [profile],
+      makeTracker: { _ in newTracker }, updateLabels: { _ in }
+    )
+    model.start()
+    await service.startTracking()
+    await oldTracker.publishState(.online)
+    try await waitForState { model.deviceLinkServers[.remote(profile.id)]?.state == .online }
+    var edited = profile
+    edited.connection = .ssh(SSHConfiguration(destination: "new-host"))
+    let update = Task { try await model.save(edited) }
+    await cleanup.waitUntilStarted()
+    #expect(model.profiles == [edited])
+    #expect(model.deviceLinkServers[.remote(profile.id)]?.state == .unavailable("The server connection is being updated."))
+    cleanup.resume()
+    try await update.value
+    try await waitForState { model.snapshots.first?.state == .connecting }
+    #expect(model.deviceLinkServers[.remote(profile.id)]?.state == .connecting)
+    await newTracker.publishState(.online)
+    try await waitForState { model.deviceLinkServers[.remote(profile.id)]?.state == .online }
+    #expect(model.deviceLinkServers[.remote(profile.id)]?.server == .ssh(destination: "new-host"))
+    await model.stop()
+    await service.stopTracking()
   }
 
   @Test
@@ -514,6 +603,10 @@ struct RemoteADBTests {
 
     func publish(_ devices: [Device]) {
       connected.continuation.yield(devices)
+    }
+
+    func publishState(_ value: ADBServerState) {
+      state.continuation.yield(value)
     }
 
     func publishReady(_ devices: [Device]) {

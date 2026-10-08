@@ -120,9 +120,7 @@ local TCP port exposes the remote ADB server.
 It reconnects after failures and closes its forward when Snap-O quits. Existing
 SSH sessions and manually created forwards are unaffected.
 
-Device selection and tool references distinguish devices from different servers, even with identical
-serials. Device links may specify `server=local` or the configured remote server's
-UUID alongside `serial`. Serial-only links require an unambiguous match.
+Device selection and tool references distinguish devices from different servers, even with identical serials. Device links select existing connections by SSH destination, optional SSH port, and ADB port. See the [device link parameters](https://openai.github.io/snap-o/screen-capture.html#remote-adb).
 
 ## Making Changes
 

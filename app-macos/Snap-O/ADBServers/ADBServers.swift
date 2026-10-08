@@ -9,6 +9,35 @@ final class ADBServers {
     Set([.local] + profiles.map { .remote($0.id) })
   }
 
+  var deviceLinkServers: [ADBServerID: DeviceLinkConnection] {
+    guard !stopped else { return [:] }
+    var connections: [ADBServerID: DeviceLinkConnection] = [
+      .local: linkConnection(id: .local, server: .local())
+    ]
+    for profile in profiles {
+      switch profile.connection {
+      case .ssh(let configuration):
+        let id = ADBServerID.remote(profile.id)
+        connections[id] = linkConnection(
+          id: id,
+          server: .ssh(destination: configuration.destination, port: configuration.port, adbPort: configuration.adbPort),
+          isEnabled: profile.isEnabled
+        )
+      }
+    }
+    return connections
+  }
+
+  private func linkConnection(id: ADBServerID, server: DeviceLinkServer, isEnabled: Bool = true) -> DeviceLinkConnection {
+    let snapshot = snapshots.first { $0.id == id }
+    let isUpdating = updatingServerID.map { id == .remote($0) } ?? false
+    return DeviceLinkConnection(
+      server: server, isEnabled: isEnabled,
+      state: isUpdating ? .unavailable("The server connection is being updated.") : snapshot?.state ?? .connecting,
+      connectedSerials: snapshot?.inventory.connected.map { Set($0.map(\.serial)) }
+    )
+  }
+
   private(set) var snapshots: [ADBServerSnapshot] = []
   private(set) var updatingServerID: UUID?
   var isUpdating: Bool {
