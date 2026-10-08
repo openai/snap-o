@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -42,9 +43,20 @@ fun <T : Any> tweak(
     if (!TweaksRuntimePolicy.isAllowed) {
         return remember(name) {
             object : MutableState<T> {
+                private val revision = mutableIntStateOf(0)
+
                 override var value: T
-                    get() = latestSource.value.value
-                    set(value) { latestSource.value.value = value }
+                    get() {
+                        revision.intValue
+                        return latestSource.value.value
+                    }
+                    set(value) {
+                        val source = latestSource.value
+                        val previous = source.value
+                        source.value = value
+                        // The source may not read Compose state, so invalidate changed reads explicitly.
+                        if (source.value != previous) revision.intValue++
+                    }
 
                 override fun component1(): T = value
                 override fun component2(): (T) -> Unit = { value = it }

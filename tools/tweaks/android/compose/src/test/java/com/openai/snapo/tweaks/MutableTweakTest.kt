@@ -65,5 +65,25 @@ class MutableTweakTest {
         }
     }
 
+    @Test
+    fun `disabled runtime source writes recompose`() {
+        TweaksRuntimePolicy.configure(isDebuggable = false, allowRelease = false)
+        var appValue = false
+        val source = testTweakSource(read = { appValue }, onValueChange = { appValue = it })
+        lateinit var state: MutableState<Boolean>
+        var rendered = false
+        compose.setContent {
+            state = tweak(source, "Enabled")
+            rendered = state.value
+        }
+
+        compose.runOnIdle { state.value = true }
+        compose.runOnIdle {
+            assertEquals(true, appValue)
+            assertEquals(true, rendered)
+            assertEquals(0, TweakRegistry.snapshot().size)
+        }
+    }
+
     private enum class Mode { Compact, Expanded }
 }

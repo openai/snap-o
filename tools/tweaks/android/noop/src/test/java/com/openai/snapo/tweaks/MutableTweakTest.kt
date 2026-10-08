@@ -1,7 +1,6 @@
 package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -33,12 +32,12 @@ class MutableTweakTest {
     }
 
     @Test
-    fun `source edits reach the app without starting observation`() {
-        val appValue = mutableStateOf(false)
+    fun `source edits recompose without starting observation`() {
+        var appValue = false
         val source = object : TweakSource<Boolean> {
             override var value: Boolean
-                get() = appValue.value
-                set(value) { appValue.value = value }
+                get() = appValue
+                set(value) { appValue = value }
 
             override val isModified: Boolean
                 get() = error("No-op must not inspect modification status")
@@ -47,12 +46,17 @@ class MutableTweakTest {
             override fun observe() = error("No-op must not observe the source")
         }
         lateinit var state: MutableState<Boolean>
-        compose.setContent { state = tweak(source, "Enabled") }
+        var rendered = false
+        compose.setContent {
+            state = tweak(source, "Enabled")
+            rendered = state.value
+        }
 
+        compose.runOnIdle { state.value = true }
         compose.runOnIdle {
-            state.value = true
-            assertEquals(true, appValue.value)
+            assertEquals(true, appValue)
             assertEquals(true, state.value)
+            assertEquals(true, rendered)
         }
     }
 }
