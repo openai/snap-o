@@ -63,7 +63,6 @@
         </div>
         <div class="section-body">
 <p class="prose">Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary Compose tweaks keep writable local state initialized from their defaults. App-owned Compose tweaks read and write their source without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.</p>
-<p class="prose">When upgrading from 13.x, rebuild any precompiled module that calls Compose <code>tweak(...)</code> functions. Their return type is now <code>MutableState&lt;T&gt;</code>.</p>
 <p class="prose">The overlay dependencies are optional. Add both only if you want an on-device floating panel. Their matching public APIs let the same app-root code compile in debug and release.</p>
 <div aria-label="Tweaks dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="tweaks-catalog-panel" aria-selected="true" class="dependency-format-tab" id="tweaks-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="tweaks-direct-panel" aria-selected="false" class="dependency-format-tab" id="tweaks-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="tweaks-catalog-tab" class="dependency-format-panel" id="tweaks-catalog-panel" role="tabpanel">
