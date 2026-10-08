@@ -38,6 +38,8 @@ dependencyResolutionManagement {
 
 Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary Compose tweaks keep writable local state initialized from their defaults. App-owned Compose tweaks read and write their source without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.
 
+When upgrading from 13.x, rebuild any precompiled module that calls Compose `tweak(...)` functions. Their return type is now `MutableState<T>`.
+
 The overlay dependencies are optional. Add both only if you want an on-device floating panel. Their matching public APIs let the same app-root code compile in debug and release.
 
 <div class="dependency-tabs" data-label="Tweaks dependency format" markdown="1">
@@ -46,7 +48,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -74,12 +76,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-noop:14.1.1")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:14.1.1")
 }
 ```
 
@@ -89,7 +91,7 @@ dependencies {
 
 Add the Tweaks dependencies to each Android module that calls the `tweak(...)` function. In a multi-module app, a shared Gradle convention plugin can apply the debug and release pair consistently. Only the module that installs the optional overlay needs its additional overlay dependencies.
 
-If a real Tweaks artifact is included in a nondebuggable app, ordinary tweaks still return their defaults and app-owned tweaks return their source’s current value. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.
+If a real Tweaks artifact is included in a nondebuggable app, its Compose functions behave like the no-op implementation: ordinary tweaks keep writable local state, and app-owned tweaks read and write their source. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.
 {.notice}
 
 <details markdown="1">
@@ -117,10 +119,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-core:14.1.1")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:14.1.1")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:13.1.0")
+    implementation("com.openai.snapo:tweaks-views:14.1.1")
 }
 ```
 
@@ -661,6 +663,8 @@ fun ProfileScreen() {
     )
 }
 ```
+
+The panel and its color and curve pickers follow the system’s light or dark appearance, independently of the app’s theme.
 
 The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
 

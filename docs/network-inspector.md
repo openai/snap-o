@@ -53,7 +53,7 @@ Use the OkHttp interceptor for OkHttp directly or through Ktor's OkHttp engine.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -73,8 +73,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:13.1.0")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:13.1.0")
+    debugImplementation("com.openai.snapo:network-okhttp3:14.1.1")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:14.1.1")
 }
 ```
 
@@ -95,7 +95,7 @@ Use the HttpURLConnection interceptor on Android 7.0 (API 24) or newer.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -115,8 +115,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:13.1.0")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:13.1.0")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:14.1.1")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:14.1.1")
 }
 ```
 

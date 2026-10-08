@@ -40,7 +40,7 @@ Apply the Tool Packager Gradle Plugin in your tool’s Android library module. I
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
-snapo = "13.1.0"
+snapo = "14.1.1"
 
 [plugins]
 snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }
@@ -136,7 +136,7 @@ dependencies {
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {
-    implementation("com.openai.snapo:tool-core:13.1.0")
+    implementation("com.openai.snapo:tool-core:14.1.1")
 }
 ```
 
