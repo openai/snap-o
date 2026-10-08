@@ -104,9 +104,9 @@ xcodebuild -project Snap-O.xcodeproj -scheme Snap-OUnitTests -destination 'platf
 ### Testing remote ADB servers
 
 Use **Device → ADB Servers…** or **Manage Servers…** in Device Manager to add,
-edit, enable, disable, or delete SSH servers. Profiles are saved locally; enabled
-servers reconnect when Snap-O starts. Disabled servers stay disconnected after relaunch.
-The remote server must already run ADB on its loopback address and have a connected device. SSH uses the configured destination and
+edit, or remove SSH servers. Profiles are saved locally and always reconnect
+when Snap-O starts. The remote server must already run ADB on its loopback
+address and have a connected device. SSH uses the configured destination and
 optional port; the remote ADB port defaults to 5037.
 
 All builds start with no remote profiles. Add servers through the ADB Servers

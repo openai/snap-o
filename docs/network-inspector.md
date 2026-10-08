@@ -239,7 +239,7 @@ val client = HttpClient(OkHttp) {
 
 1. Install and launch the debug build on an authorized Android device or emulator.
 2. Open Snap-O on macOS and select the connected device.
-3. Open **View → Show Tool Pane**, use the toolbar tool button, or press **⌘⌥I**.
+3. Open **Tools → Show Tool Pane**, use the toolbar tool button, or press **⌘⌥I**.
 4. Find the app process in the picker and click its **Network** icon, then trigger a request in the Android app.
 5. Open the request to inspect headers, bodies, timing, SSE, or WebSocket messages.
 

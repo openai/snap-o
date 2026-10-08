@@ -112,7 +112,7 @@ During recording, the hover picker and `⌘[` / `⌘]` switch between devices in
 
 New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.
 
-For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Each recording keeps its own trim, even when several devices were recorded together. Saved and shared copies use that recording's crop and trim.
+For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Saved and shared copies use the selected crop and trim.
 
 Click the checkmark (**Save to History**) to keep all captures in the review with their crops and trims. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
 
