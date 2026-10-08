@@ -17,6 +17,11 @@ final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
   private var mayExit = true
   private var reads = 0
   private var writes = 0
+  private var acknowledgments = 0
+
+  var acknowledgmentCount: Int {
+    condition.withLock { acknowledgments }
+  }
 
   var isClosed: Bool {
     condition.withLock { closed }
@@ -69,8 +74,11 @@ final class ADBSocketConnection: ADBConnection, @unchecked Sendable {
   }
 
   func writeFully(_ bytes: Data) throws {
-    precondition(bytes == Data([0, 1, 0, 0, 0, 1]), "Keyframe requests must be shell-v2 stdin packets")
-    condition.withLock { writes += 1 }
+    precondition(bytes == Data([0, 1, 0, 0, 0, 1]) || bytes == Data([0, 1, 0, 0, 0, 3]), "Expected a shell-v2 video command")
+    condition.withLock {
+      if bytes.last == 1 { writes += 1 }
+      else { acknowledgments += 1 }
+    }
     testChanges.signal()
   }
 

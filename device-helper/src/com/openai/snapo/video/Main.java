@@ -30,6 +30,7 @@ public final class Main {
     private static final AtomicBoolean keyFrameRequested = new AtomicBoolean();
     private static final DataOutputStream output = new DataOutputStream(new FileOutputStream(FileDescriptor.out));
     private static Stage stage = Stage.SETUP;
+    private static FrameWindow frameWindow;
 
     private enum Stage {
         SETUP(1), DISPLAY(2), ENCODER(3), CAPABILITIES(4), CONFIGURATION(5),
@@ -47,11 +48,13 @@ public final class Main {
         try {
             output.writeInt(MAGIC);
             output.flush();
-            if (args.length < 1 || args.length > 2
-                    || (args.length == 2 && !args[1].equals("rgba-fallback"))) {
+            if (args.length < 1 || args.length > 3
+                    || (args.length >= 2 && !args[1].equals("rgba-fallback"))
+                    || (args.length == 3 && !args[2].equals("rgba-flow-control"))) {
                 throw new IllegalArgumentException("Invalid video arguments");
             }
-            boolean allowFallback = args.length == 2;
+            boolean allowFallback = args.length >= 2;
+            frameWindow = args.length == 3 ? new FrameWindow(2) : null;
             boolean rgba = false;
             File directory = new File(args[0]);
             if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
@@ -64,6 +67,7 @@ public final class Main {
                     while ((command = System.in.read()) != -1) {
                         if (command == 1) keyFrameRequested.set(true);
                         else if (command == 2) System.exit(0);
+                        else if (command == 3 && frameWindow != null) frameWindow.acknowledge();
                         else System.exit(1);
                     }
                     System.exit(0);
@@ -176,6 +180,11 @@ public final class Main {
                                 || field(current, "rotation") != rotation) return;
                         nextDisplayCheck = now + 250;
                     }
+                    // Leave old images in ImageReader until there is room to send its newest one.
+                    if (frameWindow != null && !frameWindow.hasCapacity()) {
+                        android.os.SystemClock.sleep(2);
+                        continue;
+                    }
                     boolean send = hasFrame && keyFrameRequested.getAndSet(false);
                     long timestamp = System.nanoTime() / 1000;
                     if (now >= nextFrame) {
@@ -197,7 +206,7 @@ public final class Main {
                             }
                         }
                     }
-                    if (send) {
+                    if (send && (frameWindow == null || frameWindow.tryAcquire())) {
                         deflater.reset();
                         deflater.setInput(pixels);
                         deflater.finish();

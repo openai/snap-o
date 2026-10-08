@@ -34,6 +34,7 @@ Install JDK 17, Android SDK platform 36, and build-tools 36.0.0. Then run:
 ```sh
 python3 device-helper/build.py
 python3 device-helper/build.py --check
+python3 device-helper/test.py
 ```
 
 The reproducible JAR is checked in and copied into the macOS app's Resources directory.
@@ -92,6 +93,9 @@ fall back to an experimental `ImageReader` path with lossless, zlib-compressed R
 Transient, recoverable, resource, display, and transport failures do not select the fallback.
 ImageReader bypasses the device video encoder and targets about 30 fps. The Mac converts these frames
 for preview and encodes H.264 when recording. This path currently supports frames up to 16 MiB.
+The Mac enables a two-frame acknowledgment window for RGBA. When transport slows down,
+the helper waits before capturing the latest image instead of queuing stale frames.
+Frame rate can fall on high-latency links; recordings retain the captured timestamps.
 Each consumer owns a subscription. Closing a preview does not stop its recording.
 The final subscription closes the ADB connection and ends the helper.
 Emulators retain gRPC preview and Android file recording. Bug-report recordings retain
