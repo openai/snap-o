@@ -77,10 +77,13 @@ final class DeviceManager {
   }
 
   func remoteServerLabel(for entry: DeviceManagerEntry) -> String? {
-    guard case .connected(let device) = entry,
-          case .remote = device.identity.serverID,
-          let server = remoteServerLabels[device.identity.serverID] else { return nil }
-    return server
+    guard case .connected(let device) = entry else { return nil }
+    return remoteServerLabel(for: device.identity)
+  }
+
+  func remoteServerLabel(for deviceID: DeviceID) -> String? {
+    guard case .remote = deviceID.serverID else { return nil }
+    return remoteServerLabels[deviceID.serverID]
   }
 
   func resolve(_ request: DeviceOpenRequest, progress: (String) -> Void) async throws -> String {
