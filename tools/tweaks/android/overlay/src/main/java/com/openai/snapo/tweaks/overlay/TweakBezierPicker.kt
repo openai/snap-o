@@ -60,8 +60,6 @@ import com.openai.snapo.tweaks.SnapOTweaks
 import kotlin.math.abs
 
 private val GraphInset = 24.dp
-private val CurveAccent = Color(0xFF5468FF)
-private val SecondHandleAccent = Color(0xFFD07818)
 private val CurvePresets = linkedMapOf(
     "Linear" to BezierCurve(1f / 3f, 1f / 3f, 2f / 3f, 2f / 3f),
     "Ease" to BezierCurve(0.25f, 0.1f, 0.25f, 1f),
@@ -157,6 +155,7 @@ private fun CurvePresetButtons(
     modifier: Modifier,
     onChange: (SnapOTweakValue.Curve) -> Unit,
 ) {
+    val colors = TweakOverlayColors.current
     val currentPreset = bezierPresetName(value.value)
     Column(
         modifier,
@@ -173,7 +172,7 @@ private fun CurvePresetButtons(
                 Box(
                     modifier = Modifier.size(32.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (isSelected) CurveAccent.copy(alpha = 0.15f) else Color.Transparent)
+                        .background(if (isSelected) colors.curve.copy(alpha = 0.15f) else Color.Transparent)
                         .clickable(role = Role.Button) { onChange(value.copy(value = curve)) }
                         .semantics {
                             contentDescription = "Apply $name curve"
@@ -229,11 +228,12 @@ private fun BezierGraph(
     onChange: (SnapOTweakValue.Curve) -> Unit,
     modifier: Modifier,
 ) {
+    val colors = TweakOverlayColors.current
     val shape = RoundedCornerShape(6.dp)
     Canvas(
         modifier.fillMaxWidth().aspectRatio(1f)
-            .background(TweakOverlayColors.field, shape)
-            .border(1.dp, TweakOverlayColors.outline, shape)
+            .background(colors.field, shape)
+            .border(1.dp, colors.outline, shape)
             .semantics {
                 contentDescription = "Bezier curve. Touch a handle to select it, then drag or edit its coordinates."
                 stateDescription = if (selected == 0) "Blue handle selected" else "Orange handle selected"
@@ -251,9 +251,9 @@ private fun BezierGraph(
             .bezierGestures(value, selected, onSelect, onChange),
     ) {
         inset(GraphInset.toPx()) {
-            drawLine(TweakOverlayColors.outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2))
-            drawLine(TweakOverlayColors.outline, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height))
-            drawBezier(value.value, handles = true, selected = selected)
+            drawLine(colors.outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2))
+            drawLine(colors.outline, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height))
+            drawBezier(value.value, colors, handles = true, selected = selected)
         }
     }
 }
@@ -317,40 +317,46 @@ internal fun TweakBezierField(tweak: SnapOTweakEntry, onClick: () -> Unit) {
 
 @Composable
 private fun BezierPreview(curve: BezierCurve, modifier: Modifier = Modifier) {
+    val colors = TweakOverlayColors.current
     val shape = RoundedCornerShape(4.dp)
     Canvas(
         modifier
             .clip(shape)
-            .border(1.dp, TweakOverlayColors.outline, shape)
-            .background(TweakOverlayColors.surface)
+            .border(1.dp, colors.outline, shape)
+            .background(colors.surface)
             .padding(3.dp),
-    ) { drawBezier(curve, handles = false) }
+    ) { drawBezier(curve, colors, handles = false) }
 }
 
-private fun DrawScope.drawBezier(curve: BezierCurve, handles: Boolean, selected: Int = 0) {
+private fun DrawScope.drawBezier(
+    curve: BezierCurve,
+    colors: TweakOverlayColors,
+    handles: Boolean,
+    selected: Int = 0,
+) {
     val viewport = BezierViewport
     val start = viewport.point(0f, 0f, size.width, size.height)
     val end = viewport.point(1f, 1f, size.width, size.height)
     val first = viewport.point(curve.x1, curve.y1, size.width, size.height)
     val second = viewport.point(curve.x2, curve.y2, size.width, size.height)
     if (handles) {
-        drawLine(CurveAccent.copy(alpha = 0.6f), start, first)
-        drawLine(SecondHandleAccent.copy(alpha = 0.6f), end, second)
+        drawLine(colors.curve.copy(alpha = 0.6f), start, first)
+        drawLine(colors.secondHandle.copy(alpha = 0.6f), end, second)
     }
     val path = Path().apply {
         moveTo(start.x, start.y)
         cubicTo(first.x, first.y, second.x, second.y, end.x, end.y)
     }
-    drawPath(path, CurveAccent, style = Stroke((if (handles) 2.dp else 1.5.dp).toPx()))
+    drawPath(path, colors.curve, style = Stroke((if (handles) 2.dp else 1.5.dp).toPx()))
     if (handles) {
         val points = listOf(first, second)
-        val colors = listOf(CurveAccent, SecondHandleAccent)
+        val handleColors = listOf(colors.curve, colors.secondHandle)
         for (index in listOf(1 - selected, selected)) {
             val point = points[index]
-            val color = colors[index]
+            val color = handleColors[index]
             if (index == selected) drawCircle(color, 12.dp.toPx(), point, style = Stroke(1.dp.toPx()))
             drawCircle(color, 8.dp.toPx(), point)
-            drawCircle(TweakOverlayColors.surface, 8.dp.toPx(), point, style = Stroke(2.dp.toPx()))
+            drawCircle(colors.surface, 8.dp.toPx(), point, style = Stroke(2.dp.toPx()))
         }
     }
 }

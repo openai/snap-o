@@ -136,6 +136,7 @@ internal fun TweakColorField(
     tweak: SnapOTweakEntry,
     onClick: () -> Unit,
 ) {
+    val colors = TweakOverlayColors.current
     val color = (tweak.value.value as SnapOTweakValue.ColorValue).value
     val label = color.toPickerLabel()
 
@@ -155,7 +156,7 @@ internal fun TweakColorField(
     ) {
         Text(
             text = label,
-            color = TweakOverlayColors.secondary,
+            color = colors.secondary,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             maxLines = 1,
@@ -287,6 +288,7 @@ private fun OpacityChannel(
 private fun TweakColorPreview(
     color: Color,
 ) {
+    val colors = TweakOverlayColors.current
     val label = color.toPickerLabel()
 
     Row(
@@ -306,7 +308,7 @@ private fun TweakColorPreview(
         Column {
             Text(
                 text = label,
-                color = TweakOverlayColors.foreground,
+                color = colors.foreground,
                 fontSize = 13.sp,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
@@ -314,7 +316,7 @@ private fun TweakColorPreview(
             )
             Text(
                 text = if (color.isSpecified) "Live preview" else "No color selected",
-                color = TweakOverlayColors.secondary,
+                color = colors.secondary,
                 fontSize = 11.sp,
                 maxLines = 1,
             )
@@ -332,6 +334,7 @@ private fun ColorChannelRow(
     onValueChange: (Float) -> Unit,
     showCheckerboard: Boolean = false,
 ) {
+    val colors = TweakOverlayColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -342,7 +345,7 @@ private fun ColorChannelRow(
         Text(
             text = label,
             modifier = Modifier.width(72.dp),
-            color = TweakOverlayColors.secondary,
+            color = colors.secondary,
             fontSize = 11.sp,
             maxLines = 1,
         )
@@ -371,8 +374,9 @@ private fun ColorGradientSlider(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = TweakOverlayColors.current
     val interactionSource = remember { MutableInteractionSource() }
-    val colors = SliderDefaults.colors(
+    val sliderColors = SliderDefaults.colors(
         thumbColor = thumbColor,
         activeTrackColor = Color.Transparent,
         inactiveTrackColor = Color.Transparent,
@@ -383,14 +387,14 @@ private fun ColorGradientSlider(
         onValueChange = onValueChange,
         modifier = modifier.semantics { contentDescription = "$label color channel" },
         valueRange = valueRange,
-        colors = colors,
+        colors = sliderColors,
         interactionSource = interactionSource,
         thumb = {
             Box(
                 modifier = Modifier
                     .size(14.dp)
                     .background(thumbColor.copy(alpha = 1f), CircleShape)
-                    .border(2.dp, TweakOverlayColors.surface, CircleShape),
+                    .border(2.dp, colors.surface, CircleShape),
             )
         },
         track = {
@@ -405,7 +409,7 @@ private fun ColorGradientSlider(
                 }
                 drawRect(brush = Brush.horizontalGradient(trackColors))
                 drawRoundRect(
-                    color = TweakOverlayColors.outline,
+                    color = colors.outline,
                     cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx()),
                     style = Stroke(width = 1.dp.toPx()),
                 )
@@ -419,17 +423,19 @@ private fun TweakColorSwatch(
     color: Color,
     modifier: Modifier = Modifier,
 ) {
+    val colors = TweakOverlayColors.current
     Canvas(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, TweakOverlayColors.outline, RoundedCornerShape(4.dp)),
+            .border(1.dp, colors.outline, RoundedCornerShape(4.dp)),
     ) {
         drawCheckerboard()
         if (color.isSpecified) {
             drawRect(color = color)
         } else {
+            // The transparency checkerboard stays light in both themes.
             drawLine(
-                color = TweakOverlayColors.secondary,
+                color = TweakOverlayColors.Light.secondary,
                 start = Offset(2.dp.toPx(), size.height - 2.dp.toPx()),
                 end = Offset(size.width - 2.dp.toPx(), 2.dp.toPx()),
                 strokeWidth = 1.5.dp.toPx(),

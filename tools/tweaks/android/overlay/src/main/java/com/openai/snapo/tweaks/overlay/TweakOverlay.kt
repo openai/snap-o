@@ -43,7 +43,6 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
@@ -65,14 +64,6 @@ private val OverlayMaximumWidth = 480.dp
 private val OverlayHorizontalMargin = 16.dp
 private val OverlayButtonSize = 52.dp
 
-internal object TweakOverlayColors {
-    val surface = Color(0xFFFFFFFF)
-    val foreground = Color(0xFF18212F)
-    val secondary = Color(0xFF727783)
-    val outline = Color(0xFFE2E4E8)
-    val field = Color(0xFFF5F6F8)
-}
-
 /** Draws a compact, movable tweak tool over application content. */
 @Composable
 fun SnapOTweakOverlay(modifier: Modifier = Modifier) {
@@ -85,10 +76,12 @@ fun SnapOTweakOverlay(modifier: Modifier = Modifier) {
 
     val tweaks = rememberActiveOverlayTweaks()
     if (tweaks.isNotEmpty()) {
-        TweakOverlayLayer(
-            tweaks = tweaks,
-            modifier = modifier.fillMaxSize(),
-        )
+        TweakOverlayTheme {
+            TweakOverlayLayer(
+                tweaks = tweaks,
+                modifier = modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -201,6 +194,7 @@ private fun ExpandedTweakOverlay(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = TweakOverlayColors.current
     var selectedEditorTweakName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedEditorTweak = resolveSelectedEditorTweak(
         name = selectedEditorTweakName,
@@ -212,9 +206,9 @@ private fun ExpandedTweakOverlay(
     Surface(
         modifier = modifier.height(height),
         shape = RoundedCornerShape(14.dp),
-        color = TweakOverlayColors.surface,
-        contentColor = TweakOverlayColors.foreground,
-        border = BorderStroke(1.dp, TweakOverlayColors.outline),
+        color = colors.surface,
+        contentColor = colors.foreground,
+        border = BorderStroke(1.dp, colors.outline),
         shadowElevation = 5.dp,
     ) {
         Column {
@@ -224,7 +218,7 @@ private fun ExpandedTweakOverlay(
                     onMinimize = onMinimize,
                     onDrag = onDrag,
                 )
-                HorizontalDivider(color = TweakOverlayColors.outline)
+                HorizontalDivider(color = colors.outline)
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -251,7 +245,7 @@ private fun ExpandedTweakOverlay(
                 }
             } else {
                 TweakEditorOverlayActions(selectedEditorTweak, { selectedEditorTweakName = null }, onDrag)
-                HorizontalDivider(color = TweakOverlayColors.outline)
+                HorizontalDivider(color = colors.outline)
                 if (selectedEditorTweak.defaultValue is SnapOTweakValue.Curve) {
                     TweakBezierChooser(selectedEditorTweak, Modifier.weight(1f))
                 } else {
@@ -383,13 +377,14 @@ private fun TweakOverlayHeader(
 
 @Composable
 private fun BoxScope.TweakOverlayDragHandle() {
+    val colors = TweakOverlayColors.current
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .padding(top = 7.dp)
             .width(30.dp)
             .height(3.dp)
-            .background(TweakOverlayColors.secondary.copy(alpha = 0.35f), CircleShape),
+            .background(colors.secondary.copy(alpha = 0.35f), CircleShape),
     )
 }
 
@@ -399,6 +394,7 @@ private fun MinimizedTweakOverlay(
     onDrag: (Offset) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = TweakOverlayColors.current
     val currentOnDrag by rememberUpdatedState(onDrag)
 
     Surface(
@@ -416,9 +412,9 @@ private fun MinimizedTweakOverlay(
                 }
             },
         shape = CircleShape,
-        color = TweakOverlayColors.surface,
-        contentColor = TweakOverlayColors.foreground,
-        border = BorderStroke(1.dp, TweakOverlayColors.outline),
+        color = colors.surface,
+        contentColor = colors.foreground,
+        border = BorderStroke(1.dp, colors.outline),
         shadowElevation = 4.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -434,6 +430,7 @@ private fun MinimizedTweakOverlay(
 private fun TweakOverlaySection(
     name: String,
 ) {
+    val colors = TweakOverlayColors.current
     Text(
         text = name,
         modifier = Modifier.padding(
@@ -441,7 +438,7 @@ private fun TweakOverlaySection(
             top = 9.dp,
             bottom = 2.dp,
         ),
-        color = TweakOverlayColors.secondary,
+        color = colors.secondary,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
     )
