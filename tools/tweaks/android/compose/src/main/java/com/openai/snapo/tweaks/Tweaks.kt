@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Exposes an application-owned Boolean, Int, Float, String, Color, or BezierCurve tweak.
+ * Exposes an application-owned Boolean, Int, Float, String, Color, enum, or BezierCurve tweak.
  *
  * The first observed value is the tool default; edits, resets, and status remain app-owned.
  * Sources with the same name must use the same setting and value type.
@@ -173,8 +173,8 @@ fun <E : Enum<E>> tweak(
     return rememberTweakState(descriptor, default, decode)
 }
 
-internal fun <E : Enum<E>> enumTweakDescriptor(
-    default: E,
+internal fun enumTweakDescriptor(
+    default: Enum<*>,
     name: String,
 ): TweakDescriptor = TweakDescriptor(
     name = name,
@@ -250,7 +250,13 @@ internal class TweakRegistration<T : Any> private constructor(
     private var registered = false
 
     private val observedValue = ComposeTweakRegistry.state {
-        decode((externalState?.value ?: state).value)
+        val current = externalState?.value ?: state
+        if (current is SelectedTweakState) {
+            @Suppress("UNCHECKED_CAST")
+            (current.decode(current.value) as T)
+        } else {
+            decode(current.value)
+        }
     }
 
     override val value: T
@@ -303,10 +309,12 @@ internal class ExternalTweakBinding<T : Any>(
     private val latestSource: State<TweakSource<T>>,
 ) : ExternalTweakBacking {
 
+    private val initial by lazy { latestSource.value.value }
     private var initialValuePending = true
 
     override val descriptor: TweakDescriptor by lazy {
-        val initial = latestSource.value.value
+        val initial = initial
+        if (initial is Enum<*>) return@lazy enumTweakDescriptor(initial, name)
         TweakDescriptor(
             name = name,
             type = when (initial) {
@@ -318,7 +326,7 @@ internal class ExternalTweakBinding<T : Any>(
                 is BezierCurve -> TweakType.BEZIER
                 else -> throw IllegalArgumentException(
                     "Unsupported tweak value type: ${initial.javaClass.name}. " +
-                        "Supported types are Boolean, Int, Float, String, Color, and BezierCurve.",
+                        "Supported types are Boolean, Int, Float, String, Color, enum, and BezierCurve.",
                 )
             },
             default = encode(initial),
@@ -347,9 +355,14 @@ internal class ExternalTweakBinding<T : Any>(
     override fun isModified(): Boolean = latestSource.value.isModified
 
     @Suppress("UNCHECKED_CAST")
-    fun decode(value: Any): T =
-        if (value is TweakColorValue) value.color as T else value as T
+    override fun decode(value: Any): T = when (val initial = initial) {
+        is Enum<*> -> java.lang.Enum.valueOf(initial.declaringJavaClass, value as String) as T
+        else -> if (value is TweakColorValue) value.color as T else value as T
+    }
 
-    private fun encode(value: T): Any =
-        if (value is Color) value.toTweakColorValue() else value
+    private fun encode(value: T): Any = when (value) {
+        is Color -> value.toTweakColorValue()
+        is Enum<*> -> value.name
+        else -> value
+    }
 }

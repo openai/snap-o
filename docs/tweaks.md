@@ -326,7 +326,7 @@ See the [protocol reference](tweaks-protocol.md#bezier-curves) for JSON updates.
 
 ## Delegate to app-owned settings {#app-owned-settings data-step="4"}
 
-Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, color, or Bézier curve; enum values are supported only by ordinary tweaks.
+Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, color, enum, or Bézier curve. Enum sources expose every constant in declaration order, using its exact name.
 
 ``` { .kotlin title="com.openai.snapo.tweaks · source contract" }
 interface TweakSource<T : Any> {
@@ -489,6 +489,8 @@ fun MotionSection(isExpanded: Boolean) {
 {.notice}
 
 Controls appear only while their composables are in composition. In the example, turning off `Motion/Show` removes the motion controls; changing `Motion/Use spring` swaps the spring settings for the duration control. When the same UI returns during the app process, ordinary controls register again with their last edited values and original ordering. App-owned controls use the current value from their source instead.
+
+In the Compose sample, `Motion/State` is an app-owned enum. **Tap to animate** changes it directly, and the dropdown follows the animation state. Selecting `A` or `B` in Snap-O also animates the marker. Reset returns it to state `A`. `Motion/Marker shape` remains a Snap-O-owned enum.
 
 ## Interact with tweaks {#interact data-step="6"}
 

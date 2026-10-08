@@ -32,7 +32,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -171,8 +170,11 @@ private fun MotionSection(dividerColor: Color) {
 
 @Composable
 private fun MotionPreview() {
-    var isStateB by rememberSaveable { mutableStateOf(false) }
-    TweakAction("Motion/Toggle animation") { isStateB = !isStateB }
+    val motionState = rememberSaveable { mutableStateOf(MotionState.A) }
+    val source = remember(motionState) { MotionStateSource(motionState) }
+    val selectedState by tweak(source, "Motion/State")
+    val isStateB = selectedState == MotionState.B
+    TweakAction("Motion/Toggle animation", source::toggle)
     val useSpring by tweak(true, "Motion/Use spring")
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
@@ -208,9 +210,9 @@ private fun MotionPreview() {
         MotionTrack(
             progress = progress,
             isStateB = isStateB,
-            onToggle = { isStateB = !isStateB },
+            onToggle = source::toggle,
         )
-        Button(onClick = { isStateB = !isStateB }) {
+        Button(onClick = source::toggle) {
             Text("Tap to animate")
         }
         AnimationDetails(
