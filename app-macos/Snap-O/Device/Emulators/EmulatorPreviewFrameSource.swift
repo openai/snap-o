@@ -167,61 +167,95 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     target: DeviceTarget,
     client: GRPCClient<HTTP2ClientTransport.WrappedChannel>,
     metadata: Metadata,
-    size: LivePreviewFrameSize,
+    size requestedSize: LivePreviewFrameSize,
     deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
   ) async throws {
-    var format = EmulatorPreview_ImageFormat()
-    format.format = .rgb888
-    if case .preview(let pixels) = size {
-      format.width = UInt32(pixels.width)
-      format.height = UInt32(pixels.height)
-    }
-    let request = ClientRequest(message: format, metadata: metadata)
-    var options = CallOptions.defaults
-    options.waitForReady = true
-    options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
-    // NIO transport 2.10 also uses the request limit when decoding responses.
-    options.maxRequestMessageBytes = options.maxResponseMessageBytes
-    try await client.serverStreaming(
-      request: request,
-      descriptor: MethodDescriptor(
-        fullyQualifiedService: "android.emulation.control.EmulatorController",
-        method: "streamScreenshot"
-      ),
-      serializer: EmulatorProtobufCodec<EmulatorPreview_ImageFormat>(),
-      deserializer: EmulatorProtobufCodec<EmulatorPreview_Image>(),
-      options: options
-    ) { response in
-      let frames = EmulatorPreviewFrameBuilder()
-      var previousFormat: EmulatorPreview_ImageFormat?
-      for try await image in response.messages {
-        try Task.checkCancellation()
-        let width = Int(image.format.width)
-        let height = Int(image.format.height)
-        // The emulator reports an inactive display with an empty image.
-        guard width != 0, height != 0 else { continue }
-        guard image.format.format == .rgb888 else {
-          throw EmulatorPreviewError(message: "The emulator returned an unsupported pixel format.")
-        }
-        guard let sample = try frames.makeSample(
-          rgb: image.image, width: width, height: height, timestamp: image.timestampUs
-        ) else { continue }
-        var geometry = image.format
-        // Sensor angles can change every frame without changing display geometry.
-        geometry.rotation.unknownFields = SwiftProtobuf.UnknownStorage()
-        if geometry != previousFormat, let description = CMSampleBufferGetFormatDescription(sample) {
-          // Input uses native coordinates even when the preview image is scaled.
-          let dimensions = try await ADBClient().bound(to: target).withTimeout(.seconds(2)).displaySize(deviceID: target.serial)
-          let parts = dimensions.split(separator: "x").compactMap { Int($0) }
-          guard parts.count == 2, parts.allSatisfy({ $0 > 0 && $0 <= 8192 }) else {
-            throw EmulatorPreviewError(message: "The emulator returned an invalid display size.")
+    func receiveFrames(nativeSize: CGSize?) async throws -> NativeDisplayChange? {
+      let size = requestedSize.capped(to: nativeSize)
+      var format = EmulatorPreview_ImageFormat()
+      format.format = .rgb888
+      if case .preview(let pixels) = size {
+        format.width = UInt32(pixels.width)
+        format.height = UInt32(pixels.height)
+      }
+      let request = ClientRequest(message: format, metadata: metadata)
+      var options = CallOptions.defaults
+      options.waitForReady = true
+      options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
+      // NIO transport 2.10 also uses the request limit when decoding responses.
+      options.maxRequestMessageBytes = options.maxResponseMessageBytes
+      return try await client.serverStreaming(
+        request: request,
+        descriptor: MethodDescriptor(
+          fullyQualifiedService: "android.emulation.control.EmulatorController",
+          method: "streamScreenshot"
+        ),
+        serializer: EmulatorProtobufCodec<EmulatorPreview_ImageFormat>(),
+        deserializer: EmulatorProtobufCodec<EmulatorPreview_Image>(),
+        options: options
+      ) { response in
+        let frames = EmulatorPreviewFrameBuilder()
+        var previousFormat: EmulatorPreview_ImageFormat?
+        for try await image in response.messages {
+          try Task.checkCancellation()
+          let width = Int(image.format.width)
+          let height = Int(image.format.height)
+          // The emulator reports an inactive display with an empty image.
+          guard width != 0, height != 0 else { continue }
+          guard image.format.format == .rgb888 else {
+            throw EmulatorPreviewError(message: "The emulator returned an unsupported pixel format.")
           }
-          let displaySize = CGSize(width: parts[0], height: parts[1])
-          await deliver(.format(description, displaySize: displaySize))
-          previousFormat = geometry
+          guard let sample = try frames.makeSample(
+            rgb: image.image, width: width, height: height, timestamp: image.timestampUs
+          ) else { continue }
+          var geometry = image.format
+          // Sensor angles can change every frame without changing display geometry.
+          geometry.rotation.unknownFields = SwiftProtobuf.UnknownStorage()
+          if geometry != previousFormat, let description = CMSampleBufferGetFormatDescription(sample) {
+            var displaySize: CGSize?
+            if case .preview = size {
+              // Reuse the initial probe until the device rotates, folds, or changes mode.
+              displaySize = previousFormat == nil ? nativeSize : try? await readDisplaySize(target: target)
+              if let native = displaySize,
+                 abs(native.width * CGFloat(height) - native.height * CGFloat(width)) > native.width + native.height {
+                // Rotation can race the probe. Native frames supply their own input geometry.
+                displaySize = nil
+              }
+              try Task.checkCancellation()
+              if requestedSize.capped(to: displaySize) != size {
+                return NativeDisplayChange(size: displaySize)
+              }
+            }
+            // Native frames already carry the correct dimensions for input.
+            await deliver(.format(description, displaySize: displaySize))
+            previousFormat = geometry
+          }
+          await deliver(.sample(sample, isKeyFrame: true))
         }
-        await deliver(.sample(sample, isKeyFrame: true))
+        return nil
       }
     }
+
+    var nativeSize: CGSize?
+    if case .preview = requestedSize {
+      nativeSize = try? await readDisplaySize(target: target)
+      try Task.checkCancellation()
+    }
+    while let change = try await receiveFrames(nativeSize: nativeSize) {
+      try Task.checkCancellation()
+      nativeSize = change.size
+    }
+  }
+
+  /// A missing size switches to native frames without requiring another ADB probe.
+  private struct NativeDisplayChange {
+    let size: CGSize?
+  }
+
+  private nonisolated static func readDisplaySize(target: DeviceTarget) async throws -> CGSize? {
+    let dimensions = try await ADBClient().bound(to: target).withTimeout(.seconds(2)).displaySize(deviceID: target.serial)
+    let parts = dimensions.split(separator: "x").compactMap { Int($0) }
+    guard parts.count == 2, parts.allSatisfy({ $0 > 0 && $0 <= 8192 }) else { return nil }
+    return CGSize(width: parts[0], height: parts[1])
   }
 }

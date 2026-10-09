@@ -41,6 +41,12 @@ enum LivePreviewFrameSize: Equatable {
     return .preview(CGSize(width: min(8192, ceil(pixels.width)), height: min(8192, ceil(pixels.height))))
   }
 
+  func capped(to nativeSize: CGSize?) -> Self {
+    guard case .preview(let pixels) = self else { return self }
+    guard let nativeSize else { return .native }
+    return .preview(CGSize(width: min(pixels.width, nativeSize.width), height: min(pixels.height, nativeSize.height)))
+  }
+
   static func maximum(_ sizes: some Sequence<Self>) -> Self {
     var maximum = CGSize.zero
     for size in sizes {

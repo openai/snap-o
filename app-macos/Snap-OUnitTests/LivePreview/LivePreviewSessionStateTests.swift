@@ -154,6 +154,30 @@ struct LivePreviewSessionStateTests {
     #expect(LivePreviewFrameSize.maximum([.inactive, .preview(CGSize(width: 400, height: 900)), .native]) == .native)
   }
 
+  @Test
+  func previewRequestsDoNotExceedNativeDimensions() {
+    let native = CGSize(width: 1080, height: 2400)
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 6016, height: 3384)).capped(to: native) == .preview(native))
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 2000, height: 1200)).capped(to: native)
+      == .preview(CGSize(width: 1080, height: 1200)))
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 540, height: 1200)).capped(to: native)
+      == .preview(CGSize(width: 540, height: 1200)))
+  }
+
+  @Test
+  func previewCapFollowsNativeRotation() {
+    let request = LivePreviewFrameSize.preview(CGSize(width: 1500, height: 2000))
+    #expect(request.capped(to: CGSize(width: 1920, height: 1200)) == .preview(CGSize(width: 1500, height: 1200)))
+    #expect(request.capped(to: CGSize(width: 1200, height: 1920)) == .preview(CGSize(width: 1200, height: 1920)))
+  }
+
+  @Test
+  func missingNativeSizeUsesFullResolutionFrames() {
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 540, height: 1200)).capped(to: nil) == .native)
+    #expect(LivePreviewFrameSize.native.capped(to: CGSize(width: 1080, height: 2400)) == .native)
+    #expect(LivePreviewFrameSize.inactive.capped(to: nil) == .inactive)
+  }
+
   private enum SourceFailure: Error { case disconnected }
 
   @MainActor
