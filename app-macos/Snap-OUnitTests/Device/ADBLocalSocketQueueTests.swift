@@ -6,7 +6,9 @@ import Testing
 @Suite("ADB local socket admission", .dependency(\.continuousClock, TestClock()))
 struct ADBLocalSocketQueueTests {
   private let name = "snapo_network_42"
-  private var listener: String { "1: 00000002 00000000 00010000 0001 01 101 @\(name)" }
+  private var listener: String {
+    "1: 00000002 00000000 00010000 0001 01 101 @\(name)"
+  }
 
   @Test
   func pendingConnectionsBlockOnlyTheirListener() {
@@ -55,7 +57,9 @@ struct ADBLocalSocketQueueTests {
         }
       }
       var count = 0
-      for await success in group where success { count += 1 }
+      for await success in group where success {
+        count += 1
+      }
       return count
     }
     #expect(admitted == 1)
@@ -80,7 +84,9 @@ struct ADBLocalSocketQueueTests {
     let blocked = ScriptedADBConnection(reads: [.waitForClose])
     let client = ADBClient(discoveryTimeout: .seconds(2)) { blocked }
     let task = Task { try await client.openLocalAbstract(deviceID: serial, abstractSocket: name) }
-    defer { task.cancel(); blocked.close() }
+    defer { task.cancel()
+      blocked.close()
+    }
     try await blocked.waitUntilBlocked()
     task.cancel()
     await #expect(throws: CancellationError.self) { try await task.value }
@@ -113,9 +119,13 @@ private final class SocketQueue: @unchecked Sendable {
   private var pending = false
   private var openCount = 0
 
-  var opens: Int { lock.withLock { openCount } }
+  var opens: Int {
+    lock.withLock { openCount }
+  }
 
-  func drain() { lock.withLock { pending = false } }
+  func drain() {
+    lock.withLock { pending = false }
+  }
 
   func connection() -> any ADBConnection {
     let connection = ScriptedADBConnection(reads: [])
