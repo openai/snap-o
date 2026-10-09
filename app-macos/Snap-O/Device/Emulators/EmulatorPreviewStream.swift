@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 /// Selects native or scaled streams without tying size discovery to transport failure.
@@ -40,5 +41,47 @@ enum EmulatorPreviewStream {
       try Task.checkCancellation()
       return nil
     }
+  }
+}
+
+/// Counts only an active startup attempt, ending permanently after the first frame or stop.
+@MainActor
+final class EmulatorPreviewStartupDeadline {
+  private let clock: AnyClock<Duration>
+  private let expired: () -> Void
+  private var active = false
+  private var finished = false
+  private var task: Task<Void, Never>?
+
+  init(expired: @escaping () -> Void) {
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
+    self.expired = expired
+  }
+
+  func setActive(_ active: Bool) {
+    guard !finished, self.active != active else { return }
+    self.active = active
+    task?.cancel()
+    guard active else { return }
+    let previous = task
+    let deadline = clock.now.advanced(by: .seconds(15))
+    task = Task {
+      await previous?.value
+      do { try await clock.sleep(until: deadline) } catch { return }
+      guard !Task.isCancelled else { return }
+      finish()
+      expired()
+    }
+  }
+
+  func finish() {
+    finished = true
+    task?.cancel()
+  }
+
+  func waitUntilStopped() async {
+    await task?.value
   }
 }

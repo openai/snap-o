@@ -402,6 +402,7 @@ struct VideoStreamTests {
       let source = EmulatorPreviewFrameSource(target: target)
       let session = LivePreviewSession(deviceID: target.serial, densityScale: nil, source: source)
       await waitForActorTestState { await gate.waitCount == 1 }
+      source.setFrameSize(.preview(CGSize(width: 540, height: 1200)))
       let ready = Task { try await session.waitUntilReady() }
       await clock.advance(by: .seconds(15))
       do {
