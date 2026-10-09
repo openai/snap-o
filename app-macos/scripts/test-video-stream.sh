@@ -38,6 +38,8 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/Emulators/EmulatorGRPCConnection.swift \
   Snap-O/Device/Emulators/EmulatorGRPCConnection+Device.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameSource.swift \
+  Snap-O/Device/Emulators/EmulatorPreviewStream.swift \
+  Snap-O/Device/Emulators/EmulatorPreviewGeometry.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameBuffer.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/Device/Emulators/emulator_preview.pb.swift \

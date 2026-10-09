@@ -106,6 +106,82 @@ struct LivePreviewSessionStateTests {
     #expect(source.stops == 1)
   }
 
+  @Test
+  func streamFitsLargestVisibleRendererAndShrinksWhenItLeaves() {
+    let source = Source()
+    let session = LivePreviewSession(deviceID: "test", densityScale: nil, source: source)
+    defer { session.cancel() }
+    let small = UUID()
+    let large = UUID()
+    session.addRenderer(id: small) { _ in }
+    session.addRenderer(id: large) { _ in }
+    #expect(source.frameSize == .inactive)
+    session.updateRendererSize(id: small, pixels: CGSize(width: 400, height: 900))
+    session.updateRendererSize(id: large, pixels: CGSize(width: 800, height: 1600))
+    #expect(source.frameSize == .preview(CGSize(width: 800, height: 1600)))
+    session.updateRendererSize(id: large, pixels: nil)
+    #expect(source.frameSize == .preview(CGSize(width: 400, height: 900)))
+    session.updateRendererSize(id: large, pixels: CGSize(width: 1200, height: 600))
+    #expect(source.frameSize == .preview(CGSize(width: 1200, height: 900)))
+    session.removeRenderer(id: large)
+    #expect(source.frameSize == .preview(CGSize(width: 400, height: 900)))
+    session.removeRenderer(id: small)
+    #expect(source.frameSize == .inactive)
+    session.updateRendererSize(id: large, pixels: CGSize(width: 1200, height: 600))
+    #expect(source.frameSize == .inactive)
+  }
+
+  @Test
+  func scaledFramesKeepNativeDisplayDimensions() throws {
+    let source = Source()
+    let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
+    defer { session.cancel() }
+    var format: CMVideoFormatDescription?
+    CMVideoFormatDescriptionCreate(
+      allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
+      width: 540, height: 1200, extensions: nil, formatDescriptionOut: &format
+    )
+    try source.deliver?(.format(#require(format), displaySize: CGSize(width: 1080, height: 2400)))
+    #expect(session.displayInfo?.size == CGSize(width: 1080, height: 2400))
+  }
+
+  @Test
+  func fractionalPreviewDimensionsRoundUp() {
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 399.2, height: 899.7)) == .preview(CGSize(width: 400, height: 900)))
+  }
+
+  @Test(arguments: [CGSize.zero, CGSize(width: CGFloat.infinity, height: 900)])
+  func invalidPreviewSizeIsInactive(size: CGSize) {
+    #expect(LivePreviewFrameSize.previewSize(size) == .inactive)
+  }
+
+  @Test
+  func previewDimensionsStayWithinSupportedLimit() {
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 9000, height: 9000)) == .preview(CGSize(width: 8192, height: 8192)))
+  }
+
+  @Test
+  func recordingRequiresNativeResolution() {
+    #expect(LivePreviewFrameSize.maximum([.inactive, .preview(CGSize(width: 400, height: 900)), .native]) == .native)
+  }
+
+  @Test
+  func previewRequestsDoNotExceedNativeDimensions() {
+    let native = CGSize(width: 1080, height: 2400)
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 6016, height: 3384)).capped(to: native) == .preview(native))
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 2000, height: 1200)).capped(to: native)
+      == .preview(CGSize(width: 1080, height: 1200)))
+    #expect(LivePreviewFrameSize.preview(CGSize(width: 540, height: 1200)).capped(to: native)
+      == .preview(CGSize(width: 540, height: 1200)))
+  }
+
+  @Test
+  func previewCapFollowsNativeRotation() {
+    let request = LivePreviewFrameSize.preview(CGSize(width: 1500, height: 2000))
+    #expect(request.capped(to: CGSize(width: 1920, height: 1200)) == .preview(CGSize(width: 1500, height: 1200)))
+    #expect(request.capped(to: CGSize(width: 1200, height: 1920)) == .preview(CGSize(width: 1200, height: 1920)))
+  }
+
   private enum SourceFailure: Error { case disconnected }
 
   @MainActor
@@ -114,6 +190,11 @@ struct LivePreviewSessionStateTests {
     var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
     var starts = 0
     var stops = 0
+    var frameSize = LivePreviewFrameSize.native
+
+    func setFrameSize(_ size: LivePreviewFrameSize) {
+      frameSize = size
+    }
 
     func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
       starts += 1

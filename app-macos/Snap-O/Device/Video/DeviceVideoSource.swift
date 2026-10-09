@@ -31,7 +31,7 @@ final class DeviceVideoHub {
     } else {
       let previous = sessions[target]
       previous?.stop()
-      stream = DeviceVideoStream(source: makeSource(target), previous: previous)
+      stream = DeviceVideoStream(source: makeSource(target), previous: previous, scalesFrames: target.isLocalEmulator)
       sessions[target] = stream
     }
     return Subscription(target: target, stream: stream, id: UUID())
@@ -63,6 +63,7 @@ final class DeviceVideoSource: LivePreviewFrameSource {
   private var subscription: DeviceVideoHub.Subscription?
   private var cleanup: Task<Void, Never>?
   private var hasStopped = false
+  private var frameSize = LivePreviewFrameSize.native
 
   init(target: DeviceTarget, hub: DeviceVideoHub = .shared, replaysLastFrame: Bool = true) {
     self.target = target
@@ -74,7 +75,12 @@ final class DeviceVideoSource: LivePreviewFrameSource {
     guard subscription == nil, !hasStopped else { return }
     let subscription = hub.subscription(target: target)
     self.subscription = subscription
-    subscription.stream.subscribe(subscription.id, replaysLastFrame: replaysLastFrame, receive: deliver)
+    subscription.stream.subscribe(subscription.id, frameSize: frameSize, replaysLastFrame: replaysLastFrame, receive: deliver)
+  }
+
+  func setFrameSize(_ size: LivePreviewFrameSize) {
+    frameSize = size
+    if let subscription { subscription.stream.setFrameSize(size, for: subscription.id) }
   }
 
   func requestKeyFrame() {
@@ -99,15 +105,18 @@ private final class DeviceVideoStream {
   private struct Subscriber {
     let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void
     var needsKeyFrame = true
+    var frameSize: LivePreviewFrameSize
   }
 
   private let source: any LivePreviewFrameSource
+  private let scalesFrames: Bool
+  private var frameSize = LivePreviewFrameSize.inactive
   private var previous: DeviceVideoStream?
   private var startup: Task<Void, Never>?
   private var hasStarted = false
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
-  private var format: CMVideoFormatDescription?
+  private var formatEvent: LivePreviewFrameEvent?
   private var density: CGFloat?
   private var latestIndependentFrame: CMSampleBuffer?
 
@@ -119,16 +128,22 @@ private final class DeviceVideoStream {
     source.hasIndependentFrames
   }
 
-  init(source: any LivePreviewFrameSource, previous: DeviceVideoStream?) {
+  init(source: any LivePreviewFrameSource, previous: DeviceVideoStream?, scalesFrames: Bool) {
     self.source = source
+    self.scalesFrames = scalesFrames
     self.previous = previous
+    if scalesFrames { source.setFrameSize(.inactive) }
   }
 
-  func subscribe(_ id: UUID, replaysLastFrame: Bool, receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-    subscribers[id] = Subscriber(receive: receive)
+  func subscribe(
+    _ id: UUID, frameSize: LivePreviewFrameSize, replaysLastFrame: Bool,
+    receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
+  ) {
+    subscribers[id] = Subscriber(receive: receive, frameSize: frameSize)
+    updateFrameSize()
     if let density { receive(.density(density)) }
     guard subscribers[id] != nil, !hasStopped else { return }
-    if let format { receive(.format(format)) }
+    if let formatEvent { receive(formatEvent) }
     guard subscribers[id] != nil, !hasStopped else { return }
     if replaysLastFrame, let latestIndependentFrame {
       subscribers[id]?.needsKeyFrame = false
@@ -156,8 +171,26 @@ private final class DeviceVideoStream {
     source.requestKeyFrame()
   }
 
+  func setFrameSize(_ size: LivePreviewFrameSize, for id: UUID) {
+    guard subscribers[id] != nil, !hasStopped else { return }
+    subscribers[id]?.frameSize = size
+    updateFrameSize()
+  }
+
+  private func updateFrameSize() {
+    guard scalesFrames else { return }
+    let size = LivePreviewFrameSize.maximum(subscribers.values.lazy.map(\.frameSize))
+    guard size != frameSize else { return }
+    frameSize = size
+    // A recorder joining a scaled preview must wait for the new native format.
+    formatEvent = nil
+    latestIndependentFrame = nil
+    source.setFrameSize(size)
+  }
+
   func unsubscribe(_ id: UUID) {
     subscribers.removeValue(forKey: id)
+    updateFrameSize()
   }
 
   func stop() {
@@ -183,8 +216,8 @@ private final class DeviceVideoStream {
     switch event {
     case .density(let density):
       self.density = density
-    case .format(let description):
-      format = description
+    case .format:
+      formatEvent = event
       latestIndependentFrame = nil
       for id in subscribers.keys {
         subscribers[id]?.needsKeyFrame = true

@@ -148,6 +148,10 @@ struct ADBClient {
     preconditionFailure("Video lifetime tests must not request a native identity proof")
   }
 
+  func displaySize(deviceID: String) async throws -> String {
+    preconditionFailure("Video lifetime tests must not read a real emulator display")
+  }
+
   func makeConnection() async throws -> ADBSocketConnection {
     let target = target!
     _ = try target.requireTransport(for: target.serial)

@@ -26,6 +26,7 @@ final class LivePreviewSession {
   private struct Renderer {
     let receive: (CMSampleBuffer) -> Void
     var needsKeyFrame: Bool
+    var frameSize = LivePreviewFrameSize.inactive
   }
 
   private var renderers: [UUID: Renderer] = [:]
@@ -44,10 +45,21 @@ final class LivePreviewSession {
 
   func removeRenderer(id: UUID) {
     renderers.removeValue(forKey: id)
+    updateFrameSize()
     if renderers.isEmpty, !source.hasIndependentFrames {
       discardPendingSamples()
       needsKeyFrame = true
     }
+  }
+
+  func updateRendererSize(id: UUID, pixels: CGSize?) {
+    guard !hasStopped, renderers[id] != nil else { return }
+    renderers[id]?.frameSize = .previewSize(pixels)
+    updateFrameSize()
+  }
+
+  private func updateFrameSize() {
+    source.setFrameSize(.maximum(renderers.values.lazy.map(\.frameSize)))
   }
 
   private var densityScale: CGFloat?
@@ -74,6 +86,7 @@ final class LivePreviewSession {
     #if PERF_TRACING
     Perf.startupEvent("session source start", deviceID: deviceID)
     #endif
+    source.setFrameSize(.inactive)
     source.start { [weak self] event in self?.receive(event) }
   }
 
@@ -111,7 +124,7 @@ final class LivePreviewSession {
     switch event {
     case .density(let density):
       updateDensityScale(density)
-    case .format(let format):
+    case .format(let format, let displaySize):
       #if PERF_TRACING
       Perf.startupEvent("session format received", deviceID: deviceID)
       #endif
@@ -122,7 +135,7 @@ final class LivePreviewSession {
       discardPendingSamples()
       needsKeyFrame = true
       let dims = CMVideoFormatDescriptionGetDimensions(format)
-      let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
+      let size = displaySize ?? CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
       let display = DisplayInfo(size: size, densityScale: densityScale)
       let changed = displayInfo != display
       displayInfo = display
