@@ -15,6 +15,19 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   private var invalidationHandler: UUID?
   private var task: Task<Void, Never>?
   private var startupTimeout: Task<Void, Never>?
+  private var currentRequest = FrameRequest(size: .native)
+  private let requests = AsyncStream<FrameRequest>.makeStream(bufferingPolicy: .bufferingNewest(1))
+
+  private struct FrameRequest {
+    let id = UUID()
+    let size: LivePreviewFrameSize
+  }
+
+  func setFrameSize(_ size: LivePreviewFrameSize) {
+    guard !hasStopped, size != currentRequest.size else { return }
+    currentRequest = FrameRequest(size: size)
+    requests.continuation.yield(currentRequest)
+  }
 
   init(target: DeviceTarget) {
     @Dependency(\.continuousClock)
@@ -70,6 +83,12 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
         deliver(.stopped(ADBError.protocolFailure("The device connection is no longer available.")))
       }
     }
+    requests.continuation.yield(currentRequest)
+    let sizes = requests.stream
+    let receiveFrame: @MainActor @Sendable (LivePreviewFrameEvent, UUID) -> Void = { [weak self] event, requestID in
+      guard self?.currentRequest.id == requestID else { return }
+      receive(event)
+    }
     task = Task.detached(priority: .userInitiated) {
       do {
         #if PERF_TRACING
@@ -83,7 +102,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
         Perf.startupEvent("emulator endpoint lookup end", deviceID: deviceID)
         #endif
 
-        try await Self.stream(target: target, endpoint: endpoint, deliver: receive)
+        try await Self.stream(target: target, endpoint: endpoint, sizes: sizes, deliver: receiveFrame)
         if !Task.isCancelled {
           await receive(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
         }
@@ -98,6 +117,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     if let invalidationHandler { target.removeInvalidationHandler(invalidationHandler) }
     invalidationHandler = nil
     startupTimeout?.cancel()
+    requests.continuation.finish()
     task?.cancel()
   }
 
@@ -106,52 +126,101 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     await startupTimeout?.value
   }
 
+  private nonisolated static func nextRequest(in sizes: AsyncStream<FrameRequest>) async -> FrameRequest? {
+    for await request in sizes {
+      return request
+    }
+    return nil
+  }
+
   private nonisolated static func stream(
     target: DeviceTarget,
     endpoint: EmulatorGRPCEndpoint,
-    deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
+    sizes: AsyncStream<FrameRequest>,
+    deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent, UUID) -> Void
   ) async throws {
     try await EmulatorGRPCConnection.withDevice(target: target, endpoint: endpoint) { client, metadata in
-      var format = EmulatorPreview_ImageFormat()
-      format.format = .rgba8888
-      // Zero dimensions request full emulator frames without preview-size scaling.
-      let request = ClientRequest(message: format, metadata: metadata)
-      var options = CallOptions.defaults
-      options.waitForReady = true
-      options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
-      // NIO transport 2.10 also uses the request limit when decoding responses.
-      options.maxRequestMessageBytes = options.maxResponseMessageBytes
-      try await client.serverStreaming(
-        request: request,
-        descriptor: MethodDescriptor(
-          fullyQualifiedService: "android.emulation.control.EmulatorController",
-          method: "streamScreenshot"
-        ),
-        serializer: EmulatorProtobufCodec<EmulatorPreview_ImageFormat>(),
-        deserializer: EmulatorProtobufCodec<EmulatorPreview_Image>(),
-        options: options
-      ) { response in
-        let frames = EmulatorPreviewFrameBuilder()
-        var previousSize: CGSize?
-        for try await image in response.messages {
-          try Task.checkCancellation()
-          let width = Int(image.format.width)
-          let height = Int(image.format.height)
-          // The emulator reports an inactive display with an empty image.
-          guard width != 0, height != 0 else { continue }
-          guard image.format.format == .rgba8888 else {
-            throw EmulatorPreviewError(message: "The emulator returned an unsupported pixel format.")
-          }
-          guard let sample = try frames.makeSample(
-            rgba: image.image, width: width, height: height, timestamp: image.timestampUs
-          ) else { continue }
-          let size = CGSize(width: width, height: height)
-          if size != previousSize, let description = CMSampleBufferGetFormatDescription(sample) {
-            await deliver(.format(description))
-            previousSize = size
-          }
-          await deliver(.sample(sample, isKeyFrame: true))
+      var next = await nextRequest(in: sizes)
+      while let request = next {
+        try Task.checkCancellation()
+        if request.size == .inactive {
+          next = await nextRequest(in: sizes)
+          continue
         }
+        next = try await withThrowingTaskGroup(of: FrameRequest?.self) { group in
+          defer { group.cancelAll() }
+          group.addTask {
+            try await streamFrames(target: target, client: client, metadata: metadata, size: request.size) { event in
+              deliver(event, request.id)
+            }
+            throw EmulatorPreviewError(message: "The emulator preview stream ended.")
+          }
+          group.addTask { await nextRequest(in: sizes) }
+          guard let next = try await group.next() else { return nil }
+          return next
+        }
+      }
+    }
+  }
+
+  private nonisolated static func streamFrames(
+    target: DeviceTarget,
+    client: GRPCClient<HTTP2ClientTransport.WrappedChannel>,
+    metadata: Metadata,
+    size: LivePreviewFrameSize,
+    deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
+  ) async throws {
+    var format = EmulatorPreview_ImageFormat()
+    format.format = .rgb888
+    if case .preview(let pixels) = size {
+      format.width = UInt32(pixels.width)
+      format.height = UInt32(pixels.height)
+    }
+    let request = ClientRequest(message: format, metadata: metadata)
+    var options = CallOptions.defaults
+    options.waitForReady = true
+    options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
+    // NIO transport 2.10 also uses the request limit when decoding responses.
+    options.maxRequestMessageBytes = options.maxResponseMessageBytes
+    try await client.serverStreaming(
+      request: request,
+      descriptor: MethodDescriptor(
+        fullyQualifiedService: "android.emulation.control.EmulatorController",
+        method: "streamScreenshot"
+      ),
+      serializer: EmulatorProtobufCodec<EmulatorPreview_ImageFormat>(),
+      deserializer: EmulatorProtobufCodec<EmulatorPreview_Image>(),
+      options: options
+    ) { response in
+      let frames = EmulatorPreviewFrameBuilder()
+      var previousFormat: EmulatorPreview_ImageFormat?
+      for try await image in response.messages {
+        try Task.checkCancellation()
+        let width = Int(image.format.width)
+        let height = Int(image.format.height)
+        // The emulator reports an inactive display with an empty image.
+        guard width != 0, height != 0 else { continue }
+        guard image.format.format == .rgb888 else {
+          throw EmulatorPreviewError(message: "The emulator returned an unsupported pixel format.")
+        }
+        guard let sample = try frames.makeSample(
+          rgb: image.image, width: width, height: height, timestamp: image.timestampUs
+        ) else { continue }
+        var geometry = image.format
+        // Sensor angles can change every frame without changing display geometry.
+        geometry.rotation.unknownFields = SwiftProtobuf.UnknownStorage()
+        if geometry != previousFormat, let description = CMSampleBufferGetFormatDescription(sample) {
+          // Input uses native coordinates even when the preview image is scaled.
+          let dimensions = try await ADBClient().bound(to: target).withTimeout(.seconds(2)).displaySize(deviceID: target.serial)
+          let parts = dimensions.split(separator: "x").compactMap { Int($0) }
+          guard parts.count == 2, parts.allSatisfy({ $0 > 0 && $0 <= 8192 }) else {
+            throw EmulatorPreviewError(message: "The emulator returned an invalid display size.")
+          }
+          let displaySize = CGSize(width: parts[0], height: parts[1])
+          await deliver(.format(description, displaySize: displaySize))
+          previousFormat = geometry
+        }
+        await deliver(.sample(sample, isKeyFrame: true))
       }
     }
   }

@@ -106,6 +106,54 @@ struct LivePreviewSessionStateTests {
     #expect(source.stops == 1)
   }
 
+  @Test
+  func streamFitsLargestVisibleRendererAndShrinksWhenItLeaves() {
+    let source = Source()
+    let session = LivePreviewSession(deviceID: "test", densityScale: nil, source: source)
+    defer { session.cancel() }
+    let small = UUID()
+    let large = UUID()
+    session.addRenderer(id: small) { _ in }
+    session.addRenderer(id: large) { _ in }
+    #expect(source.frameSize == .inactive)
+    session.updateRendererSize(id: small, pixels: CGSize(width: 400, height: 900))
+    session.updateRendererSize(id: large, pixels: CGSize(width: 800, height: 1600))
+    #expect(source.frameSize == .preview(CGSize(width: 800, height: 1600)))
+    session.updateRendererSize(id: large, pixels: nil)
+    #expect(source.frameSize == .preview(CGSize(width: 400, height: 900)))
+    session.updateRendererSize(id: large, pixels: CGSize(width: 1200, height: 600))
+    #expect(source.frameSize == .preview(CGSize(width: 1200, height: 900)))
+    session.removeRenderer(id: large)
+    #expect(source.frameSize == .preview(CGSize(width: 400, height: 900)))
+    session.removeRenderer(id: small)
+    #expect(source.frameSize == .inactive)
+    session.updateRendererSize(id: large, pixels: CGSize(width: 1200, height: 600))
+    #expect(source.frameSize == .inactive)
+  }
+
+  @Test
+  func scaledFramesKeepNativeInputCoordinates() throws {
+    let source = Source()
+    let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
+    defer { session.cancel() }
+    var format: CMVideoFormatDescription?
+    CMVideoFormatDescriptionCreate(
+      allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
+      width: 540, height: 1200, extensions: nil, formatDescriptionOut: &format
+    )
+    try source.deliver?(.format(#require(format), displaySize: CGSize(width: 1080, height: 2400)))
+    #expect(session.displayInfo == DisplayInfo(size: CGSize(width: 1080, height: 2400), densityScale: 3))
+  }
+
+  @Test
+  func frameSizesRoundUpBoundInvalidInputAndPreserveNativeDemand() {
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 399.2, height: 899.7)) == .preview(CGSize(width: 400, height: 900)))
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 0, height: 900)) == .inactive)
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: CGFloat.infinity, height: 900)) == .inactive)
+    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 9000, height: 9000)) == .preview(CGSize(width: 8192, height: 8192)))
+    #expect(LivePreviewFrameSize.maximum([.inactive, .preview(CGSize(width: 400, height: 900)), .native]) == .native)
+  }
+
   private enum SourceFailure: Error { case disconnected }
 
   @MainActor
@@ -114,6 +162,11 @@ struct LivePreviewSessionStateTests {
     var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
     var starts = 0
     var stops = 0
+    var frameSize = LivePreviewFrameSize.native
+
+    func setFrameSize(_ size: LivePreviewFrameSize) {
+      frameSize = size
+    }
 
     func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
       starts += 1

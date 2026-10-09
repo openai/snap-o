@@ -186,6 +186,19 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     if shouldDetach {
       attachSession()
     }
+    updateFrameSize()
+  }
+
+  private func updateFrameSize() {
+    renderer?.session.updateRendererSize(
+      id: rendererID,
+      pixels: hasVisiblePreview && window != nil ? convertToBacking(bounds).size : nil
+    )
+  }
+
+  override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    updateFrameSize()
   }
 
   private func configureLayerIfNeeded() {
@@ -306,6 +319,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    updateFrameSize()
     guard let window else { return }
     NotificationCenter.default.addObserver(
       self, selector: #selector(releaseInputFocus), name: NSWindow.didResignKeyNotification, object: window
@@ -353,6 +367,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   override func layout() {
     super.layout()
+    updateFrameSize()
     // Rotation can change both the size and origin of the hosted view's bounds.
     CATransaction.begin()
     CATransaction.setDisableActions(true)
