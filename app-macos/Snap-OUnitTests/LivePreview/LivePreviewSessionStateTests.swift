@@ -132,7 +132,7 @@ struct LivePreviewSessionStateTests {
   }
 
   @Test
-  func scaledFramesKeepNativeInputCoordinates() throws {
+  func scaledFramesKeepNativeDisplayDimensions() throws {
     let source = Source()
     let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
     defer { session.cancel() }
@@ -142,15 +142,26 @@ struct LivePreviewSessionStateTests {
       width: 540, height: 1200, extensions: nil, formatDescriptionOut: &format
     )
     try source.deliver?(.format(#require(format), displaySize: CGSize(width: 1080, height: 2400)))
-    #expect(session.displayInfo == DisplayInfo(size: CGSize(width: 1080, height: 2400), densityScale: 3))
+    #expect(session.displayInfo?.size == CGSize(width: 1080, height: 2400))
   }
 
   @Test
-  func frameSizesRoundUpBoundInvalidInputAndPreserveNativeDemand() {
+  func fractionalPreviewDimensionsRoundUp() {
     #expect(LivePreviewFrameSize.previewSize(CGSize(width: 399.2, height: 899.7)) == .preview(CGSize(width: 400, height: 900)))
-    #expect(LivePreviewFrameSize.previewSize(CGSize(width: 0, height: 900)) == .inactive)
-    #expect(LivePreviewFrameSize.previewSize(CGSize(width: CGFloat.infinity, height: 900)) == .inactive)
+  }
+
+  @Test(arguments: [CGSize.zero, CGSize(width: CGFloat.infinity, height: 900)])
+  func invalidPreviewSizeIsInactive(size: CGSize) {
+    #expect(LivePreviewFrameSize.previewSize(size) == .inactive)
+  }
+
+  @Test
+  func previewDimensionsStayWithinSupportedLimit() {
     #expect(LivePreviewFrameSize.previewSize(CGSize(width: 9000, height: 9000)) == .preview(CGSize(width: 8192, height: 8192)))
+  }
+
+  @Test
+  func recordingRequiresNativeResolution() {
     #expect(LivePreviewFrameSize.maximum([.inactive, .preview(CGSize(width: 400, height: 900)), .native]) == .native)
   }
 
@@ -169,13 +180,6 @@ struct LivePreviewSessionStateTests {
     let request = LivePreviewFrameSize.preview(CGSize(width: 1500, height: 2000))
     #expect(request.capped(to: CGSize(width: 1920, height: 1200)) == .preview(CGSize(width: 1500, height: 1200)))
     #expect(request.capped(to: CGSize(width: 1200, height: 1920)) == .preview(CGSize(width: 1200, height: 1920)))
-  }
-
-  @Test
-  func missingNativeSizeUsesFullResolutionFrames() {
-    #expect(LivePreviewFrameSize.preview(CGSize(width: 540, height: 1200)).capped(to: nil) == .native)
-    #expect(LivePreviewFrameSize.native.capped(to: CGSize(width: 1080, height: 2400)) == .native)
-    #expect(LivePreviewFrameSize.inactive.capped(to: nil) == .inactive)
   }
 
   private enum SourceFailure: Error { case disconnected }

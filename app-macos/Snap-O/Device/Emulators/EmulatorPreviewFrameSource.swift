@@ -170,8 +170,9 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     size requestedSize: LivePreviewFrameSize,
     deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void
   ) async throws {
-    func receiveFrames(nativeSize: CGSize?) async throws -> NativeDisplayChange? {
-      let size = requestedSize.capped(to: nativeSize)
+    try await EmulatorPreviewStream.run(requestedSize: requestedSize) {
+      try await readDisplaySize(target: target)
+    } receiveFrames: { size, nativeSize in
       var format = EmulatorPreview_ImageFormat()
       format.format = .rgb888
       if case .preview(let pixels) = size {
@@ -215,7 +216,11 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
             var displaySize: CGSize?
             if case .preview = size {
               // Reuse the initial probe until the device rotates, folds, or changes mode.
-              displaySize = previousFormat == nil ? nativeSize : try? await readDisplaySize(target: target)
+              if previousFormat == nil {
+                displaySize = nativeSize
+              } else {
+                displaySize = try await EmulatorPreviewStream.readSize { try await readDisplaySize(target: target) }
+              }
               if let native = displaySize,
                  abs(native.width * CGFloat(height) - native.height * CGFloat(width)) > native.width + native.height {
                 // Rotation can race the probe. Native frames supply their own input geometry.
@@ -223,7 +228,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
               }
               try Task.checkCancellation()
               if requestedSize.capped(to: displaySize) != size {
-                return NativeDisplayChange(size: displaySize)
+                return EmulatorPreviewStream.DisplayChange(size: displaySize)
               }
             }
             // Native frames already carry the correct dimensions for input.
@@ -235,21 +240,6 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
         return nil
       }
     }
-
-    var nativeSize: CGSize?
-    if case .preview = requestedSize {
-      nativeSize = try? await readDisplaySize(target: target)
-      try Task.checkCancellation()
-    }
-    while let change = try await receiveFrames(nativeSize: nativeSize) {
-      try Task.checkCancellation()
-      nativeSize = change.size
-    }
-  }
-
-  /// A missing size switches to native frames without requiring another ADB probe.
-  private struct NativeDisplayChange {
-    let size: CGSize?
   }
 
   private nonisolated static func readDisplaySize(target: DeviceTarget) async throws -> CGSize? {

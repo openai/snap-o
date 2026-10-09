@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C98100000000000000000003 /* EmulatorPreviewStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = C98100000000000000000004 /* EmulatorPreviewStream.swift */; };
 		C98100000000000000000001 /* EmulatorPreviewFrameBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C98100000000000000000002 /* EmulatorPreviewFrameBuilder.swift */; };
 		A89100000000000000000001 /* DeviceLinkAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A89100000000000000000002 /* DeviceLinkAuthorization.swift */; };
 		B9121A000000000000000001 /* ToolConnectionHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9121A000000000000000002 /* ToolConnectionHealth.swift */; };
@@ -153,6 +154,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C98100000000000000000004 /* EmulatorPreviewStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Emulators/EmulatorPreviewStream.swift"; sourceTree = SOURCE_ROOT; };
 		C98100000000000000000002 /* EmulatorPreviewFrameBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift"; sourceTree = SOURCE_ROOT; };
 		A89100000000000000000002 /* DeviceLinkAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/App/DeviceLinkAuthorization.swift"; sourceTree = SOURCE_ROOT; };
 		B9121A000000000000000002 /* ToolConnectionHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Tools/ToolConnectionHealth.swift"; sourceTree = SOURCE_ROOT; };
@@ -464,6 +466,7 @@
 				0E8CC1FCAEFD145BB0D51BEA /* Snap-O/Capture/Review/CaptureReviewPlayback.swift */,
 				F17C61C647BF6CA077AB68A4 /* Snap-O/LivePreview/PreviewVideo.swift */,
 				95DE14A33DEE1F8F9193D91F /* Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift */,
+				C98100000000000000000004 /* EmulatorPreviewStream.swift */,
 				C98100000000000000000002 /* EmulatorPreviewFrameBuilder.swift */,
 				8C5EC570FDF15AC749B404AA /* Snap-O/LivePreview/Rendering/LivePreviewSession.swift */,
 				473AD174AE8BE24B6C776EDB /* Snap-O/Models/Media.swift */,
@@ -806,6 +809,7 @@
 				24B093CC4453A63B8EC342B5 /* Snap-O/Capture/Review/CaptureReviewPlayback.swift in Sources */,
 				AFABB5C8F23608E708AF8C20 /* Snap-O/LivePreview/PreviewVideo.swift in Sources */,
 				4A3118EAF71D56C01CDF88DD /* Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift in Sources */,
+				C98100000000000000000003 /* EmulatorPreviewStream.swift in Sources */,
 				C98100000000000000000001 /* EmulatorPreviewFrameBuilder.swift in Sources */,
 				AD1257D65CCC1DD35F88B3A9 /* Snap-O/LivePreview/Rendering/LivePreviewSession.swift in Sources */,
 				B9049667F131557680289BD7 /* Snap-O/Models/Media.swift in Sources */,
