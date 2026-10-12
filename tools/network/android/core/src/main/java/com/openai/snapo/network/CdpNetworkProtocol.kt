@@ -62,6 +62,12 @@ internal data class CdpResponseReceivedParams(
     val timestamp: Double? = null,
     val type: String? = null,
     val response: CdpResponseData,
+    val snapoInterception: CdpResponseInterception? = null,
+)
+
+@Serializable
+internal data class CdpResponseInterception(
+    val kind: String,
 )
 
 @Serializable

@@ -45,6 +45,8 @@ List servers with `snapo-network list --json`, then select the device serial and
 
 Keep the runner alive while triggering the matching request in the app. Wait for `Loaded N route(s)` before reproducing the behavior. Check runner logs for the method, path, and returned status, or handler errors. `snapo-network requests` and `snapo-network show` can inspect the delivered response from another connection. Inspection shows what the app received, without a before/after diff; also verify the requested app behavior.
 
+Captured requests show **Overwritten** when a handler changes or mocks the response, and **Watched** when it returns the upstream response unchanged.
+
 Stop this runner with Ctrl-C when the override session is finished, unless the user wants it left running. Stopping removes its routes and fails its paused calls. New calls then follow normal behavior unless another runner matches them.
 
 ## Matching and response APIs

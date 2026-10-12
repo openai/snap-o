@@ -46,6 +46,22 @@ After `upstream`, only `fulfill` or `fail` can complete the response pause. Only
 
 `SnapO.intercept.finished` carries `exchangeId`. It indicates that Android has stopped waiting for the handler, including after completion, cancellation, or failure. It does not mean that the app's UI has consumed the response.
 
+## Response attribution
+
+`Network.responseReceived` adds optional `params.snapoInterception` for a response from a matched route:
+
+```json
+{"kind":"overwritten"}
+```
+
+- `mocked`: the runner returned a response without an upstream call. No original response exists.
+- `watched`: the runner returned the upstream status, meaningful headers, and body unchanged.
+- `overwritten`: the runner changed the upstream status, meaningful headers, or body.
+
+Comparison ignores header-name case and ordering between different header names. Repeated values retain their order. Content length and hop-by-hop headers are excluded because runners normalize transport framing. Status and decoded body bytes must match exactly. Unmatched or bypassed calls have no attribution; active route lists do not determine a captured request's result.
+
+The existing response fields and body endpoint describe the delivered response. Attribution is retained in history after the runner disconnects and is additive within Network protocol 2.
+
 ## Boundaries
 
 The handler deadline starts when Android matches a route. The runner also cancels timed-out handlers. Android checks cancellation while waiting for decisions; upstream I/O remains subject to the app's transport timeouts. The app may retry failed requests under its existing policy.

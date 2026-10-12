@@ -1,5 +1,8 @@
 package com.openai.snapo.network.okhttp3
 
+import com.openai.snapo.network.InterceptionDecision
+import com.openai.snapo.network.InterceptionHeader
+import com.openai.snapo.network.InterceptionResponse
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.MediaType
@@ -12,6 +15,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.BufferedSink
 import okio.ByteString
+import okio.ByteString.Companion.encodeUtf8
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -81,6 +85,68 @@ class SnapOOkHttpInterceptorTest {
             factory.close()
         }
     }
+
+    @Test
+    fun `returning upstream unchanged ignores normalized framing and header name order`() {
+        val original = originalResponse().copy(
+            headerEntries = listOf(
+                InterceptionHeader("Content-Type", "text/plain"),
+                InterceptionHeader("Set-Cookie", "first=1"),
+                InterceptionHeader("Set-Cookie", "second=2"),
+                InterceptionHeader("Transfer-Encoding", "chunked"),
+                InterceptionHeader("Connection", "keep-alive, Example-Hop"),
+                InterceptionHeader("Example-Hop", "temporary"),
+            )
+        )
+        val delivered = original.copy(
+            headerEntries = listOf(
+                InterceptionHeader("set-cookie", "first=1"),
+                InterceptionHeader("set-cookie", "second=2"),
+                InterceptionHeader("content-type", "text/plain"),
+                InterceptionHeader("Content-Length", "8"),
+            )
+        )
+        val routed = fulfill(delivered, original)
+        routed.response.use {
+            assertEquals("watched", routed.interception?.kind)
+            assertEquals("original", it.body.string())
+        }
+        assertEquals(false, original.hasSameContent(delivered.copy(headerEntries = delivered.headerEntries.reversed())))
+    }
+
+    @Test
+    fun `fulfilled routes distinguish mocks from upstream status header or body changes`() {
+        val mocked = fulfill(originalResponse())
+        mocked.response.close()
+        assertEquals("mocked", mocked.interception?.kind)
+
+        val original = originalResponse()
+        val replacements = listOf(
+            original.copy(status = 201),
+            original.copy(headerEntries = original.headerEntries + InterceptionHeader("X-Example", "changed")),
+            original.copy(body = "edited".encodeUtf8().base64()),
+        )
+        replacements.forEach { replacement ->
+            val routed = fulfill(replacement, original)
+            routed.response.use {
+                assertEquals("overwritten", routed.interception?.kind)
+                assertEquals(replacement.status, it.code)
+                assertEquals(replacement.body, it.body.byteString().base64())
+            }
+        }
+    }
+
+    private fun originalResponse() = InterceptionResponse(
+        200,
+        listOf(InterceptionHeader("Content-Type", "text/plain")),
+        "original".encodeUtf8().base64()
+    )
+
+    private fun fulfill(response: InterceptionResponse, original: InterceptionResponse? = null): RoutedResponse =
+        InterceptionDecision("exchange", "fulfill", "response", response = response).fulfillRoute(
+            Request.Builder().url("https://example.test/profile").build(),
+            original = original,
+        )
 
     private class CountingRequestBody(private val value: String) : RequestBody() {
         var writeCount: Int = 0

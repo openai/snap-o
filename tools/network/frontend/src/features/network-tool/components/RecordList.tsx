@@ -253,7 +253,7 @@ function RecordRow({
         role="option"
         aria-selected={selected}
         tabIndex={-1}
-        className={`record-row ${selected ? "selected" : ""}`}
+        className={`record-row ${selected ? "selected" : ""} ${record.kind === "request" && record.interception ? "intercepted" : ""}`}
         onClick={() => onSelect(id)}
         onContextMenu={(event) => onContextMenu(record, event)}
       >
@@ -263,6 +263,11 @@ function RecordRow({
         </span>
         <span className="record-method">{record.method}</span>
         <StatusView record={record} />
+        {record.kind !== "request" || record.interception == null ? null : (
+          <span className={`record-interception ${record.interception.kind === "watched" ? "watched" : "overwritten"}`}>
+            {record.interception.kind === "watched" ? "Watched" : "Overwritten"}
+          </span>
+        )}
       </button>
     );
   }, [id, optionId, record, selected, onSelect, onContextMenu]);

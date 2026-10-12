@@ -266,6 +266,27 @@ body.split-pane-resizing {
   flex-direction: column;
 }
 
+.record-row.intercepted {
+  row-gap: 2px;
+}
+
+.record-row.intercepted .record-main {
+  grid-row: 1 / span 2;
+}
+
+.record-interception {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  justify-self: end;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--on-surface-variant);
+}
+
+.record-interception.overwritten {
+  color: var(--warning);
+}
+
 .record-primary {
   color: var(--on-surface);
   font-size: 12px;
@@ -389,6 +410,15 @@ body.split-pane-resizing {
 
 .status-warning {
   color: var(--warning);
+}
+
+.detail-interception {
+  color: var(--warning);
+  font-size: 10px;
+}
+
+.detail-interception.watched {
+  color: var(--on-surface-variant);
 }
 
 .failure-message {
