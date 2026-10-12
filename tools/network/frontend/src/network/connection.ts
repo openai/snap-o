@@ -80,6 +80,15 @@ export class NetworkConnection {
               result.responseBodyLoadCompleted = true;
             } else result.responseBodyLoadError = "unavailable";
           })
+        : undefined,
+      input.includeOriginalResponseBody === true
+        ? this.json(`${path}/original-response-body`, maximumRecordBytes, true).then((body) => {
+            if (typeof body?.body === "string") {
+              result.originalResponseBody = body.body;
+              result.originalResponseBodyBase64Encoded = body.base64Encoded === true;
+              result.originalResponseBodyLoadCompleted = true;
+            } else result.originalResponseBodyLoadError = "unavailable";
+          })
         : undefined
     ]);
     this.checkOpen();

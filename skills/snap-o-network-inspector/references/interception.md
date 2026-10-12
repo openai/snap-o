@@ -43,9 +43,9 @@ List servers with `snapo-network list --json`, then select the device serial and
 "$SNAPO_BIN" intercept /path/to/prototype.py -s <serial> -n <socket_name>
 ```
 
-Keep the runner alive while triggering the matching request in the app. Wait for `Loaded N route(s)` before reproducing the behavior. Check runner logs for the method, path, and returned status, or handler errors. `snapo-network requests` and `snapo-network show` can inspect the delivered response from another connection. Inspection shows what the app received, without a before/after diff; also verify the requested app behavior.
+Keep the runner alive while triggering the matching request in the app. Wait for `Loaded N route(s)` before reproducing the behavior. Check runner logs for the method, path, and returned status, or handler errors. `snapo-network requests` and `snapo-network show` can inspect the delivered response from another connection; also verify the requested app behavior.
 
-Captured requests show **Overwritten** when a handler changes or mocks the response, and **Watched** when it returns the upstream response unchanged.
+Captured requests show **Overwritten** when a handler changes or mocks the response, and **Watched** when it returns the upstream response unchanged. The details show the original **Response** and the **Overwritten response** delivered to the app. Mocked calls have no upstream response. Original bodies use the normal capture limits and can expire from history. Existing CLI body reads and HAR exports still describe the response delivered to the app.
 
 The Network pane shows registered overrides for the selected app when its Android library includes the live list. It updates as runners start, reload routes, and disconnect. The list shows registered methods and paths, not Python source or future response values. Opening or closing the pane does not change the overrides.
 

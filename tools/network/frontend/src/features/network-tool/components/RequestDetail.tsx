@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { ToolContentClient } from "../../../network/client";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
@@ -12,19 +11,23 @@ import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
 import { SseCopyAllButton, SseEventList, type SseStatus } from "./StreamEvents";
+import { InterceptedResponses } from "./InterceptedResponses";
+import { ResponseBodyContent } from "./ResponseBodyContent";
 
 export function RequestDetail({
   client,
   record,
   uiState,
   isConnected = true,
-  onRetryResponseBody
+  onRetryResponseBody,
+  onRetryOriginalResponseBody
 }: {
   client: ToolContentClient;
   record: RequestRecord;
   uiState: ToolUiState;
   isConnected?: boolean;
   onRetryResponseBody(): void;
+  onRetryOriginalResponseBody?(): void;
 }): JSX.Element {
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
   const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
@@ -49,9 +52,30 @@ export function RequestDetail({
         });
     const isResponseBodyLoading = !isSseResponse && shouldRequestResponseBody(record);
     const responseBodyLoadError = !isSseResponse && responseBody == null ? record.responseBodyLoadError : null;
-    const responseBodyIsOffline =
-      !isConnected && responseBody == null && (isResponseBodyLoading || responseBodyLoadError === "failed");
+    const isOverwritten = record.interception?.outcome === "modified" || record.interception?.outcome === "mocked";
     const prefix = `request:${recordId(record)}`;
+    const responseStream = isSseResponse ? (
+      <Section
+        title={
+          <>
+            Server-Sent Events
+            <span className="section-status">· {streamStatus}</span>
+          </>
+        }
+        storageKey={`${prefix}:stream`}
+        uiState={uiState}
+        trailing={<SseCopyAllButton client={client} events={record.streamEvents} />}
+      >
+        <SseEventList
+          client={client}
+          events={record.streamEvents}
+          closed={record.streamClosed}
+          status={streamStatus}
+          storageKey={`${prefix}:stream`}
+          uiState={uiState}
+        />
+      </Section>
+    ) : null;
 
     return (
       <div className="detail-scroll">
@@ -103,83 +127,64 @@ export function RequestDetail({
         {!isSseResponse && isConnected && record.status.kind === "pending" && !record.hasReceivedResponse ? (
           <div className="pending-response">Waiting for response</div>
         ) : null}
-        {record.responseHeaders.length === 0 ? null : (
-          <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
-            <HeadersTable headers={record.responseHeaders} />
-          </Section>
-        )}
-        {isSseResponse ? (
-          <Section
-            title={
-              <>
-                Server-Sent Events
-                <span className="section-status">· {streamStatus}</span>
-              </>
-            }
-            storageKey={`${prefix}:stream`}
+        {isOverwritten ? (
+          <InterceptedResponses
+            client={client}
+            record={record}
             uiState={uiState}
-            trailing={<SseCopyAllButton client={client} events={record.streamEvents} />}
-          >
-            <SseEventList
-              client={client}
-              events={record.streamEvents}
-              closed={record.streamClosed}
-              status={streamStatus}
-              storageKey={`${prefix}:stream`}
-              uiState={uiState}
-            />
-          </Section>
-        ) : null}
-        {responseBody == null && !isResponseBodyLoading && responseBodyLoadError == null ? null : (
-          <Section
-            title="Response Body"
-            meta={
-              responseBodyLoadError != null
-                ? null
-                : responseBody == null
-                  ? responseBodyCaptureMetadata(record)
-                  : payloadMetadata(responseBody)
-            }
-            storageKey={`${prefix}:responseBody`}
-            uiState={uiState}
-          >
-            {responseBodyIsOffline ? (
-              <div className="body-load-message" role="status">
-                Response body isn’t cached on this Mac.
-              </div>
-            ) : responseBodyLoadError != null ? (
-              <div className="body-load-message" role="status">
-                <span>
-                  {responseBodyLoadError === "unavailable"
-                    ? "This response is no longer available. Try making the request again."
-                    : "Couldn’t load the response. Try again."}
-                </span>
-                {responseBodyLoadError === "failed" ? (
-                  <button className="text-button" type="button" onClick={onRetryResponseBody}>
-                    Retry
-                  </button>
-                ) : null}
-              </div>
-            ) : responseBody == null ? (
-              <div className="payload-card">
-                <div className="body-loading" role="status">
-                  <LoadingSpinner size={14} />
-                  <span>Loading</span>
-                </div>
-              </div>
-            ) : (
-              <BodySection
-                client={client}
-                payload={responseBody}
-                storageKey={`${prefix}:responseBody:payload`}
-                uiState={uiState}
-              />
+            isConnected={isConnected}
+            responseBody={responseBody}
+            responseStream={responseStream}
+            onRetryResponseBody={onRetryResponseBody}
+            onRetryOriginalResponseBody={onRetryOriginalResponseBody}
+          />
+        ) : (
+          <>
+            {record.responseHeaders.length === 0 ? null : (
+              <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
+                <HeadersTable headers={record.responseHeaders} />
+              </Section>
             )}
-          </Section>
+            {responseStream}
+            {responseBody == null && !isResponseBodyLoading && responseBodyLoadError == null ? null : (
+              <Section
+                title="Response Body"
+                meta={
+                  responseBodyLoadError != null
+                    ? null
+                    : responseBody == null
+                      ? responseBodyCaptureMetadata(record)
+                      : payloadMetadata(responseBody)
+                }
+                storageKey={`${prefix}:responseBody`}
+                uiState={uiState}
+              >
+                <ResponseBodyContent
+                  client={client}
+                  payload={responseBody}
+                  loading={isResponseBodyLoading}
+                  error={responseBodyLoadError}
+                  isConnected={isConnected}
+                  storageKey={`${prefix}:responseBody:payload`}
+                  uiState={uiState}
+                  onRetry={onRetryResponseBody}
+                />
+              </Section>
+            )}
+          </>
         )}
       </div>
     );
-  }, [client, record, uiState, isConnected, onRetryResponseBody, requestBodyDisplayText, timingText]);
+  }, [
+    client,
+    record,
+    uiState,
+    isConnected,
+    onRetryResponseBody,
+    onRetryOriginalResponseBody,
+    requestBodyDisplayText,
+    timingText
+  ]);
 }
 
 function sseStatus(record: RequestRecord, isConnected: boolean): SseStatus {

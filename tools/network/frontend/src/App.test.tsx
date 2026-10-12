@@ -181,6 +181,86 @@ describe("Network frontend with the shared host", () => {
     );
   }
 
+  async function captureOverwrittenResponse(status = 200, completed = true) {
+    await act(async () => render(<App />, container));
+    await flush();
+    await act(async () => {
+      for (const message of replayMessages) {
+        if (!completed && message.method === "Network.loadingFinished") continue;
+        const intercepted =
+          message.method === "Network.responseReceived"
+            ? {
+                ...message,
+                params: {
+                  ...message.params,
+                  response: { url: "https://example.test/items", status, headers: {}, mimeType: "application/json" },
+                  snapoInterception: {
+                    outcome: "modified",
+                    originalResponse: { status: 200, headers: {}, encodedDataLength: 12 }
+                  }
+                }
+              }
+            : message.method === "Network.loadingFinished" && status === 204
+              ? { ...message, params: { ...message.params, encodedDataLength: 0 } }
+              : message;
+        for (const receive of events)
+          receive({ streamId: "network-stream", processId: metadata.processIdentity, message: intercepted });
+      }
+    });
+  }
+
+  it.each([200, 204])("loads the original before the delivered %i response completes", async (status) => {
+    vi.mocked(mocks.client.loadBodies).mockImplementation(async ({ requestId }) => ({
+      requestId,
+      originalResponseBody: "upstream"
+    }));
+    await captureOverwrittenResponse(status, false);
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        status: { kind: "success", code: status },
+        originalResponseBody: "upstream",
+        interception: { originalResponse: { status: 200 } }
+      })
+    );
+    expect(mocks.client.loadBodies).toHaveBeenCalledExactlyOnceWith({
+      processId: metadata.processIdentity,
+      requestId: "request-1",
+      includeRequestBody: false,
+      includeResponseBody: false,
+      includeOriginalResponseBody: true
+    });
+  });
+
+  it("retries a failed original body without refetching or losing the delivered body", async () => {
+    let failOriginal = true;
+    vi.mocked(mocks.client.loadBodies).mockImplementation(async ({ requestId, includeOriginalResponseBody }) => {
+      if (includeOriginalResponseBody) {
+        if (failOriginal) throw new Error("temporary original failure");
+        return { requestId, originalResponseBody: "upstream" };
+      }
+      return { requestId, responseBody: "delivered" };
+    });
+    await captureOverwrittenResponse();
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        responseBody: "delivered",
+        originalResponseBodyLoadError: "failed"
+      })
+    );
+    failOriginal = false;
+    await act(() => mocks.model!.retryResponseBody("originalResponse"));
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        responseBody: "delivered",
+        originalResponseBody: "upstream",
+        originalResponseBodyLoadError: null
+      })
+    );
+    const calls = vi.mocked(mocks.client.loadBodies).mock.calls;
+    expect(calls.filter(([input]) => input.includeResponseBody)).toHaveLength(1);
+    expect(calls.filter(([input]) => input.includeOriginalResponseBody)).toHaveLength(2);
+  });
+
   it("shows host startup failures instead of waiting for Android", async () => {
     container.id = "root";
     mocks.host = new ToolHost({

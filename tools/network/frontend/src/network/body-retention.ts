@@ -91,12 +91,25 @@ function mergeBodies(existing: RequestBodies | undefined, incoming: RequestBodie
     responseBodyBase64Encoded: incoming.responseBodyBase64Encoded ?? existing?.responseBodyBase64Encoded,
     responseBodyLoadCompleted: incoming.responseBodyLoadCompleted ?? existing?.responseBodyLoadCompleted,
     responseBodyLoadError:
-      incoming.responseBodyLoadError !== undefined ? incoming.responseBodyLoadError : existing?.responseBodyLoadError
+      incoming.responseBodyLoadError !== undefined ? incoming.responseBodyLoadError : existing?.responseBodyLoadError,
+    originalResponseBody: incoming.originalResponseBody ?? existing?.originalResponseBody,
+    originalResponseBodyBase64Encoded:
+      incoming.originalResponseBodyBase64Encoded ?? existing?.originalResponseBodyBase64Encoded,
+    originalResponseBodyLoadCompleted:
+      incoming.originalResponseBodyLoadCompleted ?? existing?.originalResponseBodyLoadCompleted,
+    originalResponseBodyLoadError:
+      incoming.originalResponseBodyLoadError !== undefined
+        ? incoming.originalResponseBodyLoadError
+        : existing?.originalResponseBodyLoadError
   };
 }
 
 function estimatedBodyBytes(bodies: RequestBodies): number {
-  return estimatedStringStorageBytes(bodies.requestBody) + estimatedStringStorageBytes(bodies.responseBody);
+  return (
+    estimatedStringStorageBytes(bodies.requestBody) +
+    estimatedStringStorageBytes(bodies.responseBody) +
+    estimatedStringStorageBytes(bodies.originalResponseBody)
+  );
 }
 
 export function estimatedStringStorageBytes(value: string | null | undefined): number {

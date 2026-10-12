@@ -25,6 +25,7 @@ import {
   isCompletedRecord,
   shouldRequestRequestBody,
   shouldRequestResponseBody,
+  shouldRequestOriginalResponseBody,
   sidebarPlaceholderText
 } from "../lib/records";
 
@@ -48,7 +49,7 @@ export interface NetworkToolModel {
   selectRecord(id: string): void;
   addExclusionFilter(value: string): void;
   removeExclusionFilter(filter: string): void;
-  retryResponseBody(): void;
+  retryResponseBody(target?: "response" | "originalResponse"): void;
 }
 
 export function useNetworkToolModel(client: NetworkClient, connection: ToolConnection | null): NetworkToolModel {
@@ -156,19 +157,22 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
   }, [selectedRecordId, visibleRecords]);
   const selectedRequestKey = selectedRecord?.kind === "request" ? selectedRecordId : null;
 
-  const retryResponseBody = useCallback(() => {
-    if (selectedRecord?.kind !== "request" || selectedRecord.responseBodyLoadError !== "failed") return;
-    const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
-    bodyLoader.forgetJob(`${recordKey}\u0000response`);
-    bodyLoader.forgetRecords(
-      bodyCache.put(recordKey, {
-        requestId: selectedRecord.requestId,
-        responseBodyLoadCompleted: false,
-        responseBodyLoadError: null
-      })
-    );
-    setBodyCacheRevision((revision) => revision + 1);
-  }, [bodyCache, bodyLoader, selectedRecord]);
+  const retryResponseBody = useCallback(
+    (target: "response" | "originalResponse" = "response") => {
+      if (selectedRecord?.kind !== "request" || selectedRecord[`${target}BodyLoadError`] !== "failed") return;
+      const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
+      bodyLoader.forgetJob(`${recordKey}\u0000${target}`);
+      bodyLoader.forgetRecords(
+        bodyCache.put(recordKey, {
+          requestId: selectedRecord.requestId,
+          [`${target}BodyLoadCompleted`]: false,
+          [`${target}BodyLoadError`]: null
+        })
+      );
+      setBodyCacheRevision((revision) => revision + 1);
+    },
+    [bodyCache, bodyLoader, selectedRecord]
+  );
 
   useEffect(() => {
     if (!isConnected) return;
@@ -209,6 +213,21 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
             requestId: selectedRecord.requestId,
             includeRequestBody: false,
             includeResponseBody: true
+          }
+        });
+      }
+
+      if (shouldRequestOriginalResponseBody(selectedRecord)) {
+        jobs.push({
+          key: `${recordKey}\u0000originalResponse`,
+          recordKey,
+          priority: bodyLoadPriority.selected,
+          input: {
+            processId: selectedRecord.processId,
+            requestId: selectedRecord.requestId,
+            includeRequestBody: false,
+            includeResponseBody: false,
+            includeOriginalResponseBody: true
           }
         });
       }
