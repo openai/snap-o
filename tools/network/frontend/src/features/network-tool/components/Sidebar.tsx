@@ -3,9 +3,12 @@ import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
 import { ExclusionFilterControl } from "./ExclusionFilterControl";
 import { RecordList } from "./RecordList";
+import { InterceptionOverrides } from "./InterceptionOverrides";
+import type { InterceptionState } from "../../../network/interception";
 
 export function Sidebar({
   isConnected,
+  interception,
   exclusionFilters,
   hiddenRequestCount,
   records,
@@ -19,6 +22,7 @@ export function Sidebar({
   onRecordSelect
 }: {
   isConnected: boolean;
+  interception: InterceptionState;
   exclusionFilters: string[];
   hiddenRequestCount: number;
   records: ToolRecord[];
@@ -33,6 +37,7 @@ export function Sidebar({
 }): JSX.Element {
   return (
     <aside className="sidebar">
+      <InterceptionOverrides state={interception} />
       <ExclusionFilterControl
         exclusionFilters={exclusionFilters}
         hiddenRequestCount={hiddenRequestCount}

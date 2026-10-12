@@ -15,6 +15,7 @@ import {
 import type { ToolConnection } from "@snap-o/tool-host";
 import { NetworkStreamController, type StreamLifecycleState } from "../../../network/stream-controller";
 import { useToolUiState } from "./useToolUiState";
+import { useInterceptionOverrides } from "./useInterceptionOverrides";
 import { exportAsHar } from "../lib/exportActions";
 import { normalizeExclusionFilter, normalizeExclusionFilters } from "../lib/exclusionFilters";
 import {
@@ -31,6 +32,7 @@ export interface NetworkToolModel {
   client: NetworkClient;
   uiState: ReturnType<typeof useToolUiState>;
   isConnected: boolean;
+  interception: ReturnType<typeof useInterceptionOverrides>;
   selectedRecord: ToolRecord | null;
   selectedRecordId: string | null;
   visibleRecords: ToolRecord[];
@@ -51,6 +53,7 @@ export interface NetworkToolModel {
 
 export function useNetworkToolModel(client: NetworkClient, connection: ToolConnection | null): NetworkToolModel {
   const isConnected = connection !== null;
+  const interception = useInterceptionOverrides(connection);
   const [state, setState] = useState<ToolDataState>(() => createEmptyToolState());
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -271,6 +274,7 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     client,
     uiState,
     isConnected,
+    interception,
     selectedRecord,
     selectedRecordId,
     visibleRecords,

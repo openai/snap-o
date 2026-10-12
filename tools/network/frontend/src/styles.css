@@ -209,6 +209,79 @@ body.split-pane-resizing {
   flex: 0 0 auto;
 }
 
+.interception-overrides {
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow: auto;
+  border-bottom: 1px solid var(--outline-variant);
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.interception-summary {
+  cursor: pointer;
+  color: var(--on-surface);
+  font-weight: 500;
+}
+
+.interception-summary:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.interception-status {
+  display: block;
+  margin-left: 14px;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.interception-note {
+  margin: 6px 0 0;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.interception-runner {
+  margin-top: 8px;
+}
+
+.interception-runner-name {
+  color: var(--on-surface-variant);
+  font-size: 10px;
+}
+
+.interception-routes {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.interception-route {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.interception-method {
+  flex: 0 0 auto;
+  color: var(--accent-blue);
+}
+
+.interception-path {
+  min-width: 0;
+  color: var(--on-surface);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .record-list-frame {
   position: relative;
   flex: 1;

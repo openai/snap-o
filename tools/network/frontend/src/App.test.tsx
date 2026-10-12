@@ -300,16 +300,25 @@ describe("Network frontend with the shared host", () => {
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
-  it("uses host metadata with the real Network connection on each reconnect", async () => {
+  it("isolates observers and capture across app switches and reconnects", async () => {
     const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
     const streams: Events[] = [];
     class Events extends EventTarget {
-      constructor() {
+      static readonly CLOSED = 2;
+      readyState = 0;
+      constructor(readonly url: string) {
         super();
         streams.push(this);
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
       }
       close = vi.fn();
+      registerRunner(id: string) {
+        this.dispatchEvent(
+          new MessageEvent("message", {
+            data: JSON.stringify({ runners: [{ id, routes: [] }] })
+          })
+        );
+      }
     }
     vi.stubGlobal("EventSource", Events);
     fetchRequest.mockImplementation(async (url) => {
@@ -323,14 +332,39 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() => expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network"]));
+    const capture = streams.find((stream) => stream.url === "/api/network")!;
+    const observer = streams.find((stream) => stream.url === "/api/interception")!;
+    await act(() => observer.registerRunner("first-app"));
+    expect(mocks.model?.interception).toMatchObject({ status: "live", runners: [{ id: "first-app" }] });
+    await act(() => {
+      observer.dispatchEvent(new Event("error"));
+    });
+    expect(mocks.model?.interception).toEqual({ status: "unavailable" });
+    expect(capture.close).not.toHaveBeenCalled();
+    await act(() => observer.registerRunner("first-app"));
+    state.manifest = { ...state.manifest!, pid: 21, processIdentity: "boot:21:456" };
+    await publish(true);
+    expect(capture.close).toHaveBeenCalledOnce();
+    expect(observer.close).toHaveBeenCalledOnce();
+    expect(mocks.model?.interception).toEqual({ status: "connecting" });
+    await act(() => observer.registerRunner("stale-first-app"));
+    expect(mocks.model?.interception).toEqual({ status: "connecting" });
+    const currentObserver = streams.filter((stream) => stream.url === "/api/interception").at(-1)!;
+    await act(() => currentObserver.registerRunner("second-app"));
+    expect(mocks.model?.interception).toMatchObject({ status: "live", runners: [{ id: "second-app" }] });
     await publish(false);
-    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(mocks.model?.interception).toEqual({ status: "disconnected" });
+    expect(currentObserver.close).toHaveBeenCalledOnce();
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network", "/api/network"])
+      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual([
+        "/api/network",
+        "/api/network",
+        "/api/network"
+      ])
     );
     await act(async () => render(null, container));
-    expect(streams[1].close).toHaveBeenCalledOnce();
+    expect(streams.every((stream) => stream.close.mock.calls.length === 1)).toBe(true);
   });
 
   it("updates filters after successful writes and preserves them when writes fail", async () => {

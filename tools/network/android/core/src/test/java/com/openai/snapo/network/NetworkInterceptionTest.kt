@@ -128,7 +128,7 @@ class NetworkInterceptionTest {
         )
 
     private fun configure(params: String, runner: Any = owner) {
-        interception.configure(runner, {
+        interception.configure(runner, runner.toString(), {
             events.add(it)
             true
         }, ProtocolJson.parseToJsonElement(params))

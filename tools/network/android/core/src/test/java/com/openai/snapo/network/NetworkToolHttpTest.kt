@@ -25,6 +25,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -156,15 +157,20 @@ class NetworkToolHttpTest {
     }
 
     @Test
-    fun `registration returns its location and Python decisions use HTTP with phase checks`() {
+    fun `registration and decisions keep ownership and phase checks after an observer disconnects`() {
         val engine = NetworkInterception()
-        Fixture(NetworkToolHttp(interception = engine)).use { server ->
+        val observerClosed = CountDownLatch(1)
+        Fixture(NetworkToolHttp(interception = engine), observerClosed::countDown).use { server ->
             server.stream("/interception", routes(), "POST").use { reader ->
                 val runner = server.runnerId(reader)
                 val exchange = requireNotNull(engine.open("GET", "/api/profile"))
                 exchange.use {
                     exchange.request(InterceptionRequest("GET", "https://example.test/api/profile", emptyList(), ""))
                     assertEquals("SnapO.intercept.request", data(reader)["method"]?.jsonPrimitive?.content)
+                    val observer = server.stream("/interception")
+                    assertEquals(snapshot(runner to "/api/profile"), data(observer))
+                    observer.close()
+                    assertTrue(observerClosed.await(5, TimeUnit.SECONDS))
                     val path = "/interception/$runner/exchanges/${exchange.id}"
                     assertEquals(
                         200,
@@ -187,6 +193,7 @@ class NetworkToolHttpTest {
                     assertEquals(201, exchange.awaitDecision { false }.response?.status)
                 }
                 assertEquals("SnapO.intercept.finished", data(reader)["method"]?.jsonPrimitive?.content)
+                assertNotNull(engine.open("GET", "/api/profile")?.also { it.close() })
                 assertEquals(404, server.request("/interception/$runner", "DELETE").statusCode())
             }
         }
@@ -226,6 +233,37 @@ class NetworkToolHttpTest {
     }
 
     @Test
+    fun `observers receive current registrations and live route replacements and disconnects`() {
+        Fixture(NetworkToolHttp()).use { server ->
+            server.stream("/interception").use { observer ->
+                assertEquals(snapshot(), data(observer))
+                val first = server.stream("/interception", routes(), "POST")
+                val firstId = server.runnerId(first)
+                assertEquals(snapshot(firstId to "/api/profile"), data(observer))
+                assertEquals(
+                    400,
+                    server.request("/interception/$firstId/routes", "PUT", """{"routes":[]}""").statusCode()
+                )
+                server.stream("/interception").use { lateObserver ->
+                    assertEquals(snapshot(firstId to "/api/profile"), data(lateObserver))
+                }
+                val second = server.stream("/interception", routes("/other"), "POST")
+                val secondId = server.runnerId(second)
+                assertEquals(snapshot(firstId to "/api/profile", secondId to "/other"), data(observer))
+                assertEquals(
+                    200,
+                    server.request("/interception/$firstId/routes", "PUT", routes("/replacement")).statusCode()
+                )
+                assertEquals(snapshot(secondId to "/other", firstId to "/replacement"), data(observer))
+                first.close()
+                assertEquals(snapshot(secondId to "/other"), data(observer))
+                second.close()
+                assertEquals(snapshot(), data(observer))
+            }
+        }
+    }
+
+    @Test
     fun `closing the owning SSE socket fails all sixty four paused exchanges`() {
         val engine = NetworkInterception()
         Fixture(NetworkToolHttp(interception = engine)).use { server ->
@@ -257,7 +295,10 @@ class NetworkToolHttpTest {
         val http = NetworkToolHttp()
         Fixture(http).use { server ->
             val streams = List(8) { server.stream("/network") }
+            val observers = List(8) { server.stream("/interception") }
             try {
+                observers.forEach { assertEquals(snapshot(), data(it)) }
+                assertEquals(503, server.request("/interception").statusCode())
                 assertEquals(204, server.request("/", "OPTIONS").statusCode())
                 assertEquals(200, server.request("/network").statusCode())
                 http.broadcast(CdpMessage(method = "Network.loadingFinished", snapoSequence = 1))
@@ -266,6 +307,7 @@ class NetworkToolHttpTest {
                 }
             } finally {
                 streams.forEach { it.close() }
+                observers.forEach { it.close() }
             }
         }
     }
@@ -364,6 +406,13 @@ class NetworkToolHttpTest {
     private fun routes(path: String = "/api/profile") =
         """{"routes":[{"id":"profile","method":"GET","path":"$path"}],"timeoutMs":30000}"""
 
+    private fun snapshot(vararg runners: Pair<String, String>): JsonObject {
+        val entries = runners.joinToString(",") { (id, path) ->
+            """{"id":"$id","routes":[{"id":"profile","method":"GET","path":"$path"}]}"""
+        }
+        return ProtocolJson.parseToJsonElement("""{"runners":[$entries]}""").jsonObject
+    }
+
     private fun data(reader: BufferedReader): JsonObject {
         while (true) {
             val line = checkNotNull(reader.readLine()) { "SSE ended before its next event" }
@@ -388,7 +437,10 @@ class NetworkToolHttpTest {
         response.substringBefore("\r\n") to response.substringAfter("\r\n\r\n")
     }
 
-    private class Fixture(private val http: NetworkToolHttp) : Closeable {
+    private class Fixture(
+        private val http: NetworkToolHttp,
+        private val onConnectionClosed: () -> Unit = {},
+    ) : Closeable {
         private val server = ServerSocket(0)
         private val executor = Executors.newCachedThreadPool()
         private val sockets = ConcurrentHashMap.newKeySet<Socket>()
@@ -418,6 +470,7 @@ class NetworkToolHttpTest {
                         } finally {
                             sockets.remove(socket)
                             socket.close()
+                            onConnectionClosed()
                         }
                     }
                 }
