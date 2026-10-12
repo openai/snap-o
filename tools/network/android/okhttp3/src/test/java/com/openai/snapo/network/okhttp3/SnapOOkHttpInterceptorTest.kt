@@ -17,6 +17,7 @@ import okio.BufferedSink
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 
@@ -109,6 +110,7 @@ class SnapOOkHttpInterceptorTest {
         val result = fulfill(delivered, original)
         result.response.use {
             assertEquals("unchanged", result.interception?.outcome)
+            assertNull(result.interception?.original)
             assertEquals("original", it.body.string())
         }
         assertEquals(false, original.hasSameContent(delivered.copy(headerEntries = delivered.headerEntries.reversed())))
@@ -119,6 +121,7 @@ class SnapOOkHttpInterceptorTest {
         val mocked = fulfill(originalResponse())
         mocked.response.close()
         assertEquals("mocked", mocked.interception?.outcome)
+        assertNull(mocked.interception?.capture(100, 100)?.originalResponse)
 
         val original = originalResponse()
         val replacements = listOf(
@@ -130,10 +133,44 @@ class SnapOOkHttpInterceptorTest {
             val result = fulfill(replacement, original)
             result.response.use {
                 assertEquals("modified", result.interception?.outcome)
+                assertEquals(original, result.interception?.original)
                 assertEquals(replacement.status, it.code)
                 assertEquals(replacement.body, it.body.byteString().base64())
             }
         }
+    }
+
+    @Test
+    fun `original capture respects text binary and content encoding settings`() {
+        val details = RouteInterception("modified", originalResponse())
+        assertNull(details.capture(0, 0).originalResponse?.body)
+        assertEquals("original", details.capture(100, 100).originalResponse?.body)
+
+        val binary = details.copy(
+            original = originalResponse().copy(
+                headerEntries = listOf(InterceptionHeader("Content-Type", "application/octet-stream")),
+                body = "AAEC/w==",
+            )
+        ).capture(100, 100).originalResponse
+        assertEquals("AAEC/w==", binary?.body)
+        assertEquals("base64", binary?.bodyEncoding)
+        val compressed = details.copy(
+            original = originalResponse().copy(
+                headerEntries = listOf(
+                    InterceptionHeader("Content-Type", "application/json"),
+                    InterceptionHeader("Content-Encoding", "gzip"),
+                ),
+                body = "H4sIAAAAAAAA/6uuBQBDv6ajAgAAAA==",
+            ),
+        )
+        val capturedCompressed = compressed.capture(0, 100).originalResponse
+        assertEquals(compressed.original?.body, capturedCompressed?.body)
+        assertEquals("base64", capturedCompressed?.bodyEncoding)
+        assertNull(compressed.capture(100, 0).originalResponse?.body)
+        val empty = details.copy(original = originalResponse().copy(status = 204, body = ""))
+            .capture(100, 100).originalResponse
+        assertEquals(0L, empty?.bodySize)
+        assertNull(empty?.body)
     }
 
     private fun originalResponse() = InterceptionResponse(

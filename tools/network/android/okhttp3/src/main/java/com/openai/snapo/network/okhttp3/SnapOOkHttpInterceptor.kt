@@ -4,7 +4,6 @@ import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
 import com.openai.snapo.network.NetworkInspector
-import com.openai.snapo.network.ResponseInterception
 import com.openai.snapo.network.capture.BodyContentType
 import com.openai.snapo.network.capture.CaptureEventPublisher
 import com.openai.snapo.network.capture.RawResponseBodyCapture
@@ -131,7 +130,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     private fun handleResponse(
         context: InterceptContext,
         response: Response,
-        interception: ResponseInterception?,
+        interception: RouteInterception?,
         after: Job?,
     ): Response {
         val endWall = System.currentTimeMillis()
@@ -188,7 +187,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
-        interception: ResponseInterception?,
+        interception: RouteInterception?,
     ): Response {
         val responsePublication = publishResponseMetadata(
             context = context,
@@ -239,7 +238,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
-        interception: ResponseInterception?,
+        interception: RouteInterception?,
     ): Response {
         val responsePublication = publishResponseMetadata(
             context,
@@ -275,7 +274,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
-        interception: ResponseInterception?,
+        interception: RouteInterception?,
     ): Job? {
         return publisher.publish(after = after) {
             OkhttpEventFactory.createResponseReceived(
@@ -288,7 +287,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodyEncoding = null,
                 truncatedBytes = null,
                 bodySize = bodySize,
-            ).copy(interception = interception)
+            ).copy(interception = interception?.capture(textBodyMaxBytes, binaryBodyMaxBytes))
         }
     }
 }
