@@ -141,7 +141,7 @@ internal class EventBuffer(
                 }
                 val original = record.interception?.originalResponse
                 if (original != null && !original.body.isNullOrEmpty()) {
-                    upsertOriginalResponseBody(record.id, original.body, original.bodyEncoding)
+                    upsertResponseBody(record.id, original.body, original.bodyEncoding, originalResponseBodiesById)
                 }
                 record.copy(body = null, interception = record.interception?.withoutBody())
             }
@@ -313,9 +313,7 @@ internal class EventBuffer(
         if (hasRemainingRequestRecords) return
         removeRequestBody(requestId)
         removeResponseBody(requestId)
-        val original = originalResponseBodiesById.remove(requestId)
-        if (original != null) approxBytes -= estimateBodyEntrySize(requestId, original)
-        if (approxBytes < 0) approxBytes = 0
+        removeResponseBody(requestId, originalResponseBodiesById)
     }
 
     private fun upsertRequestBody(
@@ -335,9 +333,10 @@ internal class EventBuffer(
         requestId: String,
         body: String,
         encoding: String?,
+        bodies: MutableMap<String, CapturedBody> = responseBodiesById,
     ) {
         val captured = CapturedBody(body = body, encoding = encoding)
-        val previous = responseBodiesById.put(requestId, captured)
+        val previous = bodies.put(requestId, captured)
         if (previous != null) {
             approxBytes -= estimateBodyEntrySize(requestId, previous)
         }
@@ -350,15 +349,8 @@ internal class EventBuffer(
         if (approxBytes < 0) approxBytes = 0
     }
 
-    private fun upsertOriginalResponseBody(requestId: String, body: String, encoding: String?) {
-        val captured = CapturedBody(body, encoding)
-        val previous = originalResponseBodiesById.put(requestId, captured)
-        if (previous != null) approxBytes -= estimateBodyEntrySize(requestId, previous)
-        approxBytes += estimateBodyEntrySize(requestId, captured)
-    }
-
-    private fun removeResponseBody(requestId: String) {
-        val removed = responseBodiesById.remove(requestId) ?: return
+    private fun removeResponseBody(requestId: String, bodies: MutableMap<String, CapturedBody> = responseBodiesById) {
+        val removed = bodies.remove(requestId) ?: return
         approxBytes -= estimateBodyEntrySize(requestId, removed)
         if (approxBytes < 0) approxBytes = 0
     }
