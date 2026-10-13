@@ -106,9 +106,9 @@ class SnapOOkHttpInterceptorTest {
                 InterceptionHeader("Content-Length", "8"),
             )
         )
-        val routed = fulfill(delivered, original)
-        routed.response.use {
-            assertEquals("watched", routed.interception?.kind)
+        val result = fulfill(delivered, original)
+        result.response.use {
+            assertEquals("unchanged", result.interception?.outcome)
             assertEquals("original", it.body.string())
         }
         assertEquals(false, original.hasSameContent(delivered.copy(headerEntries = delivered.headerEntries.reversed())))
@@ -118,7 +118,7 @@ class SnapOOkHttpInterceptorTest {
     fun `fulfilled routes distinguish mocks from upstream status header or body changes`() {
         val mocked = fulfill(originalResponse())
         mocked.response.close()
-        assertEquals("mocked", mocked.interception?.kind)
+        assertEquals("mocked", mocked.interception?.outcome)
 
         val original = originalResponse()
         val replacements = listOf(
@@ -127,9 +127,9 @@ class SnapOOkHttpInterceptorTest {
             original.copy(body = "edited".encodeUtf8().base64()),
         )
         replacements.forEach { replacement ->
-            val routed = fulfill(replacement, original)
-            routed.response.use {
-                assertEquals("overwritten", routed.interception?.kind)
+            val result = fulfill(replacement, original)
+            result.response.use {
+                assertEquals("modified", result.interception?.outcome)
                 assertEquals(replacement.status, it.code)
                 assertEquals(replacement.body, it.body.byteString().base64())
             }
@@ -142,7 +142,7 @@ class SnapOOkHttpInterceptorTest {
         "original".encodeUtf8().base64()
     )
 
-    private fun fulfill(response: InterceptionResponse, original: InterceptionResponse? = null): RoutedResponse =
+    private fun fulfill(response: InterceptionResponse, original: InterceptionResponse? = null): InterceptionResult =
         InterceptionDecision("exchange", "fulfill", "response", response = response).fulfillRoute(
             Request.Builder().url("https://example.test/profile").build(),
             original = original,

@@ -67,7 +67,7 @@ internal data class CdpResponseReceivedParams(
 
 @Serializable
 internal data class CdpResponseInterception(
-    val kind: String,
+    val outcome: String,
 )
 
 @Serializable

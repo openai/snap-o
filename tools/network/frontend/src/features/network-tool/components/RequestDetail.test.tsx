@@ -58,15 +58,15 @@ describe("stream event rendering", () => {
 });
 
 describe("Response Body loading state", () => {
-  it.each(["overwritten", "mocked", "watched"] as const)(
+  it.each(["modified", "mocked", "unchanged"] as const)(
     "shows %s provenance while keeping the delivered response",
-    (kind) => {
+    (outcome) => {
       const state = reduceCdpMessage(createEmptyToolState(), "process-1", {
         method: "Network.responseReceived",
         params: {
           requestId: "intercepted",
           response: { status: 202, headers: { "Content-Type": "text/plain" } },
-          snapoInterception: { kind }
+          snapoInterception: { outcome }
         }
       });
       const record = [...state.requests.values()][0];
@@ -80,7 +80,7 @@ describe("Response Body loading state", () => {
       );
       const content = document.createRange().createContextualFragment(markup);
       expect(content.querySelector("header .detail-interception")?.textContent).toBe(
-        kind === "watched" ? "Watched" : "Overwritten"
+        outcome === "unchanged" ? "Watched" : "Overwritten"
       );
       expect(content.querySelector("header")?.textContent).toContain("202 Accepted");
       expect(content.textContent).toContain("delivered-body");

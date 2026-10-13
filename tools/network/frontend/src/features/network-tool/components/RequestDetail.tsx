@@ -64,8 +64,10 @@ export function RequestDetail({
             <StatusBadge record={record} />
             <span>{timingText}</span>
             {record.interception == null ? null : (
-              <span className={`detail-interception ${record.interception.kind}`}>
-                {record.interception.kind === "watched" ? "Watched" : "Overwritten"}
+              <span
+                className={`detail-interception ${record.interception.outcome === "unchanged" ? "watched" : "overwritten"}`}
+              >
+                {record.interception.outcome === "unchanged" ? "Watched" : "Overwritten"}
               </span>
             )}
           </div>

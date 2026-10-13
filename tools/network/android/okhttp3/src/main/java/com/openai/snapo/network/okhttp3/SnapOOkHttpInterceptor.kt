@@ -101,8 +101,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
 
         return try {
-            val routed = interceptWithRoutes(chain, interceptedRequest, server.interception)
-            handleResponse(context, routed.response, routed.interception, after = requestCapture.completion())
+            val result = interceptWithRoutes(chain, interceptedRequest, server.interception)
+            handleResponse(context, result.response, result.interception, after = requestCapture.completion())
         } catch (error: IOException) {
             rethrowAfterRequestFailure(context, requestCapture.completion(), error)
         } catch (error: RuntimeException) {

@@ -27,15 +27,15 @@ internal fun interceptWithRoutes(
     chain: Interceptor.Chain,
     request: Request,
     interception: NetworkInterception,
-): RoutedResponse {
+): InterceptionResult {
     if (request.header("Upgrade").equals("websocket", ignoreCase = true)) {
-        return RoutedResponse(chain.proceed(request))
+        return InterceptionResult(chain.proceed(request))
     }
     if (request.header("Accept")?.contains("text/event-stream", ignoreCase = true) == true) {
-        return RoutedResponse(chain.proceed(request))
+        return InterceptionResult(chain.proceed(request))
     }
     val exchange = interception.open(request.method, request.url.encodedPath)
-        ?: return RoutedResponse(chain.proceed(request))
+        ?: return InterceptionResult(chain.proceed(request))
     return exchange.use {
         val capturedRequest = request.readRouteBody()
         exchange.request(
@@ -60,20 +60,20 @@ internal fun interceptWithRoutes(
     }
 }
 
-internal data class RoutedResponse(val response: Response, val interception: ResponseInterception? = null)
+internal data class InterceptionResult(val response: Response, val interception: ResponseInterception? = null)
 
 internal fun InterceptionDecision.fulfillRoute(
     request: Request,
     upstream: Response? = null,
     original: InterceptionResponse? = null,
-): RoutedResponse {
+): InterceptionResult {
     val delivered = toResponse(request, upstream)
     val details = when {
         original == null -> ResponseInterception("mocked")
-        original.hasSameContent(requireNotNull(response)) -> ResponseInterception("watched")
-        else -> ResponseInterception("overwritten")
+        original.hasSameContent(requireNotNull(response)) -> ResponseInterception("unchanged")
+        else -> ResponseInterception("modified")
     }
-    return RoutedResponse(delivered, details)
+    return InterceptionResult(delivered, details)
 }
 
 internal fun InterceptionResponse.hasSameContent(other: InterceptionResponse): Boolean {

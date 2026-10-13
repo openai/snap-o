@@ -73,7 +73,7 @@ Body reads return plain JSON, without `id` or `result` wrappers:
 
 Capture limits and redaction remain configured by the Android app. Interception uses a separate SSE subscription and is defined in [HTTP interception](interception.md).
 
-Intercepted responses add optional `params.snapoInterception` to `Network.responseReceived`. Its `kind` is `mocked`, `watched`, or `overwritten`. The existing response fields and response-body endpoint always describe the delivered response. See [response attribution](interception.md#response-attribution) for classification rules.
+Intercepted responses add optional `params.snapoInterception` to `Network.responseReceived`. Its `outcome` is `mocked`, `unchanged`, or `modified`. The existing response fields and response-body endpoint always describe the delivered response. See [response attribution](interception.md#response-attribution) for classification rules.
 
 ## Limits and lifecycle
 

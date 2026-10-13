@@ -264,8 +264,10 @@ function RecordRow({
         <span className="record-method">{record.method}</span>
         <StatusView record={record} />
         {record.kind !== "request" || record.interception == null ? null : (
-          <span className={`record-interception ${record.interception.kind === "watched" ? "watched" : "overwritten"}`}>
-            {record.interception.kind === "watched" ? "Watched" : "Overwritten"}
+          <span
+            className={`record-interception ${record.interception.outcome === "unchanged" ? "watched" : "overwritten"}`}
+          >
+            {record.interception.outcome === "unchanged" ? "Watched" : "Overwritten"}
           </span>
         )}
       </button>

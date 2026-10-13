@@ -55,7 +55,7 @@ data class ResponseReceived(
 
 /** The actual result of a matched route, independent of routes currently registered. */
 data class ResponseInterception(
-    val kind: String,
+    val outcome: String,
 )
 
 /** Indicates a non-streaming response completed successfully. */

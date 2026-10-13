@@ -51,12 +51,12 @@ After `upstream`, only `fulfill` or `fail` can complete the response pause. Only
 `Network.responseReceived` adds optional `params.snapoInterception` for a response from a matched route:
 
 ```json
-{"kind":"overwritten"}
+{"outcome":"modified"}
 ```
 
 - `mocked`: the runner returned a response without an upstream call. No original response exists.
-- `watched`: the runner returned the upstream status, meaningful headers, and body unchanged.
-- `overwritten`: the runner changed the upstream status, meaningful headers, or body.
+- `unchanged`: the runner returned the upstream status, meaningful headers, and body unchanged.
+- `modified`: the runner changed the upstream status, meaningful headers, or body.
 
 Comparison ignores header-name case and ordering between different header names. Repeated values retain their order. Content length and hop-by-hop headers are excluded because runners normalize transport framing. Status and decoded body bytes must match exactly. Unmatched or bypassed calls have no attribution; active route lists do not determine a captured request's result.
 

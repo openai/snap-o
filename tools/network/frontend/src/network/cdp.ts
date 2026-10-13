@@ -26,7 +26,7 @@ export type RequestStatus =
   { kind: "pending" } | { kind: "success"; code: number } | { kind: "failure"; message?: string | null };
 
 export interface RequestInterception {
-  kind: "overwritten" | "mocked" | "watched";
+  outcome: "unchanged" | "modified" | "mocked";
 }
 
 export interface RequestRecord {
@@ -299,8 +299,8 @@ function reduceResponseReceived(
 }
 
 function interceptionFrom(params: Record<string, unknown>): RequestInterception | undefined {
-  const kind = stringAt(params, "snapoInterception.kind");
-  return kind === "overwritten" || kind === "mocked" || kind === "watched" ? { kind } : undefined;
+  const outcome = stringAt(params, "snapoInterception.outcome");
+  return outcome === "unchanged" || outcome === "modified" || outcome === "mocked" ? { outcome } : undefined;
 }
 
 function reduceLoadingFinished(
