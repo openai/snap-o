@@ -59,7 +59,7 @@ describe("stream event rendering", () => {
 
 describe("Response Body loading state", () => {
   it.each(["modified", "mocked", "unchanged"] as const)(
-    "shows %s provenance while keeping the delivered response",
+    "shows %s outcome while keeping the delivered response",
     (outcome) => {
       const state = reduceCdpMessage(createEmptyToolState(), "process-1", {
         method: "Network.responseReceived",
