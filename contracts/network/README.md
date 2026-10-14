@@ -73,6 +73,8 @@ Body reads return plain JSON, without `id` or `result` wrappers:
 
 Capture limits and redaction remain configured by the Android app. Interception uses a separate SSE subscription and is defined in [HTTP interception](interception.md).
 
+Intercepted responses add optional `params.snapoInterception` to `Network.responseReceived`. Its `outcome` is `mocked`, `unchanged`, or `modified`. The existing response fields and response-body endpoint always describe the delivered response. See [response attribution](interception.md#response-attribution) for classification rules.
+
 ## Limits and lifecycle
 
 HTTP request bodies are limited to 2 MiB. Individual event JSON payloads and history records are limited to 16 MiB of UTF-8. Each Android SSE queue holds at most 512 events and 32 MiB; overflow closes the stream. A slow reader also causes closure after a blocked write exceeds five seconds. Heartbeats run every ten seconds, and client reads have finite inactivity deadlines.

@@ -50,7 +50,13 @@ data class ResponseReceived(
     val bodyTruncatedBytes: Long? = null,
     val bodySize: Long? = null,
     val timings: Timings = Timings(),
+    val interception: ResponseInterception? = null,
 ) : PerRequestRecord
+
+/** The actual result of a matched route, independent of routes currently registered. */
+data class ResponseInterception(
+    val outcome: String,
+)
 
 /** Indicates a non-streaming response completed successfully. */
 data class ResponseFinished(

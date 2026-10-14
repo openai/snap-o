@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
 import com.openai.snapo.network.NetworkInspector
+import com.openai.snapo.network.ResponseInterception
 import com.openai.snapo.network.capture.BodyContentType
 import com.openai.snapo.network.capture.CaptureEventPublisher
 import com.openai.snapo.network.capture.RawResponseBodyCapture
@@ -100,8 +101,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
 
         return try {
-            val response = interceptWithRoutes(chain, interceptedRequest, server.interception)
-            handleResponse(context, response, after = requestCapture.completion())
+            val result = interceptWithRoutes(chain, interceptedRequest, server.interception)
+            handleResponse(context, result.response, result.interception, after = requestCapture.completion())
         } catch (error: IOException) {
             rethrowAfterRequestFailure(context, requestCapture.completion(), error)
         } catch (error: RuntimeException) {
@@ -127,7 +128,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         publisher.close()
     }
 
-    private fun handleResponse(context: InterceptContext, response: Response, after: Job?): Response {
+    private fun handleResponse(
+        context: InterceptContext,
+        response: Response,
+        interception: ResponseInterception?,
+        after: Job?,
+    ): Response {
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
@@ -140,6 +146,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
             publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
             return response
@@ -155,6 +162,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
         } else {
             handleStandardResponse(
@@ -166,6 +174,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
         }
     }
@@ -179,6 +188,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: ResponseInterception?,
     ): Response {
         val responsePublication = publishResponseMetadata(
             context = context,
@@ -187,6 +197,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             endWall = endWall,
             endMono = endMono,
             after = after,
+            interception = interception,
         )
         if (bodySize == 0L) {
             publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
@@ -228,8 +239,17 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: ResponseInterception?,
     ): Response {
-        val responsePublication = publishResponseMetadata(context, response, bodySize, endWall, endMono, after)
+        val responsePublication = publishResponseMetadata(
+            context,
+            response,
+            bodySize,
+            endWall,
+            endMono,
+            after,
+            interception
+        )
         val publicationLock = Any()
         var previousPublication = responsePublication
         val streamingBody = StreamingResponseRelayBody(
@@ -255,6 +275,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: ResponseInterception?,
     ): Job? {
         return publisher.publish(after = after) {
             OkhttpEventFactory.createResponseReceived(
@@ -267,7 +288,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodyEncoding = null,
                 truncatedBytes = null,
                 bodySize = bodySize,
-            )
+            ).copy(interception = interception)
         }
     }
 }

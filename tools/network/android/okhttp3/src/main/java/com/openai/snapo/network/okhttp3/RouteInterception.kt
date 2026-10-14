@@ -6,6 +6,7 @@ import com.openai.snapo.network.InterceptionRequest
 import com.openai.snapo.network.InterceptionResponse
 import com.openai.snapo.network.MaxInterceptionBodyBytes
 import com.openai.snapo.network.NetworkInterception
+import com.openai.snapo.network.ResponseInterception
 import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -26,14 +27,15 @@ internal fun interceptWithRoutes(
     chain: Interceptor.Chain,
     request: Request,
     interception: NetworkInterception,
-): Response {
+): InterceptionResult {
     if (request.header("Upgrade").equals("websocket", ignoreCase = true)) {
-        return chain.proceed(request)
+        return InterceptionResult(chain.proceed(request))
     }
     if (request.header("Accept")?.contains("text/event-stream", ignoreCase = true) == true) {
-        return chain.proceed(request)
+        return InterceptionResult(chain.proceed(request))
     }
-    val exchange = interception.open(request.method, request.url.encodedPath) ?: return chain.proceed(request)
+    val exchange = interception.open(request.method, request.url.encodedPath)
+        ?: return InterceptionResult(chain.proceed(request))
     return exchange.use {
         val capturedRequest = request.readRouteBody()
         exchange.request(
@@ -46,16 +48,50 @@ internal fun interceptWithRoutes(
         )
         val decision = exchange.awaitDecision { chain.call().isCanceled() }
         if (decision.action != "upstream") {
-            return@use decision.toResponse(request)
+            return@use decision.fulfillRoute(request)
         }
         // Reuse the bytes already read instead of invoking the app's RequestBody twice.
         val outbound = request.withRouteBody(capturedRequest)
         chain.proceed(outbound).use { upstream ->
-            exchange.response(upstream.readRouteResponse())
-            exchange.awaitDecision { chain.call().isCanceled() }.toResponse(request, upstream)
+            val original = upstream.readRouteResponse()
+            exchange.response(original)
+            exchange.awaitDecision { chain.call().isCanceled() }.fulfillRoute(request, upstream, original)
         }
     }
 }
+
+internal data class InterceptionResult(val response: Response, val interception: ResponseInterception? = null)
+
+internal fun InterceptionDecision.fulfillRoute(
+    request: Request,
+    upstream: Response? = null,
+    original: InterceptionResponse? = null,
+): InterceptionResult {
+    val delivered = toResponse(request, upstream)
+    val details = when {
+        original == null -> ResponseInterception("mocked")
+        original.hasSameContent(requireNotNull(response)) -> ResponseInterception("unchanged")
+        else -> ResponseInterception("modified")
+    }
+    return InterceptionResult(delivered, details)
+}
+
+internal fun InterceptionResponse.hasSameContent(other: InterceptionResponse): Boolean {
+    // Runners normalize transport framing even when they return the upstream response unchanged.
+    val ignoredHeaders = FramingHeaders + (headerEntries + other.headerEntries)
+        .filter { it.name.equals("Connection", true) }
+        .flatMap { it.value.split(',').map { name -> name.trim().lowercase() } }
+    fun List<InterceptionHeader>.meaningfulHeaders() =
+        filterNot { it.name.lowercase() in ignoredHeaders }
+            .groupBy({ it.name.lowercase() }, { it.value })
+    return status == other.status && body.decodeBase64() == other.body.decodeBase64() &&
+        headerEntries.meaningfulHeaders() == other.headerEntries.meaningfulHeaders()
+}
+
+private val FramingHeaders = setOf(
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer",
+    "transfer-encoding", "upgrade", "content-length",
+)
 
 private fun Request.readRouteBody(): ByteString {
     val requestBody = body ?: return ByteString.EMPTY

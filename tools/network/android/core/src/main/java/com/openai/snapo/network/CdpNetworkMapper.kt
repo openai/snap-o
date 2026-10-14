@@ -60,6 +60,7 @@ private fun ResponseReceived.toCdpResponseReceived(requestUrl: String?): CdpMess
                     encodedDataLength = bodySize?.toDouble(),
                     bodyEncoding = bodyEncoding,
                 ),
+                snapoInterception = interception?.let { CdpResponseInterception(outcome = it.outcome) },
             ),
         ),
     )

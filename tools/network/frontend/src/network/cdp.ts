@@ -25,6 +25,10 @@ export interface Header {
 export type RequestStatus =
   { kind: "pending" } | { kind: "success"; code: number } | { kind: "failure"; message?: string | null };
 
+export interface ResponseInterception {
+  outcome: "unchanged" | "modified" | "mocked";
+}
+
 export interface RequestRecord {
   kind: "request";
   processId: string;
@@ -47,6 +51,7 @@ export interface RequestRecord {
   responseBodyTruncatedBytes?: number | null;
   responseBodyLoadCompleted?: boolean;
   responseBodyLoadError?: ResponseBodyLoadError | null;
+  interception?: ResponseInterception;
   responseType?: string | null;
   hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
@@ -287,9 +292,15 @@ function reduceResponseReceived(
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
       responseType: stringAt(params, "type") ?? existing?.responseType,
       hasReceivedResponse: true,
+      interception: interceptionFrom(params),
       updatedAt: eventAt
     };
   });
+}
+
+function interceptionFrom(params: Record<string, unknown>): ResponseInterception | undefined {
+  const outcome = stringAt(params, "snapoInterception.outcome");
+  return outcome === "unchanged" || outcome === "modified" || outcome === "mocked" ? { outcome } : undefined;
 }
 
 function reduceLoadingFinished(

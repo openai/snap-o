@@ -63,6 +63,13 @@ export function RequestDetail({
           <div className="detail-meta">
             <StatusBadge record={record} />
             <span>{timingText}</span>
+            {record.interception == null ? null : (
+              <span
+                className={`detail-interception ${record.interception.outcome === "unchanged" ? "watched" : "overwritten"}`}
+              >
+                {record.interception.outcome === "unchanged" ? "Watched" : "Overwritten"}
+              </span>
+            )}
           </div>
           {streamClosedWithError ? null : <FailureMessage status={record.status} />}
         </header>

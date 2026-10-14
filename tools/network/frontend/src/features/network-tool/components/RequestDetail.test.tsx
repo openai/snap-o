@@ -4,7 +4,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
-import type { RequestRecord } from "../../../network/cdp";
+import { createEmptyToolState, reduceCdpMessage, type RequestRecord } from "../../../network/cdp";
 import type { ToolUiState } from "../hooks/useToolUiState";
 import { RequestDetail } from "./RequestDetail";
 import { SseEventList } from "./StreamEvents";
@@ -58,6 +58,35 @@ describe("stream event rendering", () => {
 });
 
 describe("Response Body loading state", () => {
+  it.each(["modified", "mocked", "unchanged"] as const)(
+    "shows %s outcome while keeping the delivered response",
+    (outcome) => {
+      const state = reduceCdpMessage(createEmptyToolState(), "process-1", {
+        method: "Network.responseReceived",
+        params: {
+          requestId: "intercepted",
+          response: { status: 202, headers: { "Content-Type": "text/plain" } },
+          snapoInterception: { outcome }
+        }
+      });
+      const record = [...state.requests.values()][0];
+      const markup = renderToStaticMarkup(
+        <RequestDetail
+          client={{} as NetworkClient}
+          record={{ ...record, responseBody: "delivered-body" }}
+          uiState={expandedUiState}
+          onRetryResponseBody={() => {}}
+        />
+      );
+      const content = document.createRange().createContextualFragment(markup);
+      expect(content.querySelector("header .detail-interception")?.textContent).toBe(
+        outcome === "unchanged" ? "Watched" : "Overwritten"
+      );
+      expect(content.querySelector("header")?.textContent).toContain("202 Accepted");
+      expect(content.textContent).toContain("delivered-body");
+    }
+  );
+
   it("shows an uncached body as offline instead of loading forever", () => {
     const markup = renderToStaticMarkup(
       <RequestDetail
