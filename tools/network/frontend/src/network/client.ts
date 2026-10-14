@@ -4,6 +4,8 @@ import { host } from "@snap-o/tool-host";
 import { NetworkConnection } from "./connection";
 
 export interface NetworkClient extends ToolContentClient {
+  readSearchText(): string;
+  saveSearchText(value: string): void;
   listExclusionFilters(): string[];
   addExclusionFilter(filter: string): void;
   removeExclusionFilter(filter: string): void;
@@ -38,6 +40,17 @@ class BrowserNetworkClient implements NetworkClient {
   dispose(): void {
     this.disposed = true;
     this.unsubscribe();
+  }
+
+  readSearchText(): string {
+    try {
+      return localStorage.getItem("network.searchText") ?? "";
+    } catch {
+      return "";
+    }
+  }
+  saveSearchText(value: string): void {
+    localStorage.setItem("network.searchText", value);
   }
 
   listExclusionFilters(): string[] {
