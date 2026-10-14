@@ -15,6 +15,7 @@ type ProcessManifest = {
   app: { name: string; packageName: string; revision: string; inspectors: ToolDescriptor[] };
 };
 import { App } from "./App";
+import { InterceptionOverrides } from "./features/network-tool/components/InterceptionOverrides";
 
 const mocks = vi.hoisted(() => ({
   client: null as unknown as NetworkClient,
@@ -31,7 +32,11 @@ vi.mock("./network/client", () => ({ createNetworkClient: () => mocks.client }))
 vi.mock("./features/network-tool/NetworkToolApp", () => ({
   NetworkToolApp: ({ model }: { model: NetworkToolModel }) => {
     mocks.model = model;
-    return <div data-tool="network" />;
+    return (
+      <div data-tool="network">
+        <InterceptionOverrides runners={model.interceptionRunners} />
+      </div>
+    );
   }
 }));
 const metadata = {
@@ -300,16 +305,22 @@ describe("Network frontend with the shared host", () => {
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
-  it("uses host metadata with the real Network connection on each reconnect", async () => {
+  it("isolates observers and capture across app switches and reconnects", async () => {
     const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
     const streams: Events[] = [];
     class Events extends EventTarget {
-      constructor() {
+      static readonly CLOSED = 2;
+      readyState = 0;
+      constructor(readonly url: string) {
         super();
         streams.push(this);
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
       }
       close = vi.fn();
+      snapshot(id?: string) {
+        const runners = id ? [{ id, routes: [{ id: "route", method: "GET", path: `/${id}` }] }] : [];
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ runners }) }));
+      }
     }
     vi.stubGlobal("EventSource", Events);
     fetchRequest.mockImplementation(async (url) => {
@@ -323,14 +334,45 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() => expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network"]));
+    const capture = streams.find((stream) => stream.url === "/api/network")!;
+    const observer = streams.find((stream) => stream.url === "/api/interception")!;
+    const panel = () => container.querySelector('[aria-label="Registered overrides"]');
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("first-app"));
+    expect(panel()?.textContent).toContain("/first-app");
+    expect(panel()?.textContent).not.toContain("Managed by the CLI.");
+    await act(() => observer.snapshot());
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("first-app"));
+    await act(() => {
+      observer.dispatchEvent(new Event("error"));
+    });
+    expect(panel()).toBeNull();
+    expect(capture.close).not.toHaveBeenCalled();
+    await act(() => observer.snapshot("first-app"));
+    state.manifest = { ...state.manifest!, pid: 21, processIdentity: "boot:21:456" };
+    await publish(true);
+    expect(capture.close).toHaveBeenCalledOnce();
+    expect(observer.close).toHaveBeenCalledOnce();
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("stale-first-app"));
+    expect(panel()).toBeNull();
+    const currentObserver = streams.filter((stream) => stream.url === "/api/interception").at(-1)!;
+    await act(() => currentObserver.snapshot("second-app"));
+    expect(panel()?.textContent).toContain("/second-app");
     await publish(false);
-    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(panel()).toBeNull();
+    expect(currentObserver.close).toHaveBeenCalledOnce();
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network", "/api/network"])
+      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual([
+        "/api/network",
+        "/api/network",
+        "/api/network"
+      ])
     );
     await act(async () => render(null, container));
-    expect(streams[1].close).toHaveBeenCalledOnce();
+    expect(streams.every((stream) => stream.close.mock.calls.length === 1)).toBe(true);
   });
 
   it("updates filters after successful writes and preserves them when writes fail", async () => {

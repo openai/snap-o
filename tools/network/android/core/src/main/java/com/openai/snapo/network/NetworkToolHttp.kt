@@ -45,9 +45,11 @@ internal class NetworkToolHttp(
         get("/network") {
             if (eventStreamRequested(request)) stream(null) else history()
         }
+        get("/interception") { observeInterception() }
         post("/interception") { stream(request.json()) }
         put("/interception/{runnerId}/routes") {
-            configureRunner(runner(pathParameters.getValue("runnerId")), request.json())
+            val id = pathParameters.getValue("runnerId")
+            configureRunner(runner(id), id, request.json())
             respondJson("{}")
         }
         post("/interception/{runnerId}/exchanges/{exchangeId}") {
@@ -112,7 +114,7 @@ internal class NetworkToolHttp(
                 subscribers.add(stream)
             } else {
                 runners[runnerId] = stream
-                configureRunner(stream, requireNotNull(routes))
+                configureRunner(stream, runnerId, requireNotNull(routes))
             }
             respondSse(
                 statusCode = if (runnerId == null) 200 else 201,
@@ -127,12 +129,26 @@ internal class NetworkToolHttp(
         }
     }
 
+    private suspend fun ToolCall.observeInterception() {
+        if (!streamSlots.tryAcquire()) throw ToolHttpException(503, "Too many event streams")
+        try {
+            respondSse {
+                // StateFlow sends the current state first and conflates updates for slow observers.
+                interception.registrations.collect { snapshot ->
+                    write(sseEvent(ProtocolJson.encodeToString(InterceptionSnapshot.serializer(), snapshot)))
+                }
+            }
+        } finally {
+            streamSlots.release()
+        }
+    }
+
     private fun runner(id: String): NetworkEventStream = runners[id]?.takeUnless { it.isClosed }
         ?: throw ToolHttpException(410, "Interception runner has ended")
 
-    private fun configureRunner(stream: NetworkEventStream, params: JsonObject) {
+    private fun configureRunner(stream: NetworkEventStream, runnerId: String, params: JsonObject) {
         withRunner(stream, 400) {
-            interception.configure(stream, { message ->
+            interception.configure(stream, runnerId, { message ->
                 runCatching { stream.offer(networkSseEvent(message)) }.getOrDefault(false)
             }, params)
         }

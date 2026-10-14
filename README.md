@@ -38,6 +38,8 @@ Inspect HTTP requests and responses, JSON bodies, Server-Sent Events, and WebSoc
 
 The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnection. Python handlers can edit or mock HTTP responses through the app's OkHttp connection.
 
+The Network pane shows registered overrides for the selected app. The list updates when CLI runners start, reload routes, or disconnect. Viewing the list does not change the overrides.
+
 Captured requests show **Overwritten** when a handler changes or mocks their response, and **Watched** when it returns the upstream response unchanged.
 
 [Set up Network](https://openai.github.io/snap-o/network-inspector.html)

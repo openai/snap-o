@@ -26,6 +26,7 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
     >
       <Sidebar
         isConnected={model.isConnected}
+        interceptionRunners={model.interceptionRunners}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
         records={model.visibleRecords}

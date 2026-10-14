@@ -11,6 +11,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
+| `GET /interception` | Read-only SSE snapshots of registered runners and routes. |
 | `POST /interception` | Register routes; return `201`, the runner URL in `Location`, and its owning SSE stream. |
 | `PUT /interception/{runnerId}/routes` | Replace a runner's routes. |
 | `POST /interception/{runnerId}/exchanges/{exchangeId}` | Decide a paused exchange. |

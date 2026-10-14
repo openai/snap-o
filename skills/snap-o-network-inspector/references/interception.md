@@ -47,6 +47,8 @@ Keep the runner alive while triggering the matching request in the app. Wait for
 
 Captured requests show **Overwritten** when a handler changes or mocks the response, and **Watched** when it returns the upstream response unchanged.
 
+The Network pane shows registered overrides for the selected app when its Android library includes the live list. It updates as runners start, reload routes, and disconnect. The list shows registered methods and paths, not Python source or future response values. Opening or closing the pane does not change the overrides.
+
 Stop this runner with Ctrl-C when the override session is finished, unless the user wants it left running. Stopping removes its routes and fails its paused calls. New calls then follow normal behavior unless another runner matches them.
 
 ## Matching and response APIs
