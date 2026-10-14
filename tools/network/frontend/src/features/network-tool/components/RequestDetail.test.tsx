@@ -79,14 +79,19 @@ describe("Response Body loading state", () => {
       act(() => render(<Detail record={record} />, container));
       const sections = container.querySelectorAll(".detail-section");
       expect(sections).toHaveLength(2);
-      expect(sections[0].textContent).toMatch(/Response \(overwritten\).*200 OK.*override.*delivered-body/s);
-      expect(sections[1].textContent).toMatch(/Original Response.*503/s);
-      expect(sections[1].textContent).not.toContain("original-body");
+      const [delivered, original] = sections;
+      expect(delivered.textContent).toContain("Response (overwritten)");
+      expect(delivered.textContent).toContain("200 OK");
+      expect(delivered.textContent).toContain("override");
+      expect(delivered.textContent).toContain("delivered-body");
+      expect(original.textContent).toContain("Original Response");
+      expect(original.textContent).toContain("503");
+      expect(original.textContent).not.toContain("original-body");
 
-      act(() => sections[1].querySelector<HTMLButtonElement>(".section-header")!.click());
-      expect(sections[1].textContent).toContain("upstream");
-      expect(sections[1].textContent).toContain("original-body");
-      expect(sections[1].textContent).not.toContain("delivered-body");
+      act(() => original.querySelector<HTMLButtonElement>(".section-header")!.click());
+      expect(original.textContent).toContain("upstream");
+      expect(original.textContent).toContain("original-body");
+      expect(original.textContent).not.toContain("delivered-body");
 
       act(() => render(<Detail record={{ ...record, responseBody: undefined, endedAt: undefined }} />, container));
       expect(container.textContent).toContain("original-body");
@@ -107,11 +112,13 @@ describe("Response Body loading state", () => {
           onRetryResponseBody={() => {}}
         />
       );
-    expect(markup("mocked")).toContain("No upstream call was made.");
-    expect(markup("mocked")).toContain("Response (overwritten)");
-    expect(markup("unchanged")).toContain("Watched");
-    expect(markup("unchanged")).not.toContain("Response (overwritten)");
-    expect(markup("unchanged").match(/delivered-body/g)).toHaveLength(1);
+    const mocked = markup("mocked");
+    expect(mocked).toContain("No upstream call was made.");
+    expect(mocked).toContain("Response (overwritten)");
+    const watched = markup("unchanged");
+    expect(watched).toContain("Watched");
+    expect(watched).not.toContain("Response (overwritten)");
+    expect(watched.match(/delivered-body/g)).toHaveLength(1);
   });
 
   it("shows an uncached body as offline instead of loading forever", () => {

@@ -57,7 +57,7 @@ export function InterceptedResponses({
       })
     : null;
   const originalError = record.originalResponseBodyLoadError;
-  const originalLoading = originalResponse != null && shouldRequestOriginalResponseBody(record);
+  const originalLoading = shouldRequestOriginalResponseBody(record);
   const originalMeta = originalResponse
     ? responseMeta(originalResponse.status, originalBody, originalError, {
         encodedDataLength: originalResponse.encodedDataLength ?? undefined,
