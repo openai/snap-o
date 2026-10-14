@@ -54,7 +54,7 @@ data class ResponseReceived(
 ) : PerRequestRecord
 
 /** The actual result of a matched route, independent of routes currently registered. */
-data class ResponseInterception(
+data class ResponseInterception @JvmOverloads constructor(
     val outcome: String,
     val originalResponse: OriginalResponse? = null,
 )
