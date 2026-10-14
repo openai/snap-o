@@ -1,19 +1,19 @@
 import type { ToolConnection } from "@snap-o/tool-host";
 import { useEffect, useState } from "preact/hooks";
-import { observeInterception, type InterceptionState } from "../../../network/interception";
+import { observeInterception, type InterceptionRunner } from "../../../network/interception";
 
-export function useInterceptionOverrides(connection: ToolConnection | null): InterceptionState {
+export function useInterceptionOverrides(connection: ToolConnection | null): InterceptionRunner[] {
   const [observed, setObserved] = useState<{
     connection: ToolConnection;
-    state: InterceptionState;
+    runners: InterceptionRunner[];
   } | null>(null);
 
   useEffect(() => {
     if (!connection) return;
-    return observeInterception(connection, (state) => setObserved({ connection, state }));
+    return observeInterception(connection, (runners) => setObserved({ connection, runners }));
   }, [connection]);
 
-  if (!connection || connection.signal.aborted) return { status: "disconnected" };
   // A new selection must not render the previous app's registrations before effect cleanup.
-  return observed?.connection === connection ? observed.state : { status: "connecting" };
+  if (!connection || connection.signal.aborted || observed?.connection !== connection) return [];
+  return observed.runners;
 }

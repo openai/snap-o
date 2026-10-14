@@ -32,7 +32,7 @@ export interface NetworkToolModel {
   client: NetworkClient;
   uiState: ReturnType<typeof useToolUiState>;
   isConnected: boolean;
-  interception: ReturnType<typeof useInterceptionOverrides>;
+  interceptionRunners: ReturnType<typeof useInterceptionOverrides>;
   selectedRecord: ToolRecord | null;
   selectedRecordId: string | null;
   visibleRecords: ToolRecord[];
@@ -53,7 +53,7 @@ export interface NetworkToolModel {
 
 export function useNetworkToolModel(client: NetworkClient, connection: ToolConnection | null): NetworkToolModel {
   const isConnected = connection !== null;
-  const interception = useInterceptionOverrides(connection);
+  const interceptionRunners = useInterceptionOverrides(connection);
   const [state, setState] = useState<ToolDataState>(() => createEmptyToolState());
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -274,7 +274,7 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     client,
     uiState,
     isConnected,
-    interception,
+    interceptionRunners,
     selectedRecord,
     selectedRecordId,
     visibleRecords,

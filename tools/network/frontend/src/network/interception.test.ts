@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { observeInterception, type InterceptionState } from "./interception";
+import { observeInterception, type InterceptionRunner } from "./interception";
 
 class Events extends EventTarget {
   readyState = 0;
@@ -19,7 +19,7 @@ describe("read-only interception observer", () => {
   let open: ReturnType<typeof vi.fn<(url: string) => void>>;
   let dispose: () => void;
   let abort: AbortController;
-  let received: InterceptionState[];
+  let received: InterceptionRunner[][];
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -37,8 +37,8 @@ describe("read-only interception observer", () => {
     );
     abort = new AbortController();
     received = [];
-    dispose = observeInterception({ signal: abort.signal, processIdentity: "process-1" }, (state) =>
-      received.push(state)
+    dispose = observeInterception({ signal: abort.signal, processIdentity: "process-1" }, (runners) =>
+      received.push(runners)
     );
   });
 
@@ -50,17 +50,17 @@ describe("read-only interception observer", () => {
 
   it("replaces registrations after reload and recovers native retries without stale routes", () => {
     expect(open).toHaveBeenCalledExactlyOnceWith("/api/interception");
-    expect(received).toEqual([{ status: "connecting" }]);
+    expect(received).toEqual([]);
     stream.send([runner]);
-    expect(received.at(-1)).toEqual({ status: "live", runners: [runner] });
+    expect(received.at(-1)).toEqual([runner]);
     const reloaded = { ...runner, routes: [{ id: "upload", method: "POST", path: "/upload" }] };
     stream.send([reloaded]);
-    expect(received.at(-1)).toEqual({ status: "live", runners: [reloaded] });
+    expect(received.at(-1)).toEqual([reloaded]);
     stream.dispatchEvent(new Event("error"));
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
+    expect(received.at(-1)).toEqual([]);
     expect(stream.close).not.toHaveBeenCalled();
     stream.send([]);
-    expect(received.at(-1)).toEqual({ status: "live", runners: [] });
+    expect(received.at(-1)).toEqual([]);
   });
 
   it.each(["dispose", "abort"])("retries terminal HTTP failures and cancels pending retries on %s", (cleanup) => {
@@ -68,17 +68,17 @@ describe("read-only interception observer", () => {
     first.send([runner]);
     first.readyState = 2;
     first.dispatchEvent(new Event("error"));
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
+    expect(received.at(-1)).toEqual([]);
     expect(first.close).toHaveBeenCalledOnce();
     first.send([runner]);
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
+    expect(received.at(-1)).toEqual([]);
 
     stream = new Events();
     vi.advanceTimersByTime(250);
     expect(open).toHaveBeenCalledTimes(2);
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
+    expect(received.at(-1)).toEqual([]);
     stream.send([]);
-    expect(received.at(-1)).toEqual({ status: "live", runners: [] });
+    expect(received.at(-1)).toEqual([]);
 
     stream.readyState = 2;
     stream.dispatchEvent(new Event("error"));
@@ -88,17 +88,10 @@ describe("read-only interception observer", () => {
     expect(open).toHaveBeenCalledTimes(2);
   });
 
-  it("shows unavailable when no snapshot arrives, then recovers on a late snapshot", () => {
-    vi.advanceTimersByTime(5_000);
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
-    stream.send([runner]);
-    expect(received.at(-1)).toEqual({ status: "live", runners: [runner] });
-  });
-
   it("clears stale registrations if a snapshot cannot be parsed", () => {
     stream.send([runner]);
     stream.dispatchEvent(new MessageEvent("message", { data: "not-json" }));
-    expect(received.at(-1)).toEqual({ status: "unavailable" });
+    expect(received.at(-1)).toEqual([]);
     expect(stream.close).toHaveBeenCalledOnce();
   });
 });

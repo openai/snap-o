@@ -238,13 +238,6 @@ body.split-pane-resizing {
   font-weight: 400;
 }
 
-.interception-note {
-  margin: 6px 0 0;
-  color: var(--on-surface-variant);
-  font-size: 10px;
-  line-height: 14px;
-}
-
 .interception-runner {
   margin-top: 8px;
 }

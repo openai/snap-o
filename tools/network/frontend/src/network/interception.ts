@@ -11,37 +11,28 @@ export interface InterceptionRunner {
   routes: InterceptionRoute[];
 }
 
-export type InterceptionState =
-  { status: "connecting" | "disconnected" | "unavailable" } | { status: "live"; runners: InterceptionRunner[] };
-
 export function observeInterception(
   connection: ToolConnection,
-  onState: (state: InterceptionState) => void
+  onRunners: (runners: InterceptionRunner[]) => void
 ): () => void {
-  if (connection.signal.aborted) {
-    onState({ status: "disconnected" });
-    return () => {};
-  }
+  if (connection.signal.aborted) return () => {};
 
   let disposed = false;
   let stream: EventSource | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let retryDelayMs = 250;
-  const timeout = setTimeout(() => onState({ status: "unavailable" }), 5_000);
   const dispose = () => {
     if (disposed) return;
     disposed = true;
-    clearTimeout(timeout);
     clearTimeout(retryTimer);
     stream?.close();
     connection.signal.removeEventListener("abort", disconnected);
   };
   const disconnected = () => {
     dispose();
-    onState({ status: "disconnected" });
+    onRunners([]);
   };
   connection.signal.addEventListener("abort", disconnected, { once: true });
-  onState({ status: "connecting" });
 
   function openStream() {
     if (disposed) return;
@@ -50,19 +41,17 @@ export function observeInterception(
       stream = current;
       current.addEventListener("message", (event) => {
         if (disposed || stream !== current) return;
-        clearTimeout(timeout);
         try {
-          onState({ status: "live", runners: parseSnapshot(event.data) });
+          onRunners(parseSnapshot(event.data));
           retryDelayMs = 250;
         } catch {
           dispose();
-          onState({ status: "unavailable" });
+          onRunners([]);
         }
       });
       current.addEventListener("error", () => {
         if (disposed || stream !== current) return;
-        clearTimeout(timeout);
-        onState({ status: "unavailable" });
+        onRunners([]);
         // CONNECTING retries itself. HTTP failures such as 503 leave it permanently CLOSED.
         if (current.readyState === EventSource.CLOSED) {
           current.close();
@@ -73,7 +62,7 @@ export function observeInterception(
       });
     } catch {
       dispose();
-      onState({ status: "unavailable" });
+      onRunners([]);
     }
   }
   openStream();
