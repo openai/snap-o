@@ -1,3 +1,4 @@
+import type { BodySearchMatches } from "../../../network/body-search";
 import type { JSX } from "preact";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
@@ -6,6 +7,9 @@ import { RecordList } from "./RecordList";
 
 export function Sidebar({
   isConnected,
+  searchStatus,
+  searchStatusDetail,
+  bodyMatches,
   exclusionFilters,
   hiddenRequestCount,
   records,
@@ -19,6 +23,9 @@ export function Sidebar({
   onRecordSelect
 }: {
   isConnected: boolean;
+  searchStatus?: string | null;
+  searchStatusDetail?: string | null;
+  bodyMatches?: BodySearchMatches;
   exclusionFilters: string[];
   hiddenRequestCount: number;
   records: ToolRecord[];
@@ -39,7 +46,13 @@ export function Sidebar({
         onAddFilter={onAddExclusionFilter}
         onRemoveFilter={onRemoveExclusionFilter}
       />
+      {searchStatus ? (
+        <p className="search-status" role="status" title={searchStatusDetail ?? searchStatus}>
+          {searchStatus}
+        </p>
+      ) : null}
       <RecordList
+        bodyMatches={bodyMatches}
         records={records}
         allRecords={allRecords}
         sortNewestFirst={sortNewestFirst}

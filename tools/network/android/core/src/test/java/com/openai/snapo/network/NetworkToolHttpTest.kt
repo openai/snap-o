@@ -1,5 +1,6 @@
 package com.openai.snapo.network
 
+import android.app.Application
 import com.openai.snapo.tool.ToolConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -24,11 +25,63 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class NetworkToolHttpTest {
+    @Test
+    fun `upload completion reaches subscribers before the server responds`() = runBlocking {
+        val inspector = NetworkInspectorServer(Application())
+        Fixture(inspector.transport.http).use { server ->
+            val events = server.stream("/network")
+            inspector.publish(
+                RequestWillBeSent(
+                    id = "upload",
+                    tWallMs = 1,
+                    tMonoNs = 1,
+                    method = "POST",
+                    url = "https://example.test/upload",
+                    hasBody = true,
+                    body = null,
+                    bodyEncoding = null,
+                    bodyTruncatedBytes = null,
+                    bodySize = null,
+                )
+            )
+            val started = CompletableFuture.supplyAsync { data(events) }.get(5, TimeUnit.SECONDS)
+            inspector.updateLatestRequestBody("upload", "needle", null, 0, 6)
+            val updated = CompletableFuture.supplyAsync { data(events) }.get(5, TimeUnit.SECONDS)
+            assertEquals("Network.requestWillBeSent", updated["method"]?.jsonPrimitive?.content)
+            assertTrue(
+                updated.getValue("snapoSequence").jsonPrimitive.content.toLong() >
+                    started.getValue("snapoSequence").jsonPrimitive.content.toLong()
+            )
+            assertEquals(
+                "0",
+                updated.getValue("params").jsonObject.getValue("request")
+                    .jsonObject.getValue("postDataTruncatedBytes").jsonPrimitive.content
+            )
+            val response = server.request(
+                "/network/search",
+                "POST",
+                """{"requestIds":["upload"],"terms":["needle"]}"""
+            )
+            val result = ProtocolJson.decodeFromString<BodySearchReply>(response.body()).results.single()
+            assertEquals(listOf("needle"), result.request.terms)
+            assertTrue(result.request.complete)
+            assertFalse(result.response.complete)
+            assertEquals(200, response.statusCode())
+            assertEquals(400, server.request("/network/search", "POST", "{}").statusCode())
+            assertEquals(
+                400,
+                server.request("/network/search", "POST", """{"requestIds":[],"terms":["needle"]}""").statusCode()
+            )
+            assertEquals(405, server.request("/network/search").statusCode())
+        }
+    }
+
     @Test
     fun `network owns its protocol endpoint`() {
         val (status, body) = request("/network/protocol")

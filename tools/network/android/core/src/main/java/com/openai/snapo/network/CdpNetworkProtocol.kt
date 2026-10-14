@@ -54,6 +54,7 @@ internal data class CdpRequestData(
     val hasPostData: Boolean = false,
     val postDataLength: Long? = null,
     val postDataEncoding: String? = null,
+    val postDataTruncatedBytes: Long? = null,
 )
 
 @Serializable

@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -37,6 +38,27 @@ class SnapOHttpUrlInterceptorTest {
         } finally {
             interceptor.close()
         }
+    }
+
+    @Test
+    fun `request capture reports zero only after a successful close`() {
+        val capture = BodyCaptureSink(100)
+        val stream = CapturingOutputStream(ByteArrayOutputStream(), capture) {}
+        stream.write("body".encodeToByteArray())
+        assertNull(capture.snapshot().truncatedBytes)
+        stream.close()
+        assertEquals(0L, capture.snapshot().truncatedBytes)
+
+        val failed = BodyCaptureSink(100)
+        val failingStream = CapturingOutputStream(
+            object : ByteArrayOutputStream() {
+                override fun close() { throw IOException("close failed") }
+            },
+            failed
+        ) {}
+        failingStream.write("body".encodeToByteArray())
+        runCatching { failingStream.close() }
+        assertNull(failed.snapshot().truncatedBytes)
     }
 
     @Test

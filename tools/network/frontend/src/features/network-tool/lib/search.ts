@@ -1,3 +1,5 @@
+import { findTextMatches } from "../../../network/text-matcher";
+import type { RequestBodySearchMatch } from "../../../network/remote-body-search";
 import {
   matchesKeywordSearchDocument,
   parseKeywordSearchQuery,
@@ -14,8 +16,21 @@ export function parseNetworkSearchQuery(searchText: string): NetworkSearchQuery 
   return parseKeywordSearchQuery(searchText);
 }
 
-export function matchesNetworkSearch(record: ToolRecord, query: NetworkSearchQuery): boolean {
-  return matchesKeywordSearchDocument(searchDocumentForRecord(record), query);
+export function matchesNetworkSearch(
+  record: ToolRecord,
+  query: NetworkSearchQuery,
+  body?: RequestBodySearchMatch | null
+): boolean {
+  const document = searchDocumentForRecord(record);
+  if (body === undefined || record.kind !== "request") return matchesKeywordSearchDocument(document, query);
+  const metadataTerms = [...findTextMatches(document.parts.join("\n"), [...query.includes, ...query.excludes], 1)].map(
+    (match) => match.term
+  );
+  const terms = new Set([...metadataTerms, ...(body?.request.terms ?? []), ...(body?.response.terms ?? [])]);
+  const contains = (term: string) => terms.has(term);
+  if (!query.includes.every(contains) || query.excludes.some(contains)) return false;
+  // Missing bodies cannot prove that an excluded term is absent.
+  return query.excludes.length === 0 || (body?.request.complete === true && body.response.complete);
 }
 
 export function searchDocumentForRecord(record: ToolRecord): KeywordSearchDocument {
@@ -23,7 +38,7 @@ export function searchDocumentForRecord(record: ToolRecord): KeywordSearchDocume
   parts.push(...headersSearchText(record.requestHeaders), ...headersSearchText(record.responseHeaders));
 
   if (record.kind === "request") {
-    // HTTP bodies hydrate only on selection, so indexing them would make results cache-dependent.
+    // Bodies are searched separately on both the desktop and Android.
     for (const event of record.streamEvents) {
       parts.push(
         event.eventName ?? "",

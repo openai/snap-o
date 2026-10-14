@@ -10,6 +10,8 @@ description = "Shared Android components used by Snap-O network inspection integ
 
 android {
     namespace = "com.openai.snapo.network"
+    // JVM tests construct Application without opening an Android socket.
+    testOptions.unitTests.isReturnDefaultValues = true
     lint {
         enable += "UnusedResources"
         error += "UnusedResources"

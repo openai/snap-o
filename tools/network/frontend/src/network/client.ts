@@ -1,3 +1,4 @@
+import type { BodySearchQuery, BodySearchReply } from "./remote-body-search";
 import type { Host, ToolConnection } from "@snap-o/tool-host";
 import type { LoadBodiesInput, RequestBodies, StreamEvent, StreamStarted, StreamClosed } from "./bridge-types";
 import { host } from "@snap-o/tool-host";
@@ -8,6 +9,7 @@ export interface NetworkClient extends ToolContentClient {
   addExclusionFilter(filter: string): void;
   removeExclusionFilter(filter: string): void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
+  searchBodies?(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply>;
   startStream(input: ToolConnection): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
@@ -61,6 +63,11 @@ class BrowserNetworkClient implements NetworkClient {
     if (!connection) return Promise.reject(new Error("Tool is disconnected."));
     return connection.loadBodies(input);
   }
+  searchBodies(input: BodySearchQuery, signal: AbortSignal): Promise<BodySearchReply> {
+    if (!this.active) return Promise.reject(new DOMException("Tool is disconnected.", "AbortError"));
+    return this.active.searchBodies(input, signal);
+  }
+
   async startStream(input: ToolConnection): Promise<StreamStarted> {
     if (this.disposed || input.signal.aborted) throw new Error("Tool is disconnected.");
     this.closeConnection();

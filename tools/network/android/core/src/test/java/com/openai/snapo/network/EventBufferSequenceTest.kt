@@ -49,22 +49,22 @@ class EventBufferSequenceTest {
     }
 
     @Test
-    fun `request body updates preserve the event sequence`() {
+    fun `request body updates replace the retained event with a fresh sequence`() {
         val buffer = EventBuffer(NetworkInspectorConfig())
-        val sequence = buffer.append(request(id = "request", wallTimeMs = 100L))
+        val sequence = buffer.append(request(id = "request", wallTimeMs = 100L).copy(hasBody = true))
 
-        buffer.updateLatestRequestBody(
+        val update = buffer.updateLatestRequestBody(
             requestId = "request",
-            body = "updated body",
+            body = "needle",
             bodyEncoding = null,
-            bodyTruncatedBytes = 2L,
-            bodySize = 14L,
-        )
+            bodyTruncatedBytes = 0L,
+            bodySize = 6L,
+        )!!
 
-        val event = buffer.sequencedSnapshot().single()
-        assertEquals(sequence, event.snapoSequence)
-        assertEquals(14L, (event.record as RequestWillBeSent).bodySize)
-        assertEquals("updated body", buffer.findRequestBody("request")?.body)
+        assertEquals(sequence + 1, update.snapoSequence)
+        assertEquals(update, buffer.sequencedSnapshot().single())
+        assertEquals(null, (update.record as RequestWillBeSent).body)
+        assertEquals(update.snapoSequence + 1, buffer.append(finishedRequest("request", 200L)))
     }
 
     @Test

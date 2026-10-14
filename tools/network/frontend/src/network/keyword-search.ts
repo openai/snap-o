@@ -1,3 +1,4 @@
+import { findTextMatches } from "./text-matcher";
 export interface KeywordSearchQuery {
   includes: string[];
   excludes: string[];
@@ -56,26 +57,21 @@ export function parseKeywordSearchQuery(searchText: string): KeywordSearchQuery 
 
 export function matchesKeywordSearchDocument(document: KeywordSearchDocument, query: KeywordSearchQuery): boolean {
   if (query.includes.length === 0 && query.excludes.length === 0) return true;
-  const searchableText = document.parts.join("\n").toLowerCase();
-  return (
-    query.includes.every((token) => searchableText.includes(token)) &&
-    !query.excludes.some((token) => searchableText.includes(token))
+  const found = new Set(
+    [...findTextMatches(document.parts.join("\n"), [...query.includes, ...query.excludes], 1)].map(
+      (match) => match.term
+    )
   );
+  return query.includes.every((token) => found.has(token)) && !query.excludes.some((token) => found.has(token));
 }
 
 export function searchHighlightRanges(text: string, query: KeywordSearchQuery): SearchHighlightRange[] {
   if (text.length === 0 || query.includes.length === 0) return [];
 
-  const lowerText = text.toLowerCase();
-  const candidates: SearchHighlightRange[] = [];
-  for (const token of new Set(query.includes)) {
-    if (token.length === 0) continue;
-    let index = lowerText.indexOf(token);
-    while (index !== -1) {
-      candidates.push({ start: index, end: index + token.length });
-      index = lowerText.indexOf(token, index + 1);
-    }
-  }
+  const candidates: SearchHighlightRange[] = [...findTextMatches(text, query.includes)].map(({ start, end }) => ({
+    start,
+    end
+  }));
 
   candidates.sort((left, right) => left.start - right.start || right.end - left.end);
   const ranges: SearchHighlightRange[] = [];

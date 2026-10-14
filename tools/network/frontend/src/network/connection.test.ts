@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { bodyMatch } from "./body-test-fixtures";
 import { NetworkConnection } from "./connection";
 import type { StreamEvent } from "./bridge-types";
 
@@ -25,6 +26,7 @@ class Events extends EventTarget {
 const connections: NetworkConnection[] = [];
 afterEach(() => {
   for (const connection of connections.splice(0)) connection.close();
+  vi.useRealTimers();
 });
 function setup(history: (events: Events) => Response | Promise<Response>) {
   const events = new Events();
@@ -118,6 +120,9 @@ describe("direct Network HTTP and SSE connection", () => {
     expect(events.close).toHaveBeenCalledTimes(1);
     expect(closed).toHaveBeenCalledWith({ streamId: connection.id });
     await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
+    await expect(connection.searchBodies({ requestIds: ["one"], terms: ["needle"] }, signal())).rejects.toMatchObject({
+      name: "AbortError"
+    });
   });
   it("uses the tool URL for body reads and encodes request IDs", async () => {
     const { connection, fetchRequest } = setup(() => snapshot());
@@ -136,4 +141,39 @@ describe("direct Network HTTP and SSE connection", () => {
       "earlier app process"
     );
   });
+});
+
+it("posts literal body searches and rejects invalid snippets", async () => {
+  const { connection, fetchRequest } = setup(() => snapshot());
+  const query = { requestIds: ["one"], terms: ["needle"] };
+  const match = bodyMatch("one", { snippet: "a needle" });
+  fetchRequest.mockResolvedValueOnce(Response.json({ results: [match] }));
+  await expect(connection.searchBodies(query, signal())).resolves.toEqual({ results: [match] });
+  expect(fetchRequest).toHaveBeenLastCalledWith(
+    "/api/network/search",
+    expect.objectContaining({ method: "POST", body: JSON.stringify(query) })
+  );
+  fetchRequest.mockResolvedValueOnce(
+    Response.json({ results: [{ ...match, response: { ...match.response, snippet: {} } }] })
+  );
+  await expect(connection.searchBodies(query, signal())).rejects.toThrow();
+});
+
+const signal = () => new AbortController().signal;
+
+it.each(["界", "\u0001"])("fits maximum %s search replies within the size limit", async (character) => {
+  const { connection, fetchRequest } = setup(() => snapshot());
+  const strings = (count: number, size: number) =>
+    Array.from({ length: count }, (_, i) => character.repeat(size - 2) + String(i).padStart(2, "0"));
+  const query = { requestIds: strings(8, 512), terms: strings(64, 256) };
+  fetchRequest.mockImplementation(async (_, init) => {
+    const batch = JSON.parse(init!.body as string);
+    const body = { terms: batch.terms, complete: true, snippet: character.repeat(160) };
+    return Response.json({
+      results: batch.requestIds.map((requestId: string) => ({ requestId, request: body, response: body }))
+    });
+  });
+  const reply = await connection.searchBodies(query, signal());
+  expect(reply.results).toHaveLength(8);
+  expect(reply.results.every((result) => result.response.terms.length === 64)).toBe(true);
 });
