@@ -133,9 +133,9 @@ export function RequestDetail({
             record={record}
             uiState={uiState}
             isConnected={isConnected}
-            responseBody={responseBody}
-            responseStream={responseStream}
-            onRetryResponseBody={onRetryResponseBody}
+            deliveredBody={responseBody}
+            deliveredStream={responseStream}
+            onRetryDeliveredBody={onRetryResponseBody}
             onRetryOriginalResponseBody={onRetryOriginalResponseBody}
           />
         ) : (
