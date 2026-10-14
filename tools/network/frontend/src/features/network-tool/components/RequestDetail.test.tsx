@@ -58,7 +58,7 @@ describe("stream event rendering", () => {
 });
 
 describe("Response Body loading state", () => {
-  it("shows original response status, headers and body before the overwritten response", () => {
+  it("shows the overwritten response first and keeps the original collapsed until opened", () => {
     const record = request({
       responseHeaders: [{ name: "X-Source", value: "override" }],
       responseBody: "delivered-body",
@@ -68,37 +68,33 @@ describe("Response Body loading state", () => {
       },
       originalResponseBody: "original-body"
     });
-    const markup = renderToStaticMarkup(
-      <RequestDetail
-        client={{} as NetworkClient}
-        record={record}
-        uiState={expandedUiState}
-        onRetryResponseBody={() => {}}
-      />
-    );
-    const sections = document.createRange().createContextualFragment(markup).querySelectorAll(".detail-section");
-    expect(sections).toHaveLength(2);
-    expect(sections[0].textContent).toContain("Response");
-    expect(sections[0].textContent).toContain("503");
-    expect(sections[0].textContent).toContain("upstream");
-    expect(sections[0].textContent).toContain("original-body");
-    expect(sections[0].textContent).not.toContain("delivered-body");
-    expect(sections[1].textContent).toContain("Overwritten response");
-    expect(sections[1].textContent).toContain("200 OK");
-    expect(sections[1].textContent).toContain("override");
-    expect(sections[1].textContent).toContain("delivered-body");
+    function Detail({ record }: { record: RequestRecord }) {
+      const uiState = useToolUiState();
+      return (
+        <RequestDetail client={{} as NetworkClient} record={record} uiState={uiState} onRetryResponseBody={() => {}} />
+      );
+    }
+    const container = document.createElement("div");
+    try {
+      act(() => render(<Detail record={record} />, container));
+      const sections = container.querySelectorAll(".detail-section");
+      expect(sections).toHaveLength(2);
+      expect(sections[0].textContent).toMatch(/Response \(overwritten\).*200 OK.*override.*delivered-body/s);
+      expect(sections[1].textContent).toMatch(/Original Response.*503/s);
+      expect(sections[1].textContent).not.toContain("original-body");
 
-    const pending = renderToStaticMarkup(
-      <RequestDetail
-        client={{} as NetworkClient}
-        record={{ ...record, responseBody: undefined, endedAt: undefined }}
-        uiState={expandedUiState}
-        onRetryResponseBody={() => {}}
-      />
-    );
-    expect(pending).toContain("original-body");
-    expect(pending).toContain("Loading");
-    expect(pending).not.toContain("No response body.");
+      act(() => sections[1].querySelector<HTMLButtonElement>(".section-header")!.click());
+      expect(sections[1].textContent).toContain("upstream");
+      expect(sections[1].textContent).toContain("original-body");
+      expect(sections[1].textContent).not.toContain("delivered-body");
+
+      act(() => render(<Detail record={{ ...record, responseBody: undefined, endedAt: undefined }} />, container));
+      expect(container.textContent).toContain("original-body");
+      expect(container.textContent).toContain("Loading");
+      expect(container.textContent).not.toContain("No response body.");
+    } finally {
+      act(() => render(null, container));
+    }
   });
 
   it("explains mocks without an upstream call and keeps watched responses unduplicated", () => {
@@ -112,9 +108,9 @@ describe("Response Body loading state", () => {
         />
       );
     expect(markup("mocked")).toContain("No upstream call was made.");
-    expect(markup("mocked")).toContain("Overwritten response");
+    expect(markup("mocked")).toContain("Response (overwritten)");
     expect(markup("unchanged")).toContain("Watched");
-    expect(markup("unchanged")).not.toContain("Overwritten response");
+    expect(markup("unchanged")).not.toContain("Response (overwritten)");
     expect(markup("unchanged").match(/delivered-body/g)).toHaveLength(1);
   });
 

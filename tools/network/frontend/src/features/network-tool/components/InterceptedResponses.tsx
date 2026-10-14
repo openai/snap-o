@@ -35,6 +35,17 @@ export function InterceptedResponses({
 }): JSX.Element {
   const prefix = `request:${recordId(record)}`;
 
+  const deliveredStatus = record.status.kind === "success" ? record.status.code : null;
+  const deliveredHeaders = record.responseHeaders;
+  const deliveredError = record.responseBodyLoadError;
+  const awaitingDeliveredBody =
+    record.endedAt == null &&
+    deliveredStatus != null &&
+    record.encodedDataLength !== 0 &&
+    !responseHasNoBody(record.method, deliveredStatus, deliveredHeaders);
+  const deliveredLoading = awaitingDeliveredBody || shouldRequestResponseBody(record);
+  const deliveredMeta = responseMeta(deliveredStatus, deliveredBody, deliveredError, record);
+
   const originalResponse = record.interception?.originalResponse;
   const originalBody = originalResponse
     ? makeBodyPayload({
@@ -54,20 +65,35 @@ export function InterceptedResponses({
       })
     : null;
 
-  const deliveredStatus = record.status.kind === "success" ? record.status.code : null;
-  const deliveredHeaders = record.responseHeaders;
-  const deliveredError = record.responseBodyLoadError;
-  const awaitingDeliveredBody =
-    record.endedAt == null &&
-    deliveredStatus != null &&
-    record.encodedDataLength !== 0 &&
-    !responseHasNoBody(record.method, deliveredStatus, deliveredHeaders);
-  const deliveredLoading = awaitingDeliveredBody || shouldRequestResponseBody(record);
-  const deliveredMeta = responseMeta(deliveredStatus, deliveredBody, deliveredError, record);
-
   return (
     <>
-      <Section title="Response" meta={originalMeta} storageKey={`${prefix}:originalResponse`} uiState={uiState}>
+      <Section
+        title="Response (overwritten)"
+        meta={deliveredMeta}
+        storageKey={`${prefix}:overwrittenResponse`}
+        uiState={uiState}
+      >
+        <HeadersTable headers={deliveredHeaders} />
+        {deliveredStream ?? (
+          <ResponseBodyContent
+            client={client}
+            payload={deliveredBody}
+            loading={deliveredLoading}
+            error={deliveredError}
+            isConnected={isConnected}
+            storageKey={`${prefix}:responseBody:payload`}
+            uiState={uiState}
+            onRetry={onRetryDeliveredBody}
+          />
+        )}
+      </Section>
+      <Section
+        title="Original Response"
+        meta={originalMeta}
+        storageKey={`${prefix}:originalResponse`}
+        uiState={uiState}
+        initiallyExpanded={false}
+      >
         {originalResponse == null ? (
           <div className="body-load-message">
             {record.interception?.outcome === "mocked"
@@ -88,26 +114,6 @@ export function InterceptedResponses({
               onRetry={onRetryOriginalResponseBody}
             />
           </>
-        )}
-      </Section>
-      <Section
-        title="Overwritten response"
-        meta={deliveredMeta}
-        storageKey={`${prefix}:overwrittenResponse`}
-        uiState={uiState}
-      >
-        <HeadersTable headers={deliveredHeaders} />
-        {deliveredStream ?? (
-          <ResponseBodyContent
-            client={client}
-            payload={deliveredBody}
-            loading={deliveredLoading}
-            error={deliveredError}
-            isConnected={isConnected}
-            storageKey={`${prefix}:responseBody:payload`}
-            uiState={uiState}
-            onRetry={onRetryDeliveredBody}
-          />
         )}
       </Section>
     </>
