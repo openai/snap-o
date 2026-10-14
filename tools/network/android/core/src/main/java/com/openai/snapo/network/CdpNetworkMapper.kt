@@ -60,7 +60,24 @@ private fun ResponseReceived.toCdpResponseReceived(requestUrl: String?): CdpMess
                     encodedDataLength = bodySize?.toDouble(),
                     bodyEncoding = bodyEncoding,
                 ),
-                snapoInterception = interception?.let { CdpResponseInterception(outcome = it.outcome) },
+                snapoInterception = interception?.let { details ->
+                    CdpResponseInterception(
+                        outcome = details.outcome,
+                        originalResponse = details.originalResponse?.let { original ->
+                            CdpOriginalResponse(
+                                status = original.code,
+                                headers = original.headers.toCdpHeaderMap().mapValues { (name, value) ->
+                                    // Older protocol 2 clients only redact the delivered response's cookies.
+                                    if (name.equals("Set-Cookie", ignoreCase = true)) "[REDACTED]" else value
+                                },
+                                mimeType = original.headers.contentType(),
+                                encodedDataLength = original.bodySize?.toDouble(),
+                                bodyEncoding = original.bodyEncoding,
+                                bodyTruncatedBytes = original.bodyTruncatedBytes,
+                            )
+                        },
+                    )
+                },
             ),
         ),
     )

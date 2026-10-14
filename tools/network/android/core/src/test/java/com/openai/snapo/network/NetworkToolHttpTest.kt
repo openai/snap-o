@@ -86,7 +86,7 @@ class NetworkToolHttpTest {
 
     @Test
     fun `oversized body request ids return a client error`() {
-        for (body in listOf("request-body", "response-body")) {
+        for (body in listOf("request-body", "response-body", "original-response-body")) {
             assertEquals(
                 "HTTP/1.1 400 Bad Request",
                 request("/network/requests/${"x".repeat(513)}/$body").first
@@ -127,15 +127,21 @@ class NetworkToolHttpTest {
 
     @Test
     fun `body reads return HTTP JSON without command envelopes`() {
-        val http = NetworkToolHttp(commandHandler = { message ->
-            assertEquals(CdpNetworkMethod.GetResponseBody, message.method)
-            assertEquals("request+1", message.params?.jsonObject?.get("requestId")?.jsonPrimitive?.content)
-            CdpMessage(id = 1, result = JsonObject(mapOf("body" to JsonPrimitive("hello"))))
-        })
-        Fixture(http).use { server ->
-            val response = server.request("/network/requests/request%2B1/response-body")
-            assertEquals(200, response.statusCode())
-            assertEquals("{\"body\":\"hello\"}", response.body())
+        for ((endpoint, method) in listOf(
+            "response-body" to CdpNetworkMethod.GetResponseBody,
+            "original-response-body" to CdpNetworkMethod.GetOriginalResponseBody,
+        )) {
+            val http = NetworkToolHttp(commandHandler = { message ->
+                assertEquals(method, message.method)
+                assertEquals("request+1", message.params?.jsonObject?.get("requestId")?.jsonPrimitive?.content)
+                CdpMessage(id = 1, result = JsonObject(mapOf("body" to JsonPrimitive("hello"))))
+            })
+            Fixture(http).use { server ->
+                val response = server.request("/network/requests/request%2B1/$endpoint")
+                assertEquals(200, response.statusCode())
+                assertEquals("{\"body\":\"hello\"}", response.body())
+            }
+            assertEquals("HTTP/1.1 404 Not Found", request("/network/requests/unavailable/$endpoint").first)
         }
     }
 

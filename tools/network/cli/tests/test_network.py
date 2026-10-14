@@ -807,10 +807,18 @@ class ProtocolTests(unittest.TestCase):
 class OutputTests(unittest.TestCase):
     def test_sanitizes_all_sensitive_event_headers(self):
         request = snapo.sanitize_event(request_event())
-        response = snapo.sanitize_event(response_event())
+        raw_response = response_event()
+        raw_response["params"]["snapoInterception"] = {
+            "outcome": "modified",
+            "originalResponse": {"status": 200, "headers": {"set-cookie": "private", "Content-Type": "application/json"}},
+        }
+        response = snapo.sanitize_event(raw_response)
         self.assertEqual(request["params"]["request"]["headers"]["Authorization"], snapo.REDACTED)
         self.assertEqual(request["params"]["request"]["headers"]["Cookie"], snapo.REDACTED)
         self.assertEqual(response["params"]["response"]["headers"]["Set-Cookie"], snapo.REDACTED)
+        original = response["params"]["snapoInterception"]["originalResponse"]
+        self.assertEqual(original["headers"], {"set-cookie": snapo.REDACTED, "Content-Type": "application/json"})
+        self.assertEqual(raw_response["params"]["snapoInterception"]["originalResponse"]["headers"]["set-cookie"], "private")
 
     def test_history_only_request_keeps_reading_until_http_completion(self):
         clock = {"now": 0}

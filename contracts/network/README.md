@@ -11,6 +11,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
+| `GET /network/requests/{requestId}/original-response-body` | Original upstream body for an overwritten response, with the same JSON shape. |
 | `GET /interception` | Read-only SSE snapshots of registered runners and routes. |
 | `POST /interception` | Register routes; return `201`, the runner URL in `Location`, and its owning SSE stream. |
 | `PUT /interception/{runnerId}/routes` | Replace a runner's routes. |
@@ -74,7 +75,7 @@ Body reads return plain JSON, without `id` or `result` wrappers:
 
 Capture limits and redaction remain configured by the Android app. Interception uses a separate SSE subscription and is defined in [HTTP interception](interception.md).
 
-Intercepted responses add optional `params.snapoInterception` to `Network.responseReceived`. Its `outcome` is `mocked`, `unchanged`, or `modified`. The existing response fields and response-body endpoint always describe the delivered response. See [response attribution](interception.md#response-attribution) for classification rules.
+Intercepted responses add optional `params.snapoInterception` to `Network.responseReceived`. Its `outcome` is `mocked`, `unchanged`, or `modified`. Modified responses also include `originalResponse` metadata. The existing response fields and response-body endpoint always describe the delivered response. See [response attribution](interception.md#response-attribution) for comparison and retention rules.
 
 ## Limits and lifecycle
 

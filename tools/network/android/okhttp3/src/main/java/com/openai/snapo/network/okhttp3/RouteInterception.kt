@@ -1,12 +1,17 @@
 package com.openai.snapo.network.okhttp3
 
+import com.openai.snapo.network.Header
 import com.openai.snapo.network.InterceptionDecision
 import com.openai.snapo.network.InterceptionHeader
 import com.openai.snapo.network.InterceptionRequest
 import com.openai.snapo.network.InterceptionResponse
 import com.openai.snapo.network.MaxInterceptionBodyBytes
 import com.openai.snapo.network.NetworkInterception
+import com.openai.snapo.network.OriginalResponse
 import com.openai.snapo.network.ResponseInterception
+import com.openai.snapo.network.capture.BodyContentType
+import com.openai.snapo.network.capture.RawResponseBodyCapture
+import com.openai.snapo.network.capture.resolveResponseBody
 import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -60,7 +65,7 @@ internal fun interceptWithRoutes(
     }
 }
 
-internal data class InterceptionResult(val response: Response, val interception: ResponseInterception? = null)
+internal data class InterceptionResult(val response: Response, val interception: RouteInterception? = null)
 
 internal fun InterceptionDecision.fulfillRoute(
     request: Request,
@@ -69,11 +74,40 @@ internal fun InterceptionDecision.fulfillRoute(
 ): InterceptionResult {
     val delivered = toResponse(request, upstream)
     val details = when {
-        original == null -> ResponseInterception("mocked")
-        original.hasSameContent(requireNotNull(response)) -> ResponseInterception("unchanged")
-        else -> ResponseInterception("modified")
+        original == null -> RouteInterception("mocked")
+        original.hasSameContent(requireNotNull(response)) -> RouteInterception("unchanged")
+        else -> RouteInterception("modified", original)
     }
     return InterceptionResult(delivered, details)
+}
+
+internal data class RouteInterception(val outcome: String, val original: InterceptionResponse? = null) {
+    fun capture(textBodyMaxBytes: Int, binaryBodyMaxBytes: Int): ResponseInterception {
+        val capturedOriginal = original?.let { response ->
+            val bytes = requireNotNull(response.body.decodeBase64()).toByteArray()
+            val contentType = response.headerEntries.firstOrNull { it.name.equals("Content-Type", true) }?.value
+            val contentEncoding = response.headerEntries.filter { it.name.equals("Content-Encoding", true) }
+                .joinToString(",") { it.value }
+            val body = resolveResponseBody(
+                capture = RawResponseBodyCapture(bytes, bytes.size.toLong(), reachedEof = true),
+                contentType = BodyContentType.parse(contentType),
+                textBodyMaxBytes = textBodyMaxBytes,
+                binaryBodyMaxBytes = binaryBodyMaxBytes,
+                previewBytes = 0,
+                declaredBodySize = bytes.size.toLong(),
+                contentEncoding = contentEncoding,
+            )
+            OriginalResponse(
+                code = response.status,
+                headers = response.headerEntries.map { Header(it.name, it.value) },
+                body = body.body,
+                bodyEncoding = body.encoding,
+                bodyTruncatedBytes = body.truncatedBytes,
+                bodySize = body.bodySize,
+            )
+        }
+        return ResponseInterception(outcome, capturedOriginal)
+    }
 }
 
 internal fun InterceptionResponse.hasSameContent(other: InterceptionResponse): Boolean {

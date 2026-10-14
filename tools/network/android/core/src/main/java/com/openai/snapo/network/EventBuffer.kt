@@ -23,6 +23,7 @@ internal class EventBuffer(
     private var approxBytes: Long = 0L
     private val requestBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val responseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
+    private val originalResponseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val openWebSockets: MutableSet<String> = mutableSetOf()
 
     fun append(record: NetworkEventRecord): Long {
@@ -50,6 +51,8 @@ internal class EventBuffer(
     fun findRequestBody(requestId: String): CapturedBody? = requestBodiesById[requestId]
 
     fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
+
+    fun findOriginalResponseBody(requestId: String): CapturedBody? = originalResponseBodiesById[requestId]
 
     fun updateLatestRequestBody(
         requestId: String,
@@ -136,7 +139,11 @@ internal class EventBuffer(
                 if (!record.body.isNullOrEmpty()) {
                     upsertResponseBody(record.id, record.body, record.bodyEncoding)
                 }
-                if (record.body == null) record else record.copy(body = null)
+                val original = record.interception?.originalResponse
+                if (original != null && !original.body.isNullOrEmpty()) {
+                    upsertResponseBody(record.id, original.body, original.bodyEncoding, originalResponseBodiesById)
+                }
+                record.copy(body = null, interception = record.interception?.withoutBody())
             }
 
             else -> record
@@ -306,6 +313,7 @@ internal class EventBuffer(
         if (hasRemainingRequestRecords) return
         removeRequestBody(requestId)
         removeResponseBody(requestId)
+        removeResponseBody(requestId, originalResponseBodiesById)
     }
 
     private fun upsertRequestBody(
@@ -325,9 +333,10 @@ internal class EventBuffer(
         requestId: String,
         body: String,
         encoding: String?,
+        bodies: MutableMap<String, CapturedBody> = responseBodiesById,
     ) {
         val captured = CapturedBody(body = body, encoding = encoding)
-        val previous = responseBodiesById.put(requestId, captured)
+        val previous = bodies.put(requestId, captured)
         if (previous != null) {
             approxBytes -= estimateBodyEntrySize(requestId, previous)
         }
@@ -340,8 +349,8 @@ internal class EventBuffer(
         if (approxBytes < 0) approxBytes = 0
     }
 
-    private fun removeResponseBody(requestId: String) {
-        val removed = responseBodiesById.remove(requestId) ?: return
+    private fun removeResponseBody(requestId: String, bodies: MutableMap<String, CapturedBody> = responseBodiesById) {
+        val removed = bodies.remove(requestId) ?: return
         approxBytes -= estimateBodyEntrySize(requestId, removed)
         if (approxBytes < 0) approxBytes = 0
     }
@@ -364,7 +373,8 @@ internal class EventBuffer(
             is ResponseReceived ->
                 sizeOfHeaders(record.headers) +
                     record.bodyPreview.length +
-                    record.body.length
+                    record.body.length +
+                    estimateInterceptionSize(record.interception)
 
             is ResponseFinished -> 0
             is ResponseStreamEvent -> record.raw.length
@@ -377,6 +387,17 @@ internal class EventBuffer(
             else -> 0
         }
         return (base + payloadEstimate).toLong()
+    }
+
+    private fun estimateInterceptionSize(details: ResponseInterception?): Int {
+        if (details == null) return 0
+        val original = details.originalResponse
+        val originalSize = if (original == null) {
+            0
+        } else {
+            64 + sizeOfHeaders(original.headers) + original.bodyEncoding.length + original.body.length
+        }
+        return 64 + details.outcome.length + originalSize
     }
 
     private fun subtractApproxBytes(record: NetworkEventRecord) {

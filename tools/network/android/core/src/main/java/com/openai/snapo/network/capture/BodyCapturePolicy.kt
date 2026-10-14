@@ -176,8 +176,9 @@ fun resolveResponseBody(
     binaryBodyMaxBytes: Int,
     previewBytes: Int,
     declaredBodySize: Long?,
+    contentEncoding: String? = null,
 ): ResolvedResponseBody {
-    val likelyText = capture.isLikelyText(contentType)
+    val likelyText = !hasNonIdentityContentEncoding(contentEncoding) && capture.isLikelyText(contentType)
     val bodyLimit = resolveEffectiveMaxBytes(
         maxBytes = if (likelyText) textBodyMaxBytes else binaryBodyMaxBytes,
         contentLength = declaredBodySize,

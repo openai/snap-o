@@ -61,6 +61,7 @@ internal class NetworkToolHttp(
         }
         get("/network/requests/{requestId}/request-body") { body(CdpNetworkMethod.GetRequestPostData) }
         get("/network/requests/{requestId}/response-body") { body(CdpNetworkMethod.GetResponseBody) }
+        get("/network/requests/{requestId}/original-response-body") { body(CdpNetworkMethod.GetOriginalResponseBody) }
     }
 
     private fun eventStreamRequested(request: ToolHttpRequest): Boolean {
