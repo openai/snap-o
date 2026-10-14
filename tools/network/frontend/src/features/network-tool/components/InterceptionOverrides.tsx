@@ -7,7 +7,7 @@ export function InterceptionOverrides({ runners }: { runners: InterceptionRunner
 
   return (
     <section className="interception-overrides" aria-label="Registered overrides">
-      <details open>
+      <details>
         <summary className="interception-summary">
           <span>Registered overrides</span>
           <span className="interception-status" role="status">

@@ -213,7 +213,7 @@ body.split-pane-resizing {
   flex: 0 0 auto;
   max-height: 40%;
   overflow: auto;
-  border-bottom: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline);
   padding: 10px 12px;
   font-size: 11px;
   line-height: 16px;
