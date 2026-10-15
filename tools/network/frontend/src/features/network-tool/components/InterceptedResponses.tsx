@@ -68,7 +68,7 @@ export function InterceptedResponses({
   return (
     <>
       <Section
-        title="Response (overwritten)"
+        title="Response Body (overwritten)"
         meta={deliveredMeta}
         storageKey={`${prefix}:overwrittenResponse`}
         uiState={uiState}
@@ -88,7 +88,7 @@ export function InterceptedResponses({
         )}
       </Section>
       <Section
-        title="Original Response"
+        title="Response Body (original)"
         meta={originalMeta}
         storageKey={`${prefix}:originalResponse`}
         uiState={uiState}

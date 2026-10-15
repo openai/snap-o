@@ -80,11 +80,11 @@ describe("Response Body loading state", () => {
       const sections = container.querySelectorAll(".detail-section");
       expect(sections).toHaveLength(2);
       const [delivered, original] = sections;
-      expect(delivered.textContent).toContain("Response (overwritten)");
+      expect(delivered.textContent).toContain("Response Body (overwritten)");
       expect(delivered.textContent).toContain("200 OK");
       expect(delivered.textContent).toContain("override");
       expect(delivered.textContent).toContain("delivered-body");
-      expect(original.textContent).toContain("Original Response");
+      expect(original.textContent).toContain("Response Body (original)");
       expect(original.textContent).toContain("503");
       expect(original.textContent).not.toContain("original-body");
 
@@ -114,10 +114,10 @@ describe("Response Body loading state", () => {
       );
     const mocked = markup("mocked");
     expect(mocked).toContain("No upstream call was made.");
-    expect(mocked).toContain("Response (overwritten)");
+    expect(mocked).toContain("Response Body (overwritten)");
     const watched = markup("unchanged");
     expect(watched).toContain("Watched");
-    expect(watched).not.toContain("Response (overwritten)");
+    expect(watched).not.toContain("Response Body (overwritten)");
     expect(watched.match(/delivered-body/g)).toHaveLength(1);
   });
 
@@ -240,7 +240,7 @@ describe("Response Body loading state", () => {
         onRetryResponseBody={() => {}}
       />
     );
-    expect(markup).not.toContain("Response Body");
+    expect(document.createRange().createContextualFragment(markup).querySelector(".payload-card")).toBeNull();
     expect(markup).not.toContain("no longer available");
     expect(markup).not.toContain("Loading");
   });
