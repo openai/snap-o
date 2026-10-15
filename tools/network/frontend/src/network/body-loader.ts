@@ -116,21 +116,32 @@ export class RequestBodyLoader {
                     responseBodyLoadError:
                       bodies.responseBody != null ? null : (bodies.responseBodyLoadError ?? "failed")
                   }
+                : {}),
+              ...(entry.input.includeOriginalResponseBody
+                ? {
+                    originalResponseBodyLoadCompleted: true,
+                    originalResponseBodyLoadError:
+                      bodies.originalResponseBody != null ? null : (bodies.originalResponseBodyLoadError ?? "failed")
+                  }
                 : {})
             });
           }
         })
         .catch(() => {
           if (
-            entry.input.includeResponseBody &&
+            (entry.input.includeResponseBody || entry.input.includeOriginalResponseBody) &&
             !this.disposed &&
             !entry.cancelled &&
             this.retainedRecordKeys.has(entry.recordKey)
           ) {
             this.didLoadBodies(entry.recordKey, {
               requestId: entry.input.requestId,
-              responseBodyLoadCompleted: true,
-              responseBodyLoadError: "failed"
+              ...(entry.input.includeResponseBody
+                ? { responseBodyLoadCompleted: true, responseBodyLoadError: "failed" as const }
+                : {}),
+              ...(entry.input.includeOriginalResponseBody
+                ? { originalResponseBodyLoadCompleted: true, originalResponseBodyLoadError: "failed" as const }
+                : {})
             });
           }
         })

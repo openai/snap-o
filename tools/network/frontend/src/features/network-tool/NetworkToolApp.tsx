@@ -64,7 +64,8 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
           totalItems={model.totalItems}
           streamIsRetrying={model.streamIsRetrying}
           uiState={model.uiState}
-          onRetryResponseBody={model.retryResponseBody}
+          onRetryResponseBody={() => model.retryResponseBody()}
+          onRetryOriginalResponseBody={() => model.retryResponseBody("originalResponse")}
         />
       </main>
     </div>

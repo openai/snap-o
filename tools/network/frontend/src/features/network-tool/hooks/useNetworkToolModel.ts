@@ -25,8 +25,11 @@ import {
   isCompletedRecord,
   shouldRequestRequestBody,
   shouldRequestResponseBody,
+  shouldRequestOriginalResponseBody,
   sidebarPlaceholderText
 } from "../lib/records";
+
+type BodyLoadTarget = "request" | "response" | "originalResponse";
 
 export interface NetworkToolModel {
   client: NetworkClient;
@@ -48,7 +51,7 @@ export interface NetworkToolModel {
   selectRecord(id: string): void;
   addExclusionFilter(value: string): void;
   removeExclusionFilter(filter: string): void;
-  retryResponseBody(): void;
+  retryResponseBody(target?: "response" | "originalResponse"): void;
 }
 
 export function useNetworkToolModel(client: NetworkClient, connection: ToolConnection | null): NetworkToolModel {
@@ -156,19 +159,22 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
   }, [selectedRecordId, visibleRecords]);
   const selectedRequestKey = selectedRecord?.kind === "request" ? selectedRecordId : null;
 
-  const retryResponseBody = useCallback(() => {
-    if (selectedRecord?.kind !== "request" || selectedRecord.responseBodyLoadError !== "failed") return;
-    const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
-    bodyLoader.forgetJob(`${recordKey}\u0000response`);
-    bodyLoader.forgetRecords(
-      bodyCache.put(recordKey, {
-        requestId: selectedRecord.requestId,
-        responseBodyLoadCompleted: false,
-        responseBodyLoadError: null
-      })
-    );
-    setBodyCacheRevision((revision) => revision + 1);
-  }, [bodyCache, bodyLoader, selectedRecord]);
+  const retryResponseBody = useCallback(
+    (target: "response" | "originalResponse" = "response") => {
+      if (selectedRecord?.kind !== "request" || selectedRecord[`${target}BodyLoadError`] !== "failed") return;
+      const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
+      bodyLoader.forgetJob(bodyJobKey(recordKey, target));
+      bodyLoader.forgetRecords(
+        bodyCache.put(recordKey, {
+          requestId: selectedRecord.requestId,
+          [`${target}BodyLoadCompleted`]: false,
+          [`${target}BodyLoadError`]: null
+        })
+      );
+      setBodyCacheRevision((revision) => revision + 1);
+    },
+    [bodyCache, bodyLoader, selectedRecord]
+  );
 
   useEffect(() => {
     if (!isConnected) return;
@@ -181,37 +187,24 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     bodyLoader.forgetRecords(bodyCache.retainRecords(retainedRecordKeys));
 
     if (isConnected && selectedRecord?.kind === "request") {
-      const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
-      const requestAttemptKey = `${recordKey}\u0000request`;
-      const responseAttemptKey = `${recordKey}\u0000response`;
+      const { processId, requestId } = selectedRecord;
+      const recordKey = requestRecordKey(processId, requestId);
+      const selectedBodyJob = (target: BodyLoadTarget): BodyLoadJob => ({
+        key: bodyJobKey(recordKey, target),
+        recordKey,
+        priority: bodyLoadPriority.selected,
+        input: {
+          processId,
+          requestId,
+          includeRequestBody: target === "request",
+          includeResponseBody: target === "response",
+          includeOriginalResponseBody: target === "originalResponse"
+        }
+      });
 
-      if (shouldRequestRequestBody(selectedRecord)) {
-        jobs.push({
-          key: requestAttemptKey,
-          recordKey,
-          priority: bodyLoadPriority.selected,
-          input: {
-            processId: selectedRecord.processId,
-            requestId: selectedRecord.requestId,
-            includeRequestBody: true,
-            includeResponseBody: false
-          }
-        });
-      }
-
-      if (shouldRequestResponseBody(selectedRecord)) {
-        jobs.push({
-          key: responseAttemptKey,
-          recordKey,
-          priority: bodyLoadPriority.selected,
-          input: {
-            processId: selectedRecord.processId,
-            requestId: selectedRecord.requestId,
-            includeRequestBody: false,
-            includeResponseBody: true
-          }
-        });
-      }
+      if (shouldRequestRequestBody(selectedRecord)) jobs.push(selectedBodyJob("request"));
+      if (shouldRequestResponseBody(selectedRecord)) jobs.push(selectedBodyJob("response"));
+      if (shouldRequestOriginalResponseBody(selectedRecord)) jobs.push(selectedBodyJob("originalResponse"));
     }
 
     bodyLoader.retainRecords(retainedRecordKeys);
@@ -292,6 +285,10 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
     removeExclusionFilter,
     retryResponseBody
   };
+}
+
+function bodyJobKey(recordKey: string, target: BodyLoadTarget): string {
+  return `${recordKey}\u0000${target}`;
 }
 
 function createBodyHydrationRuntime(

@@ -119,21 +119,32 @@ describe("direct Network HTTP and SSE connection", () => {
     expect(closed).toHaveBeenCalledWith({ streamId: connection.id });
     await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
   });
-  it("uses the tool URL for body reads and encodes request IDs", async () => {
-    const { connection, fetchRequest } = setup(() => snapshot());
-    await connection.start();
-    const bodies = await connection.loadBodies({
-      processId: "boot:20:123",
-      requestId: "one/two+three",
-      includeRequestBody: false
-    });
-    expect(bodies.responseBody).toBe("response");
-    expect(fetchRequest).toHaveBeenLastCalledWith(
-      endpoint + "network/requests/one%2Ftwo%2Bthree/response-body",
-      expect.anything()
-    );
-    await expect(connection.loadBodies({ requestId: "one", processId: "older" })).rejects.toThrow(
-      "earlier app process"
-    );
-  });
+  it.each([
+    { path: "response-body", original: false, field: "responseBody" },
+    { path: "original-response-body", original: true, field: "originalResponseBody" }
+  ] as const)(
+    "reads $path with encoded IDs and distinguishes expired bodies from a disconnected process",
+    async ({ path, original, field }) => {
+      const { connection, fetchRequest } = setup(() => snapshot());
+      await connection.start();
+      fetchRequest.mockClear();
+      const input = {
+        processId: metadata.processIdentity,
+        requestId: "one/two+three",
+        includeRequestBody: false,
+        includeResponseBody: !original,
+        includeOriginalResponseBody: original
+      };
+      const bodies = await connection.loadBodies(input);
+      expect(bodies[field]).toBe("response");
+      expect(fetchRequest).toHaveBeenCalledExactlyOnceWith(
+        endpoint + `network/requests/one%2Ftwo%2Bthree/${path}`,
+        expect.anything()
+      );
+      await expect(connection.loadBodies({ ...input, processId: "older" })).rejects.toThrow("earlier app process");
+      expect(fetchRequest).toHaveBeenCalledTimes(1);
+      fetchRequest.mockResolvedValue(new Response(null, { status: 404 }));
+      expect((await connection.loadBodies(input))[`${field}LoadError`]).toBe("unavailable");
+    }
+  );
 });

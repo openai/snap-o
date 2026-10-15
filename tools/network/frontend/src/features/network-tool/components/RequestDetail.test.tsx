@@ -4,7 +4,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
-import { createEmptyToolState, reduceCdpMessage, type RequestRecord } from "../../../network/cdp";
+import type { RequestRecord } from "../../../network/cdp";
 import type { ToolUiState } from "../hooks/useToolUiState";
 import { RequestDetail } from "./RequestDetail";
 import { SseEventList } from "./StreamEvents";
@@ -58,34 +58,68 @@ describe("stream event rendering", () => {
 });
 
 describe("Response Body loading state", () => {
-  it.each(["modified", "mocked", "unchanged"] as const)(
-    "shows %s outcome while keeping the delivered response",
-    (outcome) => {
-      const state = reduceCdpMessage(createEmptyToolState(), "process-1", {
-        method: "Network.responseReceived",
-        params: {
-          requestId: "intercepted",
-          response: { status: 202, headers: { "Content-Type": "text/plain" } },
-          snapoInterception: { outcome }
-        }
-      });
-      const record = [...state.requests.values()][0];
-      const markup = renderToStaticMarkup(
+  it("shows the overwritten response first and keeps the original collapsed until opened", () => {
+    const record = request({
+      responseHeaders: [{ name: "X-Source", value: "override" }],
+      responseBody: "delivered-body",
+      interception: {
+        outcome: "modified",
+        originalResponse: { status: 503, headers: [{ name: "X-Source", value: "upstream" }] }
+      },
+      originalResponseBody: "original-body"
+    });
+    function Detail({ record }: { record: RequestRecord }) {
+      const uiState = useToolUiState();
+      return (
+        <RequestDetail client={{} as NetworkClient} record={record} uiState={uiState} onRetryResponseBody={() => {}} />
+      );
+    }
+    const container = document.createElement("div");
+    try {
+      act(() => render(<Detail record={record} />, container));
+      const sections = container.querySelectorAll(".detail-section");
+      expect(sections).toHaveLength(2);
+      const [delivered, original] = sections;
+      expect(delivered.textContent).toContain("Response Body (overwritten)");
+      expect(delivered.textContent).toContain("200 OK");
+      expect(delivered.textContent).toContain("override");
+      expect(delivered.textContent).toContain("delivered-body");
+      expect(original.textContent).toContain("Response Body (original)");
+      expect(original.textContent).toContain("503");
+      expect(original.textContent).not.toContain("original-body");
+
+      act(() => original.querySelector<HTMLButtonElement>(".section-header")!.click());
+      expect(original.textContent).toContain("upstream");
+      expect(original.textContent).toContain("original-body");
+      expect(original.textContent).not.toContain("delivered-body");
+
+      act(() => render(<Detail record={{ ...record, responseBody: undefined, endedAt: undefined }} />, container));
+      expect(container.textContent).toContain("original-body");
+      expect(container.textContent).toContain("Loading");
+      expect(container.textContent).not.toContain("No response body.");
+    } finally {
+      act(() => render(null, container));
+    }
+  });
+
+  it("explains mocks without an upstream call and keeps watched responses unduplicated", () => {
+    const markup = (outcome: "mocked" | "unchanged") =>
+      renderToStaticMarkup(
         <RequestDetail
           client={{} as NetworkClient}
-          record={{ ...record, responseBody: "delivered-body" }}
+          record={request({ interception: { outcome }, responseBody: "delivered-body" })}
           uiState={expandedUiState}
           onRetryResponseBody={() => {}}
         />
       );
-      const content = document.createRange().createContextualFragment(markup);
-      expect(content.querySelector("header .detail-interception")?.textContent).toBe(
-        outcome === "unchanged" ? "Watched" : "Overwritten"
-      );
-      expect(content.querySelector("header")?.textContent).toContain("202 Accepted");
-      expect(content.textContent).toContain("delivered-body");
-    }
-  );
+    const mocked = markup("mocked");
+    expect(mocked).toContain("No upstream call was made.");
+    expect(mocked).toContain("Response Body (overwritten)");
+    const watched = markup("unchanged");
+    expect(watched).toContain("Watched");
+    expect(watched).not.toContain("Response Body (overwritten)");
+    expect(watched.match(/delivered-body/g)).toHaveLength(1);
+  });
 
   it("shows an uncached body as offline instead of loading forever", () => {
     const markup = renderToStaticMarkup(
@@ -192,17 +226,23 @@ describe("Response Body loading state", () => {
     expect(markup).not.toContain("Loading");
   });
 
-  it("does not label a genuinely empty response as unavailable", () => {
+  it.each([undefined, "mocked"] as const)("does not load an empty %s response", (outcome) => {
     const markup = renderToStaticMarkup(
       <RequestDetail
         client={{} as NetworkClient}
-        record={request({ status: { kind: "success", code: 204 }, encodedDataLength: 0 })}
+        record={request({
+          status: { kind: "success", code: 204 },
+          encodedDataLength: 0,
+          endedAt: undefined,
+          interception: outcome == null ? undefined : { outcome }
+        })}
         uiState={expandedUiState}
         onRetryResponseBody={() => {}}
       />
     );
-    expect(markup).not.toContain("Response Body");
+    expect(document.createRange().createContextualFragment(markup).querySelector(".payload-card")).toBeNull();
     expect(markup).not.toContain("no longer available");
+    expect(markup).not.toContain("Loading");
   });
 });
 
@@ -334,20 +374,25 @@ describe("SSE stream status", () => {
     expect(markup).not.toMatch(/\.\.\.|…/);
   });
 
-  it("shows a stream failure once, below the retained events", () => {
-    const markup = renderStream({
-      status: { kind: "failure", message: "Read timed out." },
-      streamClosed: { timestamp: 2, reason: "error", message: "Read timed out." }
-    });
+  it.each([undefined, "mocked", "modified"] as const)(
+    "shows a %s stream failure once, below the retained events",
+    (outcome) => {
+      const markup = renderStream({
+        status: { kind: "failure", message: "Read timed out." },
+        streamClosed: { timestamp: 2, reason: "error", message: "Read timed out." },
+        interception: outcome == null ? undefined : { outcome }
+      });
 
-    expect(markup).toContain("· Closed");
-    expect(
-      document.createRange().createContextualFragment(markup).querySelector('.stream-close-message[role="status"]')
-        ?.textContent
-    ).toBe("Stream closed: Read timed out.");
-    expect(markup.match(/Read timed out\./g)).toHaveLength(1);
-    expect(markup.indexOf("Stream closed:")).toBeGreaterThan(markup.indexOf("sample-event"));
-  });
+      expect(markup).toContain("· Closed");
+      expect(
+        document.createRange().createContextualFragment(markup).querySelector('.stream-close-message[role="status"]')
+          ?.textContent
+      ).toBe("Stream closed: Read timed out.");
+      expect(markup.match(/Read timed out\./g)).toHaveLength(1);
+      expect(markup.indexOf("Stream closed:")).toBeGreaterThan(markup.indexOf("sample-event"));
+      expect(markup).not.toContain("No response body.");
+    }
+  );
 
   it.each([
     { reason: "error", message: undefined, expected: "Connection error." },

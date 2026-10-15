@@ -62,11 +62,21 @@ export function shouldRequestResponseBody(request: RequestRecord): boolean {
     return false;
   }
 
-  if (responseHasNoBody(request)) return false;
+  if (responseHasNoBody(request.method, request.status.code, request.responseHeaders)) return false;
   return request.encodedDataLength == null || request.encodedDataLength !== 0;
 }
 
-export function responseBodyCaptureMetadata(request: RequestRecord): string | null {
+export function shouldRequestOriginalResponseBody(request: RequestRecord): boolean {
+  const original = request.interception?.originalResponse;
+  if (request.interception?.outcome !== "modified" || original == null) return false;
+  if (request.originalResponseBody != null || request.originalResponseBodyLoadCompleted) return false;
+  if (responseHasNoBody(request.method, original.status, original.headers)) return false;
+  return original.encodedDataLength !== 0;
+}
+
+export function responseBodyCaptureMetadata(
+  request: Pick<RequestRecord, "encodedDataLength" | "responseBodyTruncatedBytes">
+): string | null {
   const totalBytes = request.encodedDataLength;
   if (totalBytes == null) return null;
   const truncatedBytes = Math.max(0, request.responseBodyTruncatedBytes ?? 0);
@@ -109,14 +119,11 @@ export function recordShowsActiveIndicator(record: ToolRecord): boolean {
   return record.streamEvents.length > 0 && record.streamClosed == null;
 }
 
-function responseHasNoBody(request: RequestRecord): boolean {
-  if (request.method.toUpperCase() === "HEAD") return true;
-  const status = request.status.kind === "success" ? request.status.code : null;
-  if (status != null) {
-    if (status >= 100 && status <= 199) return true;
-    if (status === 204 || status === 205 || status === 304) return true;
-  }
-  return contentLength(request.responseHeaders) === 0;
+export function responseHasNoBody(method: string, status: number, headers: RequestRecord["responseHeaders"]): boolean {
+  if (method.toUpperCase() === "HEAD") return true;
+  if (status >= 100 && status <= 199) return true;
+  if (status === 204 || status === 205 || status === 304) return true;
+  return contentLength(headers) === 0;
 }
 
 function contentLength(headers: RequestRecord["responseHeaders"]): number | null {

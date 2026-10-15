@@ -40,7 +40,7 @@ The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnectio
 
 The Network pane shows registered overrides for the selected app. The list updates when CLI runners start, reload routes, or disconnect. Viewing the list does not change the overrides.
 
-Captured requests show **Overwritten** when a handler changes or mocks their response, and **Watched** when it returns the upstream response unchanged.
+Captured requests show **Overwritten** when a handler changes or mocks their response, and **Watched** when it returns the upstream response unchanged. Open an overwritten request to compare the original response with the response delivered to the app.
 
 [Set up Network](https://openai.github.io/snap-o/network-inspector.html)
 
