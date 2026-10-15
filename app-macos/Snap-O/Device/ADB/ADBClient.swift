@@ -446,21 +446,23 @@ public struct ADBClient: Sendable {
     try Task.checkCancellation()
     let clock = AnyClock<Duration>(self.clock)
     do {
-      return try await withConnection(maxAttempts: 1) { connection in
-        try connection.withRequestTimeout(.seconds(2)) {
-          try connection.sendTransport(to: deviceID)
-          try connection.sendLocalAbstract(socketName)
-          let deadline = clock.now.advanced(by: .seconds(2))
-          try connection.writeFully(Data(request.utf8))
-          let http = request.hasPrefix("GET ")
-          var bytes = Data()
-          while true {
-            let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline, clock: clock)
-            if let chunk { bytes.append(chunk) }
-            if let payload = try LegacyPluginReader.payload(bytes, http: http, ended: chunk == nil) {
-              return try LegacyPluginReader.decode(payload, kind: kind, pid: pid, http: http)
+      return try await withLocalSocketAccess(deviceID: deviceID, socketName: socketName) {
+        try await withConnection(maxAttempts: 1) { connection in
+          try connection.withRequestTimeout(.seconds(2)) {
+            try connection.sendTransport(to: deviceID)
+            try connection.sendLocalAbstract(socketName)
+            let deadline = clock.now.advanced(by: .seconds(2))
+            try connection.writeFully(Data(request.utf8))
+            let http = request.hasPrefix("GET ")
+            var bytes = Data()
+            while true {
+              let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline, clock: clock)
+              if let chunk { bytes.append(chunk) }
+              if let payload = try LegacyPluginReader.payload(bytes, http: http, ended: chunk == nil) {
+                return try LegacyPluginReader.decode(payload, kind: kind, pid: pid, http: http)
+              }
+              if chunk == nil { return nil }
             }
-            if chunk == nil { return nil }
           }
         }
       }
@@ -492,18 +494,39 @@ public struct ADBClient: Sendable {
     deviceID: String,
     abstractSocket: String
   ) async throws -> any ADBConnection {
-    try await runWithRetry(maxAttempts: 1) { connection in
-      try await withCheckedThrowingContinuation { continuation in
-        DispatchQueue.global(qos: .userInitiated).async {
-          continuation.resume(with: Result {
-            try connection.withRequestTimeout(discoveryTimeout) {
-              try connection.sendTransport(to: deviceID)
-              try connection.sendLocalAbstract(abstractSocket)
-            }
-            return connection
-          })
+    try await withLocalSocketAccess(deviceID: deviceID, socketName: abstractSocket) {
+      try await runWithRetry(maxAttempts: 1) { connection in
+        try await withCheckedThrowingContinuation { continuation in
+          DispatchQueue.global(qos: .userInitiated).async {
+            continuation.resume(with: Result {
+              try connection.withRequestTimeout(discoveryTimeout) {
+                try connection.sendTransport(to: deviceID)
+                try connection.sendLocalAbstract(abstractSocket)
+              }
+              return connection
+            })
+          }
         }
       }
+    }
+  }
+
+  /// Check the listener's accept queue before opening another connection.
+  /// Serialize the check and open so concurrent requests cannot fill a frozen app's queue
+  /// and block adbd's main thread.
+  private func withLocalSocketAccess<Value: Sendable>(
+    deviceID: String, socketName: String, operation: @escaping @Sendable () async throws -> Value
+  ) async throws -> Value {
+    let reference = ToolServerReference(
+      deviceId: DeviceID(serverID: serverID, serial: deviceID).storedValue, socketName: socketName
+    )
+    return try await ADBLocalSocketGate.shared.run(reference: reference) {
+      let snapshot = try await listUnixSockets(deviceID: deviceID)
+      guard ToolDiscovery.canOpenSocket(named: socketName, inProcNetUnix: snapshot) else {
+        throw ADBError.protocolFailure("The tool is not accepting connections. Open its app and try again.")
+      }
+      try Task.checkCancellation()
+      return try await operation()
     }
   }
 
@@ -621,7 +644,7 @@ public struct ADBClient: Sendable {
       }
       group.addTask {
         try await Task.sleep(for: requestTimeout)
-        throw ADBError.requestTimedOut("Recording request timed out.")
+        throw ADBError.requestTimedOut("Device request timed out.")
       }
       defer { group.cancelAll() }
       guard let value = try await group.next() else { throw CancellationError() }
@@ -707,5 +730,32 @@ public struct TrackDevicesHandle: Sendable {
 
   public func cancel() {
     cancelClosure()
+  }
+}
+
+/// Serializes the queue check and connect across clients, including concurrent web requests.
+private actor ADBLocalSocketGate {
+  static let shared = ADBLocalSocketGate()
+
+  private var pending: [ToolServerReference: Task<Void, Never>] = [:]
+
+  func run<Value: Sendable>(
+    reference: ToolServerReference, operation: @escaping @Sendable () async throws -> Value
+  ) async throws -> Value {
+    try Task.checkCancellation()
+    let previous = pending[reference]
+    let task = Task {
+      await previous?.value
+      try Task.checkCancellation()
+      return try await operation()
+    }
+    let completion = Task { _ = try? await task.value }
+    pending[reference] = completion
+    defer { if pending[reference] == completion { pending[reference] = nil } }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 }
