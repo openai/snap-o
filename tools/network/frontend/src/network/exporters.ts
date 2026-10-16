@@ -199,6 +199,7 @@ function responseEncoding(
 ): string | null {
   if (bodyText == null || fromStreamEvents) return null;
   if (request.responseBodyBase64Encoded === true) return "base64";
+  if (request.responseBodyBase64Encoded === false) return null;
   if (isTextLikeMimeType(mimeType)) return null;
   return isLikelyBase64(bodyText) ? "base64" : null;
 }
