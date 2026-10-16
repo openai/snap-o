@@ -21,6 +21,17 @@ describe("browser network client", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
+  it("preserves request filter text and clearing across clients", () => {
+    client.saveSearchText('items -"noise host"');
+    const second = createNetworkClient();
+    try {
+      expect(second.readSearchText()).toBe('items -"noise host"');
+      second.saveSearchText("");
+      expect(client.readSearchText()).toBe("");
+    } finally {
+      second.dispose();
+    }
+  });
   it("persists exclusion filters across clients without losing successive edits", () => {
     client.addExclusionFilter("-one.test");
     client.addExclusionFilter("-two.test");
@@ -40,6 +51,8 @@ describe("browser network client", () => {
       throw new Error("Unavailable");
     });
     expect(client.listExclusionFilters()).toEqual([]);
+    expect(client.readSearchText()).toBe("");
+    expect(() => client.saveSearchText("items")).toThrow("Unavailable");
     expect(() => client.addExclusionFilter("-example.test")).toThrow("Unavailable");
     expect(() => client.removeExclusionFilter("-example.test")).toThrow("Unavailable");
   });

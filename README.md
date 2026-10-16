@@ -36,6 +36,8 @@ History keeps captures for 30 days by default, with a 5 GB storage limit. Change
 
 Inspect HTTP requests and responses, JSON bodies, Server-Sent Events, and WebSocket messages. Snap-O buffers recent traffic on the device, so you can inspect requests made before you opened the tool.
 
+Request filter text is saved for each app and device. It stays in place when you connect to a new app process. Clear the filter field to remove the saved filter.
+
 The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnection. Python handlers can edit or mock HTTP responses through the app's OkHttp connection.
 
 The Network pane shows registered overrides for the selected app. The list updates when CLI runners start, reload routes, or disconnect. Viewing the list does not change the overrides.

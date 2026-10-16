@@ -122,6 +122,8 @@ describe("Network frontend with the shared host", () => {
       }),
       onClosed: vi.fn(() => () => {}),
       listExclusionFilters: vi.fn(() => []),
+      readSearchText: vi.fn(() => ""),
+      saveSearchText: vi.fn(() => {}),
       addExclusionFilter: vi.fn(() => {}),
       removeExclusionFilter: vi.fn(() => {}),
       copyText: vi.fn(async () => {}),
@@ -276,6 +278,25 @@ describe("Network frontend with the shared host", () => {
     expect(container.textContent).toContain("Open this tool in the Snap-O macOS app.");
     expect(container.querySelector("button")?.textContent).toBe("Reload tool");
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("restores the request filter after page replacement and persists clearing it", async () => {
+    let saved = "";
+    vi.mocked(mocks.client.readSearchText).mockImplementation(() => saved);
+    vi.mocked(mocks.client.saveSearchText).mockImplementation((value) => {
+      saved = value;
+    });
+    await captureTraffic();
+    await search("items", 1);
+    await act(async () => render(null, container));
+    await captureTraffic();
+    expect(mocks.model?.searchText).toBe("items");
+    expect(mocks.model?.visibleRecords).toHaveLength(1);
+    await search("", 1);
+    await act(async () => render(null, container));
+    await captureTraffic();
+    expect(mocks.model?.searchText).toBe("");
+    expect(mocks.model?.visibleRecords).toHaveLength(1);
   });
 
   it("retains records, bodies, selection, and working search while reconnecting", async () => {

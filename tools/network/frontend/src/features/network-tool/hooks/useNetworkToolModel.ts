@@ -59,7 +59,7 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
   const interceptionRunners = useInterceptionOverrides(connection);
   const [state, setState] = useState<ToolDataState>(() => createEmptyToolState());
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(() => client.readSearchText());
   const [exclusionFilters, setExclusionFilters] = useState<string[]>([]);
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [, setBodyCacheRevision] = useState(0);
@@ -73,6 +73,17 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
   );
   const { bodyCache, bodyLoader } = bodyHydration;
   const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
+  const updateSearchText = useCallback(
+    (value: string) => {
+      setSearchText(value);
+      try {
+        client.saveSearchText(value);
+      } catch {
+        // Filtering remains usable when preferences cannot be saved.
+      }
+    },
+    [client]
+  );
   const addExclusionFilter = useCallback(
     (value: string) => {
       const filter = normalizeExclusionFilter(value);
@@ -250,10 +261,19 @@ export function useNetworkToolModel(client: NetworkClient, connection: ToolConne
             }
           }
         ],
-        search: { label: "Filter requests", value: searchText, onChange: setSearchText }
+        search: { label: "Filter requests", value: searchText, onChange: updateSearchText }
       })
       .catch(() => {});
-  }, [client, clearCompletedRecords, hasClearableItems, searchText, isConnected, sortNewestFirst, visibleRecords]);
+  }, [
+    client,
+    clearCompletedRecords,
+    hasClearableItems,
+    searchText,
+    isConnected,
+    sortNewestFirst,
+    updateSearchText,
+    visibleRecords
+  ]);
   useEffect(
     () => () => {
       void host.setToolbar({ actions: [] }).catch(() => {});
