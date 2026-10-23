@@ -19,8 +19,11 @@ def main():
             str(javac), "--release", "8", "-d", temporary,
             str(root / "src/com/openai/snapo/video/FrameWindow.java"),
             str(root / "tests/FrameWindowTest.java"),
+            str(root / "src/com/openai/snapo/clipboard/HeldKeys.java"),
+            str(root / "tests/HeldKeysTest.java"),
         ], check=True)
         subprocess.run([str(java), "-cp", temporary, "com.openai.snapo.video.FrameWindowTest"], check=True)
+        subprocess.run([str(java), "-cp", temporary, "com.openai.snapo.clipboard.HeldKeysTest"], check=True)
 
 
 if __name__ == "__main__":

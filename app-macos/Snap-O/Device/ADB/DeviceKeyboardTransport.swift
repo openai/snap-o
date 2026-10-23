@@ -1,7 +1,7 @@
 import Foundation
 
 struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
-  static let version: UInt32 = 1
+  static let version: UInt32 = 2
   let connection: any ADBConnection
   private let queue = DispatchQueue(label: "snapo.keyboard")
 
@@ -59,6 +59,8 @@ struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
     case .key(let code, let modifiers): return number(2) + number(code) + number(modifiers)
     case .paste(let text): return try number(3) + DeviceClipboardProtocol.frame(text)
     case .copy: return number(4)
+    case .keyDown(let code): return number(5) + number(code)
+    case .keyUp(let code): return number(6) + number(code)
     }
   }
 

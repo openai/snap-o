@@ -69,6 +69,11 @@ Validate typing, deletion, selection, Unicode paste, and copy with clipboard syn
 Verify that changing focus or devices discards queued input. Use synthetic text only.
 See the [internal keyboard contract](../contracts/device-keyboard/README.md).
 
+Hold any live preview key button to hold its Android key: Back, Home, Recents, Power, or Volume.
+Release the mouse button to release the key. Android decides what each long press does.
+Keyboard shortcuts send complete presses; holding is supported only by the toolbar buttons.
+Leaving the preview releases held keys. The helper also releases them when its connection ends.
+
 ## Pointer input
 
 Snap-O prefers a persistent `uinput` virtual touchscreen. When it is unavailable,

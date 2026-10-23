@@ -21,6 +21,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
   @ObservationIgnored private var cleanupTask: Task<Void, Never>?
   @ObservationIgnored private var shutdownTask: Task<Void, Never>?
   @ObservationIgnored private var transport: (any LivePreviewKeyboardTransport)?
+  @ObservationIgnored private var heldKeys: Set<UInt32> = []
 
   init(
     deviceID: String,
@@ -51,13 +52,16 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
 
   func discardPendingInput() {
     inputRevision += 1
-    pending.removeAll()
+    // Leaving the text responder must not drop a device control's release.
+    pending.removeAll { !$0.0.isHeldKeyEvent }
   }
 
-  /// Revoke queued input now; the returned task finishes the current wire response.
+  /// Revoke queued input now; finish in-flight input and release held keys before handing off focus.
   @discardableResult
   func releaseInput() -> Task<Void, Never> {
-    discardPendingInput()
+    inputRevision += 1
+    pending = heldKeys.sorted().map { (.keyUp(code: $0), pasteboard.changeCount) }
+    if !pending.isEmpty { prepare() }
     return task ?? Task {}
   }
 
@@ -67,7 +71,9 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
     task = nil
     transport?.close()
     transport = nil
-    discardPendingInput()
+    heldKeys.removeAll()
+    inputRevision += 1
+    pending.removeAll()
     if let pendingTask {
       let previous = cleanupTask
       cleanupTask = Task {
@@ -112,8 +118,11 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
       while !Task.isCancelled, target?.isValid != false, !pending.isEmpty, let transport {
         revision = inputRevision
         let (event, changeCount) = pending.removeFirst()
+        // Track before awaiting so focus loss also releases an in-flight key-down.
+        if case .keyDown(let code) = event { heldKeys.insert(code) }
         let response = try await transport.send(event)
         guard !Task.isCancelled else { return }
+        if case .keyUp(let code) = event { heldKeys.remove(code) }
         guard target?.isValid != false else { stop()
           return
         }
@@ -141,6 +150,7 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
         // Retry only unsent input from the new focus, never the failed event.
         transport?.close()
         transport = nil
+        heldKeys.removeAll()
         return
       }
       stop()

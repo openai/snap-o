@@ -29,6 +29,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/ADB/DevicePointerTransport.swift Snap-O/Device/ADB/DevicePointerProtocol.swift Snap-O/Device/ADB/ADBShellV2Stream.swift Snap-O/LivePreview/Input/UInputLivePreviewPointerBackend.swift \
   Snap-O/Device/ADB/LivePreviewKeyboard+Device.swift \
   Snap-O/LivePreview/Input/LivePreviewKeyboard.swift Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift \
+  Snap-O/LivePreview/Input/LivePreviewKeyPress.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift Snap-O/LivePreview/Rendering/LivePreviewSession.swift \
   Snap-O/LivePreview/PreviewVideo.swift Snap-O/LivePreview/Rendering/LivePreviewRenderer.swift \
   Snap-O/LivePreview/Input/TextPasteboard.swift Snap-O/LivePreview/Input/ClipboardSync.swift Snap-O/Device/ShowTouchesOverride.swift \

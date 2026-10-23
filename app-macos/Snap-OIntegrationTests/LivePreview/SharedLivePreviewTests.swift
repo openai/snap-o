@@ -145,6 +145,29 @@ struct SharedLivePreviewTests {
   }
 
   @Test
+  func focusChangeReleasesHomeBeforeAnotherWindowCanPressIt() async throws {
+    let fixture = try SharedPreviewTestSupport.Fixture()
+    let target = fixture.target()
+    let first = fixture.service.attach(to: target)
+    let second = fixture.service.attach(to: target)
+    let mouse = UUID()
+    let secondControl = UUID()
+    try await fixture.focus(first)
+    first.setKeyPressed(true, code: 3, source: mouse)
+    try await fixture.keyboards[0].waitForEvents(1)
+    second.setVisible(true)
+    second.setFocused(true)
+    try await waitForState { second.acceptsInput }
+    #expect(fixture.keyboards[0].events == [.keyDown(code: 3), .keyUp(code: 3)])
+    second.setKeyPressed(true, code: 3, source: secondControl)
+    first.setKeyPressed(false, code: 3, source: mouse)
+    second.setKeyPressed(false, code: 3, source: secondControl)
+    try await fixture.keyboards[0].waitForEvents(4)
+    #expect(fixture.keyboards[0].events == [.keyDown(code: 3), .keyUp(code: 3), .keyDown(code: 3), .keyUp(code: 3)])
+    await fixture.close()
+  }
+
+  @Test
   func focusWaitsForOldCopyAndRejectsItsResult() async throws {
     let fixture = try SharedPreviewTestSupport.Fixture()
     let target = fixture.target()

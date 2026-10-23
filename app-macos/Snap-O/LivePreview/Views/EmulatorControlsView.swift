@@ -67,7 +67,7 @@ struct EmulatorControlsView: View {
       .font(.system(size: 15, weight: .regular))
       .foregroundStyle(.primary)
       .offset(y: verticalOffset)
-      .frame(width: 32, height: 36)
+      .frame(width: 32, height: 32)
       .contentShape(Rectangle())
   }
 }

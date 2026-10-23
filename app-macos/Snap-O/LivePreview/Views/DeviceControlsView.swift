@@ -3,12 +3,9 @@ import SwiftUI
 struct DeviceControlsView: View {
   @Environment(AppSettings.self)
   private var settings
-  let serial: String
   var placement: DeviceControlsPlacement = .below
   let attachment: LivePreviewAttachment?
-  let sendKey: (String) async throws -> Void
   let didChangeDisplay: @MainActor () -> Void
-  @State private var pendingKey: String?
   @State private var pendingRotation: LivePreviewDeviceCommand?
   @State private var inputFailed = false
 
@@ -68,15 +65,6 @@ struct DeviceControlsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Device controls")
-    .task(id: pendingKey) {
-      guard let pendingKey else { return }
-      do {
-        try await sendKey(pendingKey)
-      } catch {
-        if !Task.isCancelled { inputFailed = true }
-      }
-      if !Task.isCancelled, self.pendingKey == pendingKey { self.pendingKey = nil }
-    }
     .task(id: pendingRotation) {
       guard let pendingRotation else { return }
       do {
@@ -108,19 +96,19 @@ struct DeviceControlsView: View {
       .frame(width: placement == .left ? 24 : 1, height: placement == .left ? 1 : 24)
   }
 
+  @ViewBuilder
   private func key(_ command: LivePreviewDeviceCommand, symbol: String) -> some View {
-    Button { pendingKey = command.keyCode } label: {
-      icon(symbol).foregroundStyle(.primary)
+    if let code = command.androidKeyCode {
+      LivePreviewHeldKeyButton(title: command.title, symbol: symbol, attachment: attachment, code: code)
+        .help("\(command.help). Hold to long-press.")
     }
-    .help(command.help)
-    .accessibilityLabel(command.title)
-    .disabled(pendingKey != nil)
   }
 
   private func rotationButton(_ command: LivePreviewDeviceCommand, symbol: String) -> some View {
     Button { pendingRotation = command } label: {
-      icon(symbol).foregroundStyle(.primary).offset(y: -2)
+      Image(systemName: symbol)
     }
+    .buttonStyle(LivePreviewToolbarButtonStyle())
     .help(command.help)
     .accessibilityLabel(command.title)
     .disabled(attachment == nil || pendingRotation != nil)
@@ -129,32 +117,23 @@ struct DeviceControlsView: View {
   private var keyboardButton: some View {
     @Bindable var settings = settings
     return Toggle(isOn: $settings.keyboardInput) {
-      icon("keyboard")
-        .foregroundStyle(settings.keyboardInput ? Color.accentColor : Color.secondary)
+      Image(systemName: "keyboard")
     }
     .toggleStyle(.button)
+    .buttonStyle(LivePreviewToolbarButtonStyle(isOn: settings.keyboardInput))
     .help(settings.keyboardInput ? "Keyboard input: On. Click the preview to type." : "Keyboard input: Off")
     .accessibilityLabel("Keyboard input")
-    .accessibilityValue(settings.keyboardInput ? "On" : "Off")
   }
 
   private var clipboardButton: some View {
     @Bindable var settings = settings
     return Toggle(isOn: $settings.syncClipboard) {
-      icon("clipboard")
-        .foregroundStyle(settings.syncClipboard ? Color.accentColor : Color.secondary)
+      Image(systemName: "clipboard")
     }
     .toggleStyle(.button)
+    .buttonStyle(LivePreviewToolbarButtonStyle(isOn: settings.syncClipboard))
     .help(!settings.syncClipboard ? "Sync clipboard: Off" : attachment?.preview?.clipboardUnavailable == true
       ? "Sync clipboard: Connection unavailable. Retrying" : "Sync clipboard: On")
     .accessibilityLabel("Sync clipboard")
-    .accessibilityValue(settings.syncClipboard ? "On" : "Off")
-  }
-
-  private func icon(_ symbol: String) -> some View {
-    Image(systemName: symbol)
-      .font(.system(size: 15, weight: .regular))
-      .frame(width: 32, height: 36)
-      .contentShape(Rectangle())
   }
 }

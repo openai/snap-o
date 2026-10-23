@@ -1,12 +1,59 @@
 import AppKit
-
-#if canImport(Snap_O) && !SNAPO_STANDALONE_TESTS
-#endif
 import Testing
 
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct LivePreviewKeyboardTests {
+  @Test
+  func focusLossReleasesInFlightHomeAndDiscardsUnsentPresses() async throws {
+    let transport = KeyboardTestTransport()
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: TextPasteboardDouble()) { _ in transport }
+    defer { keyboard.stop() }
+    keyboard.send(.keyDown(code: 3))
+    try await transport.waitForCount(1)
+    keyboard.send(.keyDown(code: 24))
+    let release = keyboard.releaseInput()
+    transport.finish()
+    try await transport.waitForCount(2)
+    #expect(transport.events == [.keyDown(code: 3), .keyUp(code: 3)])
+    transport.finish()
+    await release.value
+    #expect(!transport.isClosed)
+  }
+
+  @Test
+  func leavingTextResponderPreservesPendingHomeRelease() async throws {
+    let transport = KeyboardTestTransport()
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: TextPasteboardDouble()) { _ in transport }
+    defer { keyboard.stop() }
+    keyboard.send(.keyDown(code: 3))
+    try await transport.waitForCount(1)
+    keyboard.send(.text("discard"))
+    keyboard.send(.keyUp(code: 3))
+    keyboard.discardPendingInput()
+    transport.finish()
+    try await transport.waitForCount(2)
+    #expect(transport.events == [.keyDown(code: 3), .keyUp(code: 3)])
+    transport.finish()
+    await keyboard.beginShutdown().value
+  }
+
+  @Test
+  func focusLossBeforeConnectionDropsHomePress() async throws {
+    let transport = KeyboardTestTransport()
+    let setup = TestValue<CheckedContinuation<any LivePreviewKeyboardTransport, Never>?>(nil)
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device", pasteboard: TextPasteboardDouble()) { _ in
+      await withCheckedContinuation { setup.value = $0 }
+    }
+    defer { keyboard.stop() }
+    keyboard.send(.keyDown(code: 3))
+    try await waitForState { setup.value != nil }
+    let release = keyboard.releaseInput()
+    setup.value?.resume(returning: transport)
+    await release.value
+    #expect(transport.events.isEmpty)
+  }
+
   @Test
   func settingDefaultsOnAndPersistsIndependentlyOfClipboard() throws {
     let suite = "KeyboardTests." + UUID().uuidString

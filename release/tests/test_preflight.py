@@ -431,12 +431,16 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertNotIn("UNRESOLVED: Device video", report)
 
     def test_reports_device_keyboard_versions(self):
-        self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 1;\n")
-        self.write("app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift", "static let version: UInt32 = 1\n")
+        self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 2;\n")
+        self.write("app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift", "static let version: UInt32 = 2\n")
+        self.write("contracts/device-keyboard/README.md", "| 5 | Key code | Press and hold a key. |\n| 6 | Key code | Release a key. |\n")
         self.commit()
         report = self.report()
         self.assertIn("Device keyboard helper version", report)
         self.assertIn("Device keyboard client version", report)
+        self.assertIn("Device keyboard command definitions", report)
+        self.assertIn("| 5 | Key code | Press and hold a key. |", report)
+        self.assertIn("| 6 | Key code | Release a key. |", report)
 
     def test_reports_device_pointer_versions(self):
         self.write("device-helper/src/com/openai/snapo/pointer/Main.java", "private static final int VERSION = 1;\n")
