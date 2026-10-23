@@ -47,7 +47,7 @@ class FakeADB:
         return ["emulator-5554"]
 
     def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
-        return ["snapo_network_42"]
+        return ["snapo_tweaks_42"]
 
     def process_info(self, server):
         self.metadata_calls.append(server)
@@ -60,6 +60,11 @@ class FakeADB:
         self.calls.append((serial, arguments))
         if arguments[:2] == ("forward", "tcp:0"):
             return str(self.forward_port)
+        if arguments == ("shell", "cat /proc/net/unix"):
+            return "\n".join(
+                f"1: 00000002 00000000 00010000 0001 01 101 @{name}"
+                for name in self.sockets(serial)
+            )
         return ""
 
 
@@ -515,6 +520,8 @@ class TweakTransportTests(unittest.TestCase):
             adb.calls,
             [
                 ("emulator-5554", ("forward", "tcp:0", "localabstract:snapo_tweaks_42")),
+                ("emulator-5554", ("shell", "cat /proc/net/unix")),
+                ("emulator-5554", ("shell", "cat /proc/net/unix")),
                 ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")),
             ],
         )
@@ -531,7 +538,9 @@ class TweakTransportTests(unittest.TestCase):
     def test_explicit_adb_endpoint_sends_http_through_direct_smart_socket(self):
         payload = {"tweaks": tweak_descriptors()}
         with TweakSmartSocketServer(payload) as wire:
-            adb = snapo.ADB("/configured/adb", host="127.0.0.1", port=wire.port)
+            snapshot = "1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42"
+            run = mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout=snapshot, stderr=""))
+            adb = snapo.ADB("/configured/adb", host="127.0.0.1", port=wire.port, run=run)
             server = snapo.Server("emulator-5554", "snapo_tweaks_42")
             with snapo.TweakConnection(adb, server) as connection:
                 response = connection.request("GET", "/tweaks")
@@ -1324,6 +1333,41 @@ class StandaloneInstallationTests(unittest.TestCase):
                     result = subprocess.run([*command, *arguments], cwd=directory, capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, 2)
                     self.assertIn("invalid choice", result.stderr)
+
+
+class SocketQueueTests(unittest.TestCase):
+    def test_pending_connection_blocks_only_its_listener(self):
+        name = snapo.SOCKET_PREFIX + "42"
+        listener = f"1: 00000002 00000000 00010000 0001 01 101 @{name}"
+        pending = f"2: 00000002 00000000 00000000 0001 02 0 @{name}"
+        accepted = f"3: 00000002 00000000 00000000 0001 03 202 @{name}"
+        other = f"4: 00000002 00000000 00000000 0001 02 0 @{snapo.SOCKET_PREFIX}43"
+        for snapshot in (listener + "\n" + pending, pending + "\n" + listener):
+            self.assertFalse(snapo.can_open_socket(snapshot, name))
+        self.assertTrue(snapo.can_open_socket("\n".join((listener, accepted, other)), name))
+        for snapshot in ("", "cat: permission denied", pending, accepted):
+            self.assertFalse(snapo.can_open_socket(snapshot, name))
+
+    def test_repeated_requests_wait_for_queue_to_drain(self):
+        name = snapo.SOCKET_PREFIX + "42"
+        listener = f"1: 00000002 00000000 00010000 0001 01 101 @{name}"
+        queued = listener + f"\n2: 00000002 00000000 00000000 0001 02 0 @{name}"
+        for forwarded in (False, True):
+            with self.subTest(forwarded=forwarded):
+                adb = mock.Mock()
+                adb.command.return_value = queued
+                connection = snapo.ServerConnection(adb, snapo.Server("phone", name))
+                if forwarded:
+                    connection.forward = mock.Mock(port=12345)
+                with mock.patch.object(snapo, "LocalAbstractSocket") as opened:
+                    for _ in range(60):
+                        with self.assertRaisesRegex(snapo.SnapOError, "not accepting"):
+                            connection.open_socket()
+                    opened.assert_not_called()
+                    adb.command.return_value = listener
+                    connection.open_socket()
+                    opened.assert_called_once()
+                adb.command.assert_called_with("shell", "cat /proc/net/unix", serial="phone")
 
 
 if __name__ == "__main__":
