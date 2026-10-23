@@ -38,14 +38,14 @@ enum LivePreviewDeviceCommand: CaseIterable {
     return "\(title) (\(modifierSymbols)\(String(shortcut.character).uppercased()))"
   }
 
-  var keyCode: String? {
+  var androidKeyCode: UInt32? {
     switch self {
-    case .back: "KEYCODE_BACK"
-    case .home: "KEYCODE_HOME"
-    case .recents: "KEYCODE_APP_SWITCH"
-    case .power: "KEYCODE_POWER"
-    case .volumeUp: "KEYCODE_VOLUME_UP"
-    case .volumeDown: "KEYCODE_VOLUME_DOWN"
+    case .back: 4
+    case .home: 3
+    case .recents: 187
+    case .power: 26
+    case .volumeUp: 24
+    case .volumeDown: 25
     case .rotateLeft, .rotateRight: nil
     }
   }
@@ -93,8 +93,8 @@ struct LivePreviewCommandHandler: View {
         guard let command = pendingCommand else { return }
         do {
           guard let attachment else { throw CancellationError() }
-          if let key = command.keyCode {
-            try await attachment.sendKey(key)
+          if let key = command.androidKeyCode {
+            try await attachment.sendKey(String(key))
           } else if command.isRotation {
             try await attachment.rotate(
               left: command == .rotateLeft

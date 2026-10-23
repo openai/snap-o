@@ -515,12 +515,9 @@ struct CaptureWindow: View {
           .id(serial)
         DeviceControlsPanel(placement: settings.deviceControlsPlacement) {
           DeviceControlsView(
-            serial: serial, placement: settings.deviceControlsPlacement,
+            placement: settings.deviceControlsPlacement,
             attachment: attachment
-          ) { key in
-            guard let attachment else { throw CancellationError() }
-            try await attachment.sendKey(key)
-          } didChangeDisplay: {
+          ) {
             attachment?.restartVideo()
           }
           .environment(settings)

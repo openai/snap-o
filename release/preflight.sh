@@ -225,6 +225,10 @@ print_protocol_declaration() {
 }
 
 print_android_protocol_declarations() {
+  if git -C "$SNAPO_DIR" cat-file -e "$1:contracts/device-keyboard/README.md" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device keyboard command definitions' \
+      '^\| [0-9]+ \|' 'contracts/device-keyboard/README.md'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:contracts/device-video/README.md" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device video packet definitions' \
       '^\| `[0-9]+`:' 'contracts/device-video/README.md'

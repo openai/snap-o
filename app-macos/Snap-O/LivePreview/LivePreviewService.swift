@@ -44,6 +44,7 @@ private final class PreviewUse {
   @ObservationIgnored var requests: [UUID: Request] = [:]
   @ObservationIgnored var release: Task<Void, Never>?
   @ObservationIgnored var inputRelease: Task<Void, Never>?
+  @ObservationIgnored var keyPress = LivePreviewKeyPress()
   init(entry: PreviewConnectionEntry) {
     self.entry = entry
   }
@@ -262,6 +263,7 @@ final class LivePreviewService {
     let revision = focusRevision
     clipboardOwner?.setClipboardEnabled(false)
     if let old {
+      old.keyPress.reset()
       let keyboard = old.entry.owner?.keyboard.releaseInput()
       for request in old.requests.values where request.isInput {
         request.cancel()
@@ -328,6 +330,11 @@ final class LivePreviewService {
 
   fileprivate func send(_ event: LivePreviewKeyboardEvent, user: PreviewUse) {
     guard acceptsInput(user) else { return }
+    user.entry.owner?.keyboard.send(event)
+  }
+
+  fileprivate func setKeyPressed(_ pressed: Bool, code: UInt32, source: UUID, user: PreviewUse) {
+    guard acceptsInput(user), let event = user.keyPress.setPressed(pressed, code: code, source: source) else { return }
     user.entry.owner?.keyboard.send(event)
   }
 
@@ -510,6 +517,10 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
 
   func send(_ event: LivePreviewKeyboardEvent) {
     service.send(event, user: user)
+  }
+
+  func setKeyPressed(_ pressed: Bool, code: UInt32, source: UUID) {
+    service.setKeyPressed(pressed, code: code, source: source, user: user)
   }
 
   func prepare() {
