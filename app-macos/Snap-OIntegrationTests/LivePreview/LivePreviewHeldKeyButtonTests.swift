@@ -1,10 +1,12 @@
 import AppKit
+import Clocks
+import DependenciesTestSupport
 @testable import Snap_O
 import SwiftUI
 import Testing
 
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
 struct LivePreviewHeldKeyButtonTests {
   enum Ending: CaseIterable {
     case release, releaseOutside, removeView
