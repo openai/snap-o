@@ -98,6 +98,7 @@ final class ToolHostModel {
     var endpointID: UUID?
     var connection = ToolConnectionState()
     var toolbar = ToolToolbar(revision: 0, actions: [])
+    @ObservationIgnored var search = ToolToolbarSearch(restoring: nil)
 
     init(identity: PageIdentity, container: any ToolPageContainer) {
       self.identity = identity
@@ -106,6 +107,7 @@ final class ToolHostModel {
   }
 
   private var pages: [ToolID: Page] = [:]
+  @ObservationIgnored private var searchValues: [UUID: String] = [:]
   @ObservationIgnored private let service: ToolService
   @ObservationIgnored private var pageTransitions: [ToolID: Task<Void, Never>] = [:]
   @ObservationIgnored private var bindings: [ToolID: Task<Void, Never>] = [:]
@@ -153,6 +155,7 @@ final class ToolHostModel {
       removePage(kind: kind)
     }
     activePageIdentity = nil
+    searchValues.removeAll()
     let pending = Array(pendingWork.values)
     pageTransitions.removeAll()
     let task = Task {
@@ -201,6 +204,7 @@ final class ToolHostModel {
       let revision = (page.toolbar.actions[index].inputRevision ?? 0) + 1
       page.toolbar.actions[index].value = value
       page.toolbar.actions[index].inputRevision = revision
+      page.search.value = value
       event.value = value
       event.inputRevision = revision
     }
@@ -294,6 +298,9 @@ final class ToolHostModel {
 
   private func removePage(kind: ToolID) {
     guard let page = pages.removeValue(forKey: kind) else { return }
+    if let scope = page.identity.storageIdentifier {
+      searchValues[scope] = page.search.value
+    }
     page.container.stop()
     bindings.removeValue(forKey: kind)?.cancel()
     let transition = pageTransitions[kind]
@@ -321,27 +328,27 @@ final class ToolHostModel {
       guard let self, let container, let page = pages[kind], page.container === container,
             toolbar.revision > page.toolbar.revision else { return }
       var toolbar = toolbar
-      for index in toolbar.actions.indices where toolbar.actions[index].type == .search {
-        if let old = page.toolbar.actions.first(where: { $0.id == toolbar.actions[index].id && $0.type == .search }),
-           (old.inputRevision ?? 0) > (toolbar.actions[index].inputRevision ?? 0) {
-          toolbar.actions[index].value = old.value
-          toolbar.actions[index].inputRevision = old.inputRevision
-        }
-      }
+      let restoredSearch = page.search.reconcile(&toolbar, previous: page.toolbar)
       page.toolbar = toolbar
+      if let restoredSearch { container.sendPageEvent(name: "host:toolbar", payload: restoredSearch) }
     }
     container.pageReadinessChangedHandler = { [weak self, weak container] isReady in
       guard let self, let container, pages[kind]?.container === container else { return }
       pages[kind]?.isReady = isReady
       if isReady { pages[kind]?.error = nil }
-      if !isReady { pages[kind]?.toolbar = ToolToolbar(revision: 0, actions: []) }
+      if !isReady, let page = pages[kind] {
+        page.toolbar = ToolToolbar(revision: 0, actions: [])
+        page.search = ToolToolbarSearch(restoring: page.identity.storageIdentifier == nil ? nil : page.search.value)
+      }
       synchronizeConnection(kind: kind)
     }
     container.pageLoadFailedHandler = { [weak self, weak container] message in
       guard let self, let container, pages[kind]?.container === container else { return }
       pages[kind]?.error = message
     }
-    pages[kind] = Page(identity: identity, container: container)
+    let page = Page(identity: identity, container: container)
+    page.search = ToolToolbarSearch(restoring: identity.storageIdentifier.flatMap { searchValues[$0] })
+    pages[kind] = page
     let transition = pageTransitions[kind]
     transition?.cancel()
     pageTransitions[kind] = startWork { [weak self] in
