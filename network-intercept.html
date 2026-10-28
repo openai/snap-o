@@ -79,7 +79,7 @@ snapo-network intercept prototype.py -s SERIAL -n SOCKET</code></pre></div>
 <li><span>Wait for <strong>Loaded 1 route(s)</strong> in the terminal.</span></li>
 <li><span>Trigger the matching request in your Android app.</span></li>
 <li><span>Check the app's result and the terminal's method, path, and response status.</span></li>
-<li><span>Open Network to inspect the response delivered to the app.</span></li>
+<li><span>In Network, open <strong>Registered overrides</strong> to see the runner and its routes. Select the request to inspect the response delivered to the app.</span></li>
 </ol>
 <p class="prose" style="margin-top: 18px">Keep the runner open while testing. Press <strong>Ctrl+C</strong> to stop it and remove its routes. Requests already paused by that runner fail; later requests follow the normal network path unless another runner matches them.</p>
 </div>
@@ -197,7 +197,7 @@ async def tasks(call):
 <li>Upstream and replacement response bodies are limited to 1 MiB. Replacement status codes must be between 200 and 599.</li>
 <li>Requests with an <code>Accept</code> header containing <code>text/event-stream</code> bypass interception. An unexpected SSE response to an intercepted upstream call fails without buffering the stream.</li>
 <li>Each runner can register up to 128 routes. An app process can have at most 64 paused exchanges across runners.</li>
-<li>Network shows the response delivered to the app. It does not show a before/after comparison.</li>
+<li><strong>Watched</strong> means the handler returned the server’s response unchanged. <strong>Overwritten</strong> means it edited the server’s response or supplied a mock. For an edit, expand <strong>Response Body (original)</strong> to see what the server returned. If the handler supplied a response without contacting the server, this section shows that no upstream call was made.</li>
 </ul>
 <p class="prose" style="margin-top: 18px">Keep streaming and large-body endpoints outside your route set. Interception limits are separate from the tool's capture limits.</p>
 </div>
@@ -225,7 +225,7 @@ async def tasks(call):
 
 <p class="prose">Read the runner's error output. Check body sizes, JSON shape, and the deadline. Return <code>call.json(...)</code> or a response from <code>await call.upstream()</code> from every handler. Look for a reload error if old behavior persists. <code>--check</code> validates loading, not handler execution.</p>
 </div></details>
-<p class="prose" style="margin-top: 26px">Try shared state and delays with the <a href="https://github.com/openai/snap-o/blob/14.1.1/examples/routes.py">route examples</a> and the <a href="https://github.com/openai/snap-o/blob/14.1.1/examples/android/README.md">OkHttp and Ktor Tasks demos</a>. See the <a href="https://github.com/openai/snap-o/blob/14.1.1/skills/snap-o-network-inspector/references/interception.md">handler API reference</a> and <a href="https://github.com/openai/snap-o/blob/14.1.1/contracts/network/interception.md">interception protocol</a> for more details.</p></div>
+<p class="prose" style="margin-top: 26px">Try shared state and delays with the <a href="https://github.com/openai/snap-o/blob/14.2.0/examples/routes.py">route examples</a> and the <a href="https://github.com/openai/snap-o/blob/14.2.0/examples/android/README.md">OkHttp and Ktor Tasks demos</a>. See the <a href="https://github.com/openai/snap-o/blob/14.2.0/skills/snap-o-network-inspector/references/interception.md">handler API reference</a> and <a href="https://github.com/openai/snap-o/blob/14.2.0/contracts/network/interception.md">interception protocol</a> for more details.</p></div>
       </section>
 
     </article>
