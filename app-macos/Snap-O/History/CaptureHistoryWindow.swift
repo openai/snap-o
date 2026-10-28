@@ -48,6 +48,10 @@ struct CaptureHistoryWindow: View {
     entry?.items.first { $0.id == selectedItemID } ?? entry?.frontItem
   }
 
+  private var neighbors: CaptureHistoryNeighbors {
+    CaptureHistoryNeighbors(entries: history.entries, entryID: selectedEntryID, itemID: selectedItemID)
+  }
+
   private var protectedIDs: Set<UUID> {
     Set(entry?.items.compactMap(\.captureID) ?? [])
   }
@@ -59,21 +63,7 @@ struct CaptureHistoryWindow: View {
         .allowsHitTesting(entry == nil)
         .accessibilityHidden(entry != nil)
       if let entry {
-        if let item, item.isAvailable {
-          capturePreview(entry, item: item)
-        } else if entry.completedAt == nil {
-          ProgressView("Capturing")
-        } else {
-          ContentUnavailableView {
-            Label("Capture unavailable", systemImage: "exclamationmark.triangle")
-          } description: {
-            ForEach(entry.items) { item in
-              if let failure = item.failure {
-                Text("\(item.deviceName): \(failure)")
-              }
-            }
-          }
-        }
+        detail(entry)
       }
     }
     .frame(minWidth: 460, minHeight: 380)
@@ -105,8 +95,13 @@ struct CaptureHistoryWindow: View {
         timestampsUpdatedAt = Date()
       }
       .onChange(of: calendar) { groupEntries() }
-      .onKeyPress(.leftArrow) { isVideoFocused ? .ignored : navigate(-1) }
-      .onKeyPress(.rightArrow) { isVideoFocused ? .ignored : navigate(1) }
+      .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
+        guard entry != nil, !isVideoFocused, press.modifiers.isDisjoint(with: [.command, .control, .option, .shift]) else {
+          return .ignored
+        }
+        navigate(to: press.key == .leftArrow ? neighbors.previous : neighbors.next)
+        return .handled
+      }
       .onDeleteCommand(perform: requestSelectionDeletion)
       .onKeyPress(KeyEquivalent("\u{7F}"), phases: .down) { press in
         guard press.modifiers == .command else { return .ignored }
@@ -235,6 +230,59 @@ struct CaptureHistoryWindow: View {
     return date.formatted(.dateTime.month(.wide).day())
   }
 
+  private func detail(_ entry: CaptureHistoryEntry) -> some View {
+    let neighbors = neighbors
+    let canNavigate = neighbors.previous != nil || neighbors.next != nil
+    return HStack(spacing: 0) {
+      if canNavigate {
+        navigationButton("Previous Capture", symbol: "chevron.left", destination: neighbors.previous)
+      }
+      Group {
+        if let item, item.isAvailable {
+          capturePreview(entry, item: item)
+        } else if entry.completedAt == nil {
+          ProgressView("Capturing")
+        } else {
+          ContentUnavailableView {
+            Label("Capture unavailable", systemImage: "exclamationmark.triangle")
+          } description: {
+            ForEach(entry.items) { item in
+              if let failure = item.failure {
+                Text("\(item.deviceName): \(failure)")
+              }
+            }
+          }
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      if canNavigate {
+        navigationButton("Next Capture", symbol: "chevron.right", destination: neighbors.next)
+      }
+    }
+    .padding(.horizontal, canNavigate ? 8 : 20)
+    .background {
+      Color.clear.contentShape(Rectangle())
+        .onTapGesture {
+          isVideoFocused = false
+          hasKeyboardFocus = true
+        }
+        .accessibilityHidden(true)
+    }
+  }
+
+  private func navigationButton(_ title: String, symbol: String, destination: CaptureHistoryNeighbors.Capture?) -> some View {
+    Button { navigate(to: destination) } label: {
+      Label(title, systemImage: symbol)
+        .labelStyle(.iconOnly)
+        .font(.system(size: 16, weight: .medium))
+        .frame(width: 32, height: 32)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.borderless)
+    .disabled(destination == nil)
+    .help(title)
+  }
+
   private func capturePreview(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item) -> some View {
     VStack(spacing: 12) {
       GeometryReader { geometry in
@@ -264,7 +312,7 @@ struct CaptureHistoryWindow: View {
       }
       Text(item.deviceName).font(.callout).foregroundStyle(.secondary)
     }
-    .padding(20)
+    .padding(.vertical, 20)
   }
 
   private func deviceSelector(_ entry: CaptureHistoryEntry) -> some View {
@@ -387,7 +435,7 @@ struct CaptureHistoryWindow: View {
     return CaptureHistoryActions(
       save: { saveSelection() },
       copy: copyAction,
-      previous: { _ = navigate(-1) }, next: { _ = navigate(1) },
+      previous: { selectDevice(-1, in: entry) }, next: { selectDevice(1, in: entry) },
       canNavigate: entry.availableItems.count > 1
     )
   }
@@ -415,13 +463,16 @@ struct CaptureHistoryWindow: View {
     hasKeyboardFocus = true
   }
 
-  private func navigate(_ offset: Int) -> KeyPress.Result {
-    guard let entry else { return .ignored }
+  private func navigate(to capture: CaptureHistoryNeighbors.Capture?) {
+    guard let capture else { return }
+    select(capture.item, in: capture.entry)
+  }
+
+  private func selectDevice(_ offset: Int, in entry: CaptureHistoryEntry) {
     let items = entry.availableItems
-    guard !items.isEmpty else { return .ignored }
+    guard !items.isEmpty else { return }
     let index = items.firstIndex { $0.id == selectedItemID } ?? 0
     select(items[(index + offset + items.count) % items.count], in: entry)
-    return .handled
   }
 
   private func goBack() {

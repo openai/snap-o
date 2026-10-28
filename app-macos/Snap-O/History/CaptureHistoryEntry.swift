@@ -76,6 +76,31 @@ struct CaptureHistoryEntry: Codable, Identifiable, Equatable {
   }
 }
 
+struct CaptureHistoryNeighbors {
+  typealias Capture = (entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item)
+  let previous: Capture?
+  let next: Capture?
+
+  init(entries: [CaptureHistoryEntry], entryID: UUID?, itemID: UUID?) {
+    guard let entryIndex = entries.firstIndex(where: { $0.id == entryID }) else {
+      previous = nil
+      next = nil
+      return
+    }
+    let entry = entries[entryIndex]
+    let items = entry.availableItems
+    let index = items.firstIndex { $0.id == itemID } ?? items.startIndex
+    previous = items[..<index].last.map { (entry, $0) }
+      ?? entries[..<entryIndex].reversed().lazy.compactMap { entry in
+        entry.availableItems.last.map { (entry, $0) }
+      }.first
+    next = items.dropFirst(index + 1).first.map { (entry, $0) }
+      ?? entries.dropFirst(entryIndex + 1).lazy.compactMap { entry in
+        entry.frontItem.map { (entry, $0) }
+      }.first
+  }
+}
+
 struct CaptureHistoryRetention: Codable, Equatable {
   // Only an explicit choice overrides the current default.
   private var daysOverride: Int?

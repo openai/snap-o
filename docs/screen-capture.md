@@ -159,7 +159,9 @@ Capture History keeps the screenshots and recordings you save from review, along
 
 Open **Window → Capture History** (`⌘Y`) to browse captures by day, newest first.
 
-Each new capture creates one entry. Existing entries can contain multiple captures. Double-click an entry to preview it. For a grouped entry, use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch captures. Press `Esc` to return to history.
+Double-click an entry to preview it. Press Left or Right Arrow, or click the arrows at the sides of the preview, to browse captures in grid order. Click a recording to use the arrow keys to step one frame at a time. Click the space beside the recording to browse captures with the keyboard again. Press `Esc` to return to the grid.
+
+Each new capture creates one entry. Older entries can contain multiple captures. In a grouped entry, you can also use the toolbar thumbnails or `⌘[` and `⌘]` to switch devices.
 
 Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all captures in the entry.
 
