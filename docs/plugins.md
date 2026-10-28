@@ -74,7 +74,7 @@ The plugin expects a web project in your moduleâ€™s `frontend/` directory. Youâ€
 <details markdown="1">
 <summary>Custom builds and Node setup</summary>
 
-Gradle downloads Node and npm automatically. To use a different frontend directory, set it in your tool module:
+The plugin downloads Node 22.23.2 and npm 11.9.0 by default. To use a different frontend directory, set it in your tool module:
 
 ``` { .kotlin title="Your tool module's build.gradle.kts" }
 snapoTool {
