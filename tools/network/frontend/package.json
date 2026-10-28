@@ -37,7 +37,8 @@
     "typescript-eslint": "^8.70.1",
     "vite": "^8.3.1",
     "vitest": "^4.1.11",
-    "devtools-protocol": "^0.0.1704034"
+    "devtools-protocol": "^0.0.1704034",
+    "@types/node": "24.12.2"
   },
   "engines": {
     "node": "^22.13.0 || >=24.0.0"
