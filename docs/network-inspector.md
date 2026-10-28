@@ -53,7 +53,7 @@ Use the OkHttp interceptor for OkHttp directly or through Ktor's OkHttp engine.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "14.1.1"
+snapo = "14.2.0"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -73,8 +73,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:14.1.1")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:14.1.1")
+    debugImplementation("com.openai.snapo:network-okhttp3:14.2.0")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:14.2.0")
 }
 ```
 
@@ -95,7 +95,7 @@ Use the HttpURLConnection interceptor on Android 7.0 (API 24) or newer.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "14.1.1"
+snapo = "14.2.0"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -115,8 +115,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:14.1.1")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:14.1.1")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:14.2.0")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:14.2.0")
 }
 ```
 
@@ -250,7 +250,7 @@ If the selected Android app stops, click **Open app** on the waiting screen when
 
 ### Filter traffic
 
-Right-click a request to add its host to the exclusion filter. Exclusion filters are saved across sessions. Use the settings button beside the exclusion summary to add or remove filters. You can also search requests without changing your saved filters.
+Right-click a request to add its host to the exclusion filter. Exclusion filters are saved across sessions. Use the settings button beside the exclusion summary to add or remove filters. You can also search requests without changing your saved filters. During the same Snap-O session, the search text returns when the Android app process restarts.
 
 ### Inspect responses
 
@@ -260,7 +260,7 @@ The request list follows new calls at the bottom, or at the top when sorted newe
 
 ### Intercept requests {#python-overrides}
 
-Use `snapo-network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
+Use `snapo-network intercept` to change a real API response or return mock data. Open **Registered overrides** to see the HTTP method and path for each active route. Select an edited request to inspect the delivered and original responses. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
 
 ## Command line {#cli}
 

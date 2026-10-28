@@ -36,7 +36,7 @@ With keyboard focus outside the device image, press `Esc` to stop the preview, o
 
 ## Device and emulator controls
 
-Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device.
+Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device. Hold a control to send a long press. For example, hold **Power/Wake** to open the power menu on devices configured for it.
 
 Physical devices and emulators offer **Rotate Left** and **Rotate Right**. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.
 

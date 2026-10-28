@@ -67,7 +67,7 @@ snapo-network intercept prototype.py -s SERIAL -n SOCKET
 1. Wait for **Loaded 1 route(s)** in the terminal.
 2. Trigger the matching request in your Android app.
 3. Check the app's result and the terminal's method, path, and response status.
-4. Open Network to inspect the response delivered to the app.
+4. In Network, open **Registered overrides** to see the runner and its routes. Select the request to inspect the response delivered to the app.
 
 Keep the runner open while testing. Press **Ctrl+C** to stop it and remove its routes. Requests already paused by that runner fail; later requests follow the normal network path unless another runner matches them.
 {style="margin-top: 18px"}
@@ -167,7 +167,7 @@ Each runner owns its routes and paused requests. Reloading or stopping one runne
 - Upstream and replacement response bodies are limited to 1 MiB. Replacement status codes must be between 200 and 599.
 - Requests with an `Accept` header containing `text/event-stream` bypass interception. An unexpected SSE response to an intercepted upstream call fails without buffering the stream.
 - Each runner can register up to 128 routes. An app process can have at most 64 paused exchanges across runners.
-- Network shows the response delivered to the app. It does not show a before/after comparison.
+- **Watched** means the handler returned the server’s response unchanged. **Overwritten** means it edited the server’s response or supplied a mock. For an edit, expand **Response Body (original)** to see what the server returned. If the handler supplied a response without contacting the server, this section shows that no upstream call was made.
 
 Keep streaming and large-body endpoints outside your route set. Interception limits are separate from the tool's capture limits.
 {style="margin-top: 18px"}
@@ -202,5 +202,5 @@ Read the runner's error output. Check body sizes, JSON shape, and the deadline. 
 
 </details>
 
-Try shared state and delays with the [route examples](https://github.com/openai/snap-o/blob/14.1.1/examples/routes.py) and the [OkHttp and Ktor Tasks demos](https://github.com/openai/snap-o/blob/14.1.1/examples/android/README.md). See the [handler API reference](https://github.com/openai/snap-o/blob/14.1.1/skills/snap-o-network-inspector/references/interception.md) and [interception protocol](https://github.com/openai/snap-o/blob/14.1.1/contracts/network/interception.md) for more details.
+Try shared state and delays with the [route examples](https://github.com/openai/snap-o/blob/14.2.0/examples/routes.py) and the [OkHttp and Ktor Tasks demos](https://github.com/openai/snap-o/blob/14.2.0/examples/android/README.md). See the [handler API reference](https://github.com/openai/snap-o/blob/14.2.0/skills/snap-o-network-inspector/references/interception.md) and [interception protocol](https://github.com/openai/snap-o/blob/14.2.0/contracts/network/interception.md) for more details.
 {style="margin-top: 26px"}
