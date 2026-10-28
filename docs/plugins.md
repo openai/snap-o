@@ -40,7 +40,7 @@ Apply the Tool Packager Gradle Plugin in your tool’s Android library module. I
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
-snapo = "14.1.1"
+snapo = "14.2.0"
 
 [plugins]
 snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }
@@ -74,7 +74,7 @@ The plugin expects a web project in your module’s `frontend/` directory. You�
 <details markdown="1">
 <summary>Custom builds and Node setup</summary>
 
-Gradle downloads Node and npm automatically. To use a different frontend directory, set it in your tool module:
+The plugin downloads Node 22.23.2 and npm 11.9.0 by default. To use a different frontend directory, set it in your tool module:
 
 ``` { .kotlin title="Your tool module's build.gradle.kts" }
 snapoTool {
@@ -136,7 +136,7 @@ dependencies {
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {
-    implementation("com.openai.snapo:tool-core:14.1.1")
+    implementation("com.openai.snapo:tool-core:14.2.0")
 }
 ```
 
