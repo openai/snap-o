@@ -75,7 +75,7 @@ struct ToolHTTPTransportTests {
     #expect(server.connection.isClosed)
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(server.connection.isClosed)
-    #expect(server.connectionCount == 1)
+    #expect(server.connectionCount == (command == 0 ? 1 : 2))
     #expect(server.requests.isEmpty)
   }
 
@@ -289,7 +289,15 @@ private final class FakeToolADB: ToolHTTPExchange, @unchecked Sendable {
 
   func client() -> ADBClient {
     ADBClient(discoveryTimeout: .seconds(2)) {
-      self.lock.withLock { self.connections += 1 }
+      let attempt = self.lock.withLock {
+        self.connections += 1
+        return self.connections
+      }
+      if attempt == 1, self.connection.blockedCommand != "host:transport:phone" {
+        return ScriptedADBConnection(reads: [
+          .data(Data("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42".utf8)), .end
+        ])
+      }
       return self.connection
     }
   }

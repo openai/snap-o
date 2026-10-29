@@ -152,8 +152,8 @@ struct ADBDiscoveryTimeoutTests {
       : #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}}"#
     let response = http ? "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body : body + "\n"
     let connection = ScriptedADBConnection(reads: [.data(Data(response.utf8)), .end])
-    let client = ADBClient(discoveryTimeout: .seconds(2)) { connection }
     let kind = http ? "tweaks" : "network"
+    let client = socketClient(connection, name: "snapo_\(kind)_42")
     let metadata = try await client.legacyPluginMetadata(
       deviceID: "phone", socketName: "snapo_\(kind)_42",
       kind: ToolID(rawValue: kind), pid: 42
@@ -167,9 +167,7 @@ struct ADBDiscoveryTimeoutTests {
   func legacyTimeoutDoesNotStartAnotherProbe() async throws {
     let connection = ScriptedADBConnection(reads: [.data(Data("incomplete".utf8)), .failure(ADBError.requestTimedOut("Synthetic timeout"))])
     let attempts = TestValueCounter()
-    let client = ADBClient(discoveryTimeout: .seconds(2)) { attempts.increment()
-      return connection
-    }
+    let client = socketClient(connection, name: "snapo_network_42") { attempts.increment() }
     let metadata = try await client.legacyPluginMetadata(
       deviceID: "phone", socketName: "snapo_network_42", kind: ToolID(rawValue: "network"), pid: 42
     )
@@ -183,7 +181,7 @@ struct ADBDiscoveryTimeoutTests {
   func cancellingLegacyProbeClosesConnection() async throws {
     let connection = ScriptedADBConnection(reads: [.waitForClose])
     defer { connection.close() }
-    let client = ADBClient(discoveryTimeout: .seconds(2)) { connection }
+    let client = socketClient(connection, name: "snapo_network_42")
     let task = Task {
       try await client.legacyPluginMetadata(
         deviceID: "phone", socketName: "snapo_network_42", kind: ToolID(rawValue: "network"), pid: 42
@@ -215,5 +213,20 @@ private final class TestValueCounter: @unchecked Sendable {
 
   func increment() {
     lock.withLock { count += 1 }
+  }
+}
+
+private func socketClient(
+  _ connection: ScriptedADBConnection, name: String, didOpen: @escaping @Sendable () -> Void = {}
+) -> ADBClient {
+  let attempts = TestValueCounter()
+  return ADBClient(discoveryTimeout: .seconds(2)) {
+    attempts.increment()
+    if attempts.value == 1 {
+      let snapshot = "1: 00000002 00000000 00010000 0001 01 101 @\(name)"
+      return ScriptedADBConnection(reads: [.data(Data(snapshot.utf8)), .end])
+    }
+    didOpen()
+    return connection
   }
 }
