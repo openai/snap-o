@@ -63,6 +63,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private var inputMonitor: Any?
   private let touchOverlay = CAShapeLayer()
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
+  private let dragWindow = MediaDragWindow()
   private var frameDragOrigin: CGPoint?
   private var isDraggingFrame = false
 
@@ -549,6 +550,10 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     }
   }
 
+  func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+    dragWindow.sendBehindApps(window)
+  }
+
   func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
     .copy
   }
@@ -558,6 +563,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+    dragWindow.restore()
     frameDragOrigin = nil
     isDraggingFrame = false
   }
