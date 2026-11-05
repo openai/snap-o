@@ -124,13 +124,71 @@ struct VideoCaptureView: View {
   }
 }
 
+@MainActor
+final class MediaDragWindow {
+  private weak var draggedWindow: NSWindow?
+  private var originalLevel = NSWindow.Level.normal
+  private var windowAbove: Int?
+  private var windowBelow: Int?
+
+  func sendBehindApps(_ window: NSWindow?) {
+    guard let window, draggedWindow == nil else { return }
+    draggedWindow = window
+    originalLevel = window.level
+    let peers = visibleWindowNumbers(at: originalLevel)
+    if let index = peers.firstIndex(of: window.windowNumber) {
+      windowAbove = peers[..<index].last
+      windowBelow = peers.dropFirst(index + 1).first
+    }
+    window.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
+    window.orderBack(nil)
+  }
+
+  func restore() {
+    defer {
+      draggedWindow = nil
+      windowAbove = nil
+      windowBelow = nil
+    }
+    guard let window = draggedWindow else { return }
+    window.level = originalLevel
+    let peers = visibleWindowNumbers(at: originalLevel)
+    if let windowAbove, peers.contains(windowAbove) {
+      window.order(.below, relativeTo: windowAbove)
+    } else if let windowBelow, peers.contains(windowBelow) {
+      window.order(.above, relativeTo: windowBelow)
+    } else {
+      window.orderFront(nil)
+    }
+  }
+
+  private func visibleWindowNumbers(at level: NSWindow.Level) -> [Int] {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+    return (windows as? [[String: Any]] ?? []).compactMap { info in
+      guard info[kCGWindowLayer as String] as? Int == level.rawValue else { return nil }
+      return info[kCGWindowNumber as String] as? Int
+    }
+  }
+}
+
 private struct CaptureFileDrag: ViewModifier {
   let isEnabled: Bool
+  @State private var dragWindow = MediaDragWindow()
   let provider: () -> NSItemProvider
 
   func body(content: Content) -> some View {
     if isEnabled {
-      content.onDrag(provider)
+      content
+        .onDrag {
+          let item = provider()
+          if !item.registeredTypeIdentifiers.isEmpty {
+            dragWindow.sendBehindApps(NSApp.currentEvent?.window)
+          }
+          return item
+        }
+        .onDragSessionUpdated { session in
+          if case .ended = session.phase { dragWindow.restore() }
+        }
     } else {
       content
     }

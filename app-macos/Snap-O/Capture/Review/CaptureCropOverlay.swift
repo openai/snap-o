@@ -44,6 +44,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     private var origin: CGPoint?
     private var initialCrop = CaptureCropGeometry.fullImage
     private var activeHandle: CaptureCropHandle?
+    private let dragWindow = MediaDragWindow()
     private var isExporting = false
     private var escapeMonitor: Any?
     private var targetHandleOpacity: CGFloat = 0.45
@@ -220,6 +221,10 @@ struct CaptureCropOverlay: NSViewRepresentable {
       window?.invalidateCursorRects(for: self)
     }
 
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+      dragWindow.sendBehindApps(window)
+    }
+
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
       .copy
     }
@@ -229,6 +234,7 @@ struct CaptureCropOverlay: NSViewRepresentable {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+      dragWindow.restore()
       origin = nil
       activeHandle = nil
       isExporting = false
