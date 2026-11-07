@@ -100,8 +100,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
 
         return try {
-            val response = interceptWithRoutes(chain, interceptedRequest, server.interception)
-            handleResponse(context, response, after = requestCapture.completion())
+            val result = interceptWithRoutes(chain, interceptedRequest, server.interception)
+            handleResponse(context, result.response, result.interception, after = requestCapture.completion())
         } catch (error: IOException) {
             rethrowAfterRequestFailure(context, requestCapture.completion(), error)
         } catch (error: RuntimeException) {
@@ -127,7 +127,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         publisher.close()
     }
 
-    private fun handleResponse(context: InterceptContext, response: Response, after: Job?): Response {
+    private fun handleResponse(
+        context: InterceptContext,
+        response: Response,
+        interception: RouteInterception?,
+        after: Job?,
+    ): Response {
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
@@ -140,6 +145,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
             publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
             return response
@@ -155,6 +161,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
         } else {
             handleStandardResponse(
@@ -166,6 +173,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endWall = endWall,
                 endMono = endMono,
                 after = after,
+                interception = interception,
             )
         }
     }
@@ -179,6 +187,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: RouteInterception?,
     ): Response {
         val responsePublication = publishResponseMetadata(
             context = context,
@@ -187,6 +196,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             endWall = endWall,
             endMono = endMono,
             after = after,
+            interception = interception,
         )
         if (bodySize == 0L) {
             publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
@@ -228,8 +238,17 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: RouteInterception?,
     ): Response {
-        val responsePublication = publishResponseMetadata(context, response, bodySize, endWall, endMono, after)
+        val responsePublication = publishResponseMetadata(
+            context,
+            response,
+            bodySize,
+            endWall,
+            endMono,
+            after,
+            interception
+        )
         val publicationLock = Any()
         var previousPublication = responsePublication
         val streamingBody = StreamingResponseRelayBody(
@@ -255,6 +274,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
         after: Job?,
+        interception: RouteInterception?,
     ): Job? {
         return publisher.publish(after = after) {
             OkhttpEventFactory.createResponseReceived(
@@ -267,7 +287,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodyEncoding = null,
                 truncatedBytes = null,
                 bodySize = bodySize,
-            )
+            ).copy(interception = interception?.capture(textBodyMaxBytes, binaryBodyMaxBytes))
         }
     }
 }

@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { RequestBodyCache } from "./body-retention";
 
 describe("RequestBodyCache", () => {
+  it("counts and evicts original bodies with the delivered body without mixing app processes", () => {
+    const cache = new RequestBodyCache(32);
+    const oldProcess = "process-1\u0000request";
+    const newProcess = "process-2\u0000request";
+    cache.select(oldProcess);
+    cache.put(oldProcess, { requestId: "request", responseBody: "1234" });
+    cache.put(oldProcess, {
+      requestId: "request",
+      originalResponseBody: "original",
+      originalResponseBodyLoadCompleted: true
+    });
+    expect(cache.retainedByteCount).toBe(24);
+    cache.select(newProcess);
+    expect(cache.put(newProcess, { requestId: "request", responseBody: "fresh" })).toEqual([oldProcess]);
+    expect(cache.peek(oldProcess)).toBeNull();
+    expect(cache.peek(newProcess)?.responseBody).toBe("fresh");
+    expect(cache.peek(newProcess)?.originalResponseBody).toBeUndefined();
+    expect(cache.retainedByteCount).toBe(10);
+  });
+
   it("evicts least-recently-used bodies when the byte budget is exceeded", () => {
     const cache = new RequestBodyCache(20);
 

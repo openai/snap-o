@@ -72,6 +72,60 @@ const streamEvents = [
 export const previewRequests = [
   { label: "JSON request and response", record: request("json") },
   {
+    label: "Overwritten response",
+    record: request("overwritten", {
+      method: "GET",
+      url: "https://api.example.com/api/profile",
+      requestHeaders: [],
+      requestBody: null,
+      status: { kind: "success", code: 200 },
+      responseHeaders: [
+        { name: "Content-Type", value: "application/json" },
+        { name: "X-Source", value: "override" }
+      ],
+      responseBody: JSON.stringify({ display_name: "Space Captain" }),
+      interception: {
+        outcome: "modified",
+        originalResponse: {
+          status: 200,
+          headers: [
+            { name: "Content-Type", value: "application/json" },
+            { name: "X-Source", value: "upstream" }
+          ],
+          encodedDataLength: 31
+        }
+      },
+      originalResponseBody: JSON.stringify({ display_name: "Alex Example" }),
+      originalResponseBodyLoadCompleted: true
+    })
+  },
+  {
+    label: "Mocked response without upstream",
+    record: request("mocked", {
+      method: "GET",
+      url: "https://api.example.com/api/tasks",
+      requestHeaders: [],
+      requestBody: null,
+      status: { kind: "success", code: 200 },
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      responseBody: JSON.stringify({ tasks: [{ id: "1", title: "Try an override" }] }),
+      interception: { outcome: "mocked" }
+    })
+  },
+  {
+    label: "Watched, unchanged response",
+    record: request("watched", {
+      method: "GET",
+      url: "https://api.example.com/api/profile",
+      requestHeaders: [],
+      requestBody: null,
+      status: { kind: "success", code: 200 },
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      responseBody: JSON.stringify({ display_name: "Alex Example" }),
+      interception: { outcome: "unchanged" }
+    })
+  },
+  {
     label: "HTTP 422 · Validation error",
     record: request("validation-error", {
       status: { kind: "success", code: 422 },

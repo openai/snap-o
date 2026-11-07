@@ -38,7 +38,13 @@ describe("export body readiness", () => {
       requestHasPostData: true,
       requestBodySize: 4,
       hasReceivedResponse: true,
-      responseBody: "cached-response"
+      responseBody: "cached-response",
+      responseHeaders: [{ name: "X-Source", value: "override" }],
+      interception: {
+        outcome: "modified",
+        originalResponse: { status: 503, headers: [{ name: "X-Source", value: "upstream" }] }
+      },
+      originalResponseBody: "original-private-body"
     });
     await copyCurl(client, complete, false);
     await exportAsHar(client, [complete], undefined, false);
@@ -50,6 +56,9 @@ describe("export body readiness", () => {
     const har = JSON.parse(await data.text());
     expect(har.log.creator.version).toBe(version);
     expect(har.log.entries[0].response.content.text).toBe("cached-response");
+    expect(har.log.entries[0].response.status).toBe(200);
+    expect(har.log.entries[0].response.headers).toEqual([{ name: "X-Source", value: "override" }]);
+    expect(JSON.stringify(har)).not.toContain("original-private-body");
   });
   it("does not query a request body before its upload is known to be complete", async () => {
     const client = {
@@ -129,13 +138,20 @@ describe("HAR body hydration budget", () => {
       responseBody: "new"
     }));
     const cached = request("cached", { requestBody: "12", responseBody: "12" });
-    const missing = request("missing");
+    const missing = request("missing", {
+      interception: { outcome: "modified", originalResponse: { status: 200, headers: [], encodedDataLength: 100 } }
+    });
 
     const result = await hydrateRecordsForHar({ loadBodies }, [cached, missing], 10);
 
     expect(result[0]).toMatchObject({ requestBody: "12", responseBody: "12" });
     expect(result[1]).not.toHaveProperty("responseBody");
-    expect(loadBodies).toHaveBeenCalledTimes(1);
+    expect(loadBodies).toHaveBeenCalledExactlyOnceWith({
+      processId,
+      requestId: "missing",
+      includeRequestBody: false,
+      includeResponseBody: true
+    });
   });
 
   it("stops accumulating hydrated bodies after the aggregate budget is reached", async () => {

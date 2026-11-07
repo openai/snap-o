@@ -20,6 +20,10 @@ export interface RequestBodies {
   responseBodyBase64Encoded?: boolean | null;
   responseBodyLoadCompleted?: boolean;
   responseBodyLoadError?: ResponseBodyLoadError | null;
+  originalResponseBody?: string | null;
+  originalResponseBodyBase64Encoded?: boolean | null;
+  originalResponseBodyLoadCompleted?: boolean;
+  originalResponseBodyLoadError?: ResponseBodyLoadError | null;
 }
 
 export interface LoadBodiesInput {
@@ -27,6 +31,7 @@ export interface LoadBodiesInput {
   requestId: string;
   includeRequestBody?: boolean;
   includeResponseBody?: boolean;
+  includeOriginalResponseBody?: boolean;
 }
 
 export interface StreamStarted {

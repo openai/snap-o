@@ -24,7 +24,7 @@ For capture controls and keyboard shortcuts, see the [Screen capture guide](docs
 
 ## Screen capture
 
-Snap-O automatically keeps screenshots and recordings in Capture History, including across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Captures from multiple devices stay grouped together.
+Save screenshots and recordings to Capture History to keep them across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Each window captures its selected device. Existing groups of captures remain available in history.
 
 Drag screenshots and recordings straight into a pull request, chat, or document. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
 
@@ -37,6 +37,10 @@ History keeps captures for 30 days by default, with a 5 GB storage limit. Change
 Inspect HTTP requests and responses, JSON bodies, Server-Sent Events, and WebSocket messages. Snap-O buffers recent traffic on the device, so you can inspect requests made before you opened the tool.
 
 The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnection. Python handlers can edit or mock HTTP responses through the app's OkHttp connection.
+
+The Network pane shows registered overrides for the selected app. The list updates when CLI runners start, reload routes, or disconnect. Viewing the list does not change the overrides.
+
+Captured requests show **Overwritten** when a handler changes or mocks their response, and **Watched** when it returns the upstream response unchanged. Open an overwritten request to compare the original response with the response delivered to the app.
 
 [Set up Network](https://openai.github.io/snap-o/network-inspector.html)
 

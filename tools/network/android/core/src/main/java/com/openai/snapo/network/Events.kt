@@ -50,7 +50,26 @@ data class ResponseReceived(
     val bodyTruncatedBytes: Long? = null,
     val bodySize: Long? = null,
     val timings: Timings = Timings(),
+    val interception: ResponseInterception? = null,
 ) : PerRequestRecord
+
+/** The actual result of a matched route, independent of routes currently registered. */
+data class ResponseInterception @JvmOverloads constructor(
+    val outcome: String,
+    val originalResponse: OriginalResponse? = null,
+)
+
+data class OriginalResponse(
+    val code: Int,
+    val headers: List<Header>,
+    val body: String? = null,
+    val bodyEncoding: String? = null,
+    val bodyTruncatedBytes: Long? = null,
+    val bodySize: Long? = null,
+)
+
+internal fun ResponseInterception.withoutBody(): ResponseInterception =
+    copy(originalResponse = originalResponse?.copy(body = null))
 
 /** Indicates a non-streaming response completed successfully. */
 data class ResponseFinished(

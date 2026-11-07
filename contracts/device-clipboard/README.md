@@ -22,6 +22,8 @@ is treated as unavailable. Host messages replace the Android clipboard with plai
 empty host messages do nothing. Writes initiated by this helper do not echo back to its client.
 On Android 13+, host writes set the `com.android.systemui.SUPPRESS_CLIPBOARD_OVERLAY` description extra.
 System UI recognizes it for shell clipboard writes and hides the clipboard preview overlay.
+Waydroid's host clipboard bridge can discard this extra when returning the clip to System UI,
+so new host writes may still show the preview there.
 
 Malformed lengths, invalid UTF-8, and incomplete messages terminate the session. EOF terminates
 the helper. It removes its temporary JAR and directory immediately after loading, with a launch-script
@@ -29,6 +31,7 @@ cleanup trap for failed starts. The desktop cancels pending
 socket operations when sync stops and reconnects after transport failure.
 
 The desktop preserves existing Mac clipboard items at startup, including unsupported content.
+It skips the initial host write when the device snapshot already contains the same text.
 If its clipboard is empty, it may import the device snapshot. During sync, a newer local copy
 takes precedence over a device event still in flight. Empty or unsupported content does not clear
 the other clipboard. The same rules apply to emulator sync.

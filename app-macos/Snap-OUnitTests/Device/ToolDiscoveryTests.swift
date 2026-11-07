@@ -1,0 +1,275 @@
+import Foundation
+import Testing
+
+@Suite("Tool process discovery")
+struct ToolDiscoveryTests {
+  @Test("optional app tool order survives manifest decoding and metadata refreshes")
+  func decodesToolOrder() throws {
+    var metadata = ToolMetadata()
+    // Encoding nil omits the field, matching apps without an ordering setting.
+    for order: [ToolID]? in [[.tweaks, .network], nil] {
+      let manifest = testManifest(pid: 42, kinds: [.network, .tweaks], toolOrder: order)
+      let record = try #require(ToolManifestReader.decode(JSONEncoder().encode(manifest)).first)
+      metadata.applyPackageMetadata(record, kind: .network)
+      #expect(metadata.process.toolOrder == order, "Refreshes apply the setting and clear a removed order")
+    }
+  }
+
+  @Test("discovers app-provided tool kinds from one socket snapshot")
+  func parsesSharedSnapshot() {
+    let output = """
+    1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
+    2: 00000002 00000000 00010000 0001 01 101 @snapo_network_42
+    3: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
+    4: 00000002 00000000 00010000 0001 01 101 @snapo_network_invalid
+    5: 00000002 00000000 00010000 0001 01 101 @snapo_unknown_42
+    6: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_0
+    """
+    let sockets = ToolDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+    #expect(sockets.map(\.kind) == [.network, .tweaks, ToolID(rawValue: "unknown")])
+    #expect(sockets.map(\.reference.deviceId) == ["phone", "phone", "phone"])
+    #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42", "snapo_unknown_42"])
+  }
+
+  @Test("socket names follow the standard tool ID and PID format")
+  func validatesSocketNames() {
+    for id in ["sample", "com.example.custom-tool", "a" + String(repeating: "b", count: 99)] {
+      let output = "1: 00000002 00000000 00010000 0001 01 101 @snapo_\(id)_42"
+      let sockets = ToolDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+      #expect(sockets.map(\.kind.rawValue) == [id])
+      #expect(sockets.map(\.pid) == [42])
+    }
+    for name in [
+      "custom_sample_42", "snapo__42", "snapo_Sample_42", "snapo_a_b_42", "snapo_../sample_42",
+      "snapo_sample_", "snapo_sample_0", "snapo_sample_01", "snapo_sample_-1", "snapo_sample_+1",
+      "snapo_sample_42extra", "snapo_sample_42_extra", "snapo_sample_999999999999999999999999",
+      "snapo_sample_2147483648", "snapo_sample_10000000000", "snapo_sample_４２", "snapo_" + String(repeating: "a", count: 101) + "_42"
+    ] {
+      let output = "1: 00000002 00000000 00010000 0001 01 101 @\(name)"
+      #expect(ToolDiscovery.sockets(inProcNetUnix: output, deviceID: "phone").isEmpty)
+    }
+  }
+
+  @Test("shared tool types preserve the web bridge wire format")
+  func preservesBridgeEncoding() throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    #expect(try String(bytes: encoder.encode(ToolID.tweaks), encoding: .utf8) == "\"tweaks\"")
+    let server = ToolServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
+    #expect(try String(bytes: encoder.encode(server), encoding: .utf8)
+      == "{\"deviceId\":\"device\",\"socketName\":\"snapo_tweaks_42\"}")
+  }
+
+  @Test("client connections never replace the listening socket identity")
+  func ignoresClientSockets() throws {
+    let listener = "1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42"
+    for inode in ["0", "202", "303"] {
+      let clients = """
+      2: 00000002 00000000 00000000 0001 02 0 @snapo_tweaks_42
+      3: 00000002 00000000 00000000 0001 03 \(inode) @snapo_tweaks_42
+      4: 00000002 00000000 00000000 0001 03 404 @snapo_network_43
+      """
+      for snapshot in [clients + "\n" + listener, listener + "\n" + clients] {
+        let sockets = ToolDiscovery.sockets(inProcNetUnix: snapshot, deviceID: "phone")
+        #expect(sockets.count == 1)
+        #expect(try #require(sockets.first).inode == "101")
+      }
+      #expect(ToolDiscovery.sockets(inProcNetUnix: clients, deviceID: "phone").isEmpty)
+    }
+  }
+
+  @Test("discovery includes process names before manifest resources load")
+  func includesInitialProcessNames() throws {
+    let output = """
+    1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42
+    2: 00000002 00000000 00010000 0001 01 102 @snapo_tweaks_42
+    3: 00000002 00000000 00010000 0001 01 103 @snapo_network_43
+
+    ---snapo-processes---
+      PID NAME
+       42 com.example.demo:worker
+       44 com.example.other
+    """
+    let sockets = ToolDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+    #expect(sockets.filter { $0.pid == 42 }.allSatisfy { $0.processName == "com.example.demo:worker" })
+    #expect(sockets.first { $0.pid == 43 }?.processName == nil)
+    #expect(sockets.map(\.inode) == ["101", "103", "102"])
+    let socket = try #require(sockets.first)
+    let process = try #require(ToolDiscovery.processes(from: [
+      endpoint(socket.kind, metadata: ToolAppMetadata(processName: socket.processName))
+    ]).first)
+    #expect(process.name == "com.example.demo:worker")
+  }
+
+  @Test("process name lookup supports legacy ps columns and tolerates unavailable names")
+  func parsesLegacyProcessNames() {
+    #expect(DeviceDiscovery.processNames(inProcessList: """
+    USER PID PPID VSIZE RSS WCHAN PC NAME
+    u0_a42 42 1 1000 100 0 0 com.example.demo
+    u0_a43 invalid 1 1000 100 0 0 com.example.invalid
+    incomplete
+    """) == [42: "com.example.demo"])
+    #expect(DeviceDiscovery.processNames(inProcessList: "ps: permission denied").isEmpty)
+  }
+
+  @Test("metadata requests deduplicate and validate process IDs")
+  func validatesMetadataProcessIDs() throws {
+    let helper = Data("fixture reader".utf8)
+    let command = try ToolManifestReader.metadataCommand(helper: helper, processIDs: Array(repeating: 42, count: 1000) + [7])
+    #expect(command.contains("com.openai.snapo.discovery.Main 7 42 2>/dev/null"))
+    for invalid in [[], [0], [-1], [Int(Int32.max) + 1], Array(1 ... 65)] {
+      #expect(throws: (any Error).self) { try ToolManifestReader.metadataCommand(helper: helper, processIDs: invalid) }
+    }
+  }
+
+  @Test("successful metadata requires process identity, but error records do not")
+  func requiresProcessIdentity() throws {
+    let app: [String: Any] = ["name": "Example", "packageName": "com.example", "revision": "1", "inspectors": []]
+    for identity: Any in [NSNull(), "", " ", 42] {
+      let data = try JSONSerialization.data(withJSONObject: [
+        "version": 1, "pid": 42, "app": app, "processIdentity": identity
+      ])
+      #expect(throws: (any Error).self) { try ToolManifestReader.decode(data) }
+    }
+    let success = try JSONSerialization.data(withJSONObject: [
+      "version": 1, "pid": 42, "app": app, "processIdentity": "boot:42:1"
+    ])
+    #expect(try ToolManifestReader.decode(success).first?.processIdentity == "boot:42:1")
+    let failure = Data(#"{"version":1,"pid":42,"error":"process exited"}"#.utf8)
+    #expect(try ToolManifestReader.decode(failure).first?.error == "process exited")
+  }
+
+  @Test("merges tool sockets before any app info is available")
+  func mergesWithoutMetadata() throws {
+    let processes = ToolDiscovery.processes(from: [endpoint(.tweaks), endpoint(.network)])
+    let process = try #require(processes.first)
+
+    #expect(processes.count == 1)
+    #expect(process.id == "device:pid:42")
+    #expect(process.name == "Process 42")
+    #expect(process.tools.map(\.kind) == [.network, .tweaks])
+  }
+
+  @Test("keeps identity as better metadata arrives from either tool")
+  func improvesMetadata() throws {
+    let initial = try #require(ToolDiscovery.processes(from: [endpoint(.network)]).first)
+    let network = endpoint(.network, metadata: ToolAppMetadata(
+      processName: "com.example.demo:worker",
+      packageName: "com.example.demo",
+      packageNameHint: "com.example.demo:worker",
+      appIconBase64: "network-icon"
+    ))
+    let tweaks = endpoint(.tweaks, metadata: ToolAppMetadata(
+      appName: "Demo App",
+      packageName: "com.example.demo",
+      androidUserID: 10
+    ))
+    let loaded = try #require(ToolDiscovery.processes(from: [tweaks, network]).first)
+
+    #expect(loaded.id == initial.id)
+    #expect(loaded.name == "Demo App")
+    #expect(loaded.metadata.packageName == "com.example.demo")
+    #expect(loaded.metadata.androidUserID == 10)
+    #expect(loaded.metadata.appIconBase64 == "network-icon")
+    #expect(loaded.tools.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42"])
+  }
+
+  @Test("does not merge different processes or devices sharing a package")
+  func separatesProcesses() {
+    let metadata = ToolAppMetadata(packageName: "com.example.demo")
+    let processes = ToolDiscovery.processes(from: [
+      endpoint(.network, metadata: metadata),
+      endpoint(.tweaks, pid: 43, metadata: metadata),
+      endpoint(.tweaks, device: "other-device", metadata: metadata)
+    ])
+    #expect(Set(processes.map(\.id)) == ["device:pid:42", "device:pid:43", "other-device:pid:42"])
+  }
+
+  @Test("ignores empty metadata and prefers confirmed package names to hints")
+  func usesBestNonemptyMetadata() throws {
+    let network = endpoint(.network, metadata: ToolAppMetadata(
+      processName: " \n", packageNameHint: "com.example.demo:worker", appIconBase64: ""
+    ))
+    let legacy = try #require(ToolDiscovery.processes(from: [network]).first)
+    #expect(legacy.metadata.packageName == nil)
+    let tweaks = endpoint(.tweaks, metadata: ToolAppMetadata(
+      appName: " ", packageName: "com.example.demo", appIconBase64: "tweaks-icon"
+    ))
+    let process = try #require(ToolDiscovery.processes(from: [network, tweaks]).first)
+    #expect(process.name == "com.example.demo")
+    #expect(process.metadata.appIconBase64 == "tweaks-icon")
+  }
+
+  @Test("unknown socket identities never merge by a display name")
+  func keepsUnknownSocketsSeparate() {
+    let endpoints = ["legacy-one", "legacy-two"].map {
+      ToolEndpoint(
+        kind: .network,
+        reference: ToolServerReference(deviceId: "device", socketName: $0),
+        deviceDisplayTitle: "Device",
+        metadata: ToolAppMetadata(appName: "Same name")
+      )
+    }
+    #expect(ToolDiscovery.processes(from: endpoints).map(\.id) == [
+      "device:socket:legacy-one", "device:socket:legacy-two"
+    ])
+  }
+
+  private func endpoint(
+    _ kind: ToolID,
+    device: String = "device",
+    pid: Int = 42,
+    metadata: ToolAppMetadata = ToolAppMetadata()
+  ) -> ToolEndpoint {
+    ToolEndpoint(
+      kind: kind,
+      reference: ToolServerReference(deviceId: device, socketName: "snapo_\(kind.rawValue)_\(pid)"),
+      deviceDisplayTitle: "Device",
+      pid: pid,
+      metadata: metadata
+    )
+  }
+}
+
+extension ToolDiscoveryTests {
+  @Test("legacy metadata accepts only recognized protocols and matching process identity")
+  func legacyMetadataEvidence() throws {
+    let network = Data(
+      #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}}"#
+        .utf8
+    )
+    #expect(try LegacyPluginReader.decode(network, kind: .network, pid: 42, http: false)?.protocolVersion == 1)
+    #expect(try LegacyPluginReader.decode(network, kind: .network, pid: 43, http: false) == nil)
+    let http = Data(#"{"protocolVersion":2,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}"#.utf8)
+    #expect(try LegacyPluginReader.decode(http, kind: .network, pid: 42, http: true) == nil)
+    for version in [0, 1, 5, 6, 7, 100] {
+      let tweaks = Data("{\"protocolVersion\":\(version),\"packageName\":\"com.example.demo\",\"name\":\"Demo\"}".utf8)
+      #expect(try (LegacyPluginReader.decode(tweaks, kind: .tweaks, pid: 42, http: true) != nil) == (1 ... 5).contains(version))
+    }
+    #expect(LegacyPluginReader.request(kind: ToolID(rawValue: "custom")) == nil)
+    #expect(LegacyPluginReader.request(kind: .network) == "HelloSnapO\n")
+    #expect(LegacyPluginReader.request(kind: .tweaks) == "GET /app HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+  }
+
+  @Test("legacy metadata responses are bounded and reject redirects and malformed framing")
+  func legacyMetadataFraming() throws {
+    #expect(try LegacyPluginReader.payload(Data("{}\nextra".utf8), http: false) == Data("{}".utf8))
+    #expect(try LegacyPluginReader.payload(Data("{".utf8), http: false) == nil)
+    let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"
+    #expect(try LegacyPluginReader.payload(Data(response.utf8), http: true) == Data("{}".utf8))
+    #expect(try LegacyPluginReader.payload(Data(response.dropLast().utf8), http: true) == nil)
+    #expect(try LegacyPluginReader.payload(Data("HTTP/1.0 200 OK\r\n\r\n{}".utf8), http: true, ended: true) == Data("{}".utf8))
+    for invalid in [
+      "HTTP/1.1 302 Found\r\nLocation: https://example.com\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n",
+      String(repeating: "x", count: 8193)
+    ] {
+      #expect(throws: (any Error).self) { try LegacyPluginReader.payload(Data(invalid.utf8), http: true) }
+    }
+    #expect(throws: (any Error).self) {
+      try LegacyPluginReader.payload(Data(repeating: 120, count: LegacyPluginReader.maximumBytes + 1), http: false)
+    }
+  }
+}

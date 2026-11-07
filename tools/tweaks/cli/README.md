@@ -16,3 +16,7 @@ python3 -m unittest discover -s tools/tweaks/cli/tests -p 'test_*.py'
 ```
 
 See [Tweaks CLI setup](../../../docs/tweaks.md#cli) for installation and usage.
+
+Command tests use in-memory responses and reject socket creation. They check request
+arguments, output, errors, and connection cleanup. The separate transport tests use
+loopback sockets for HTTP framing, ADB forwarding, and protocol validation.

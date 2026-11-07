@@ -53,7 +53,16 @@ struct ToolSelection {
     )
   }
 
-  mutating func reconcile(_ apps: [InspectableApp]) {
+  mutating func reconcile(_ discoveredApps: [InspectableApp], serverIDs: Set<ADBServerID> = [.local]) {
+    func isConfigured(_ deviceID: String) -> Bool {
+      serverIDs.contains(DeviceID(storedValue: deviceID).serverID)
+    }
+    if let deviceID = target?.deviceId ?? saved.last?.deviceId, !isConfigured(deviceID) {
+      clearSelection()
+    }
+    saved.apps.removeAll { !isConfigured($0.deviceId) }
+    // A scan started before server removal may still contain its apps.
+    let apps = discoveredApps.filter { isConfigured($0.deviceId) }
     self.apps = apps
     if awaitingAppIdentity {
       if let app = apps.first(where: { $0.id == target?.id }) {
@@ -86,6 +95,16 @@ struct ToolSelection {
     } else {
       current = nil
     }
+  }
+
+  private mutating func clearSelection() {
+    target = nil
+    current = nil
+    retained.removeAll()
+    kind = nil
+    saved.last = nil
+    awaitingAppIdentity = false
+    startupSelectionPending = false
   }
 
   mutating func selectApp(_ app: InspectableApp) {

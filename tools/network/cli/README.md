@@ -16,3 +16,7 @@ python3 -m unittest discover -s tools/network/cli/tests -p 'test_*.py'
 ```
 
 See [Network CLI setup](../../../docs/network-inspector.md#cli) for installation and usage.
+
+Output and interception tests use fake responses and explicit event queues. Reload
+tests advance a controlled signal instead of waiting for the polling interval.
+Real socket tests cover transport framing and cleanup separately.

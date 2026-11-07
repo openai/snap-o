@@ -288,3 +288,35 @@ struct ToolToolbarEvent: Encodable {
   var value: String?
   var inputRevision: Int?
 }
+
+struct ToolToolbarSearch {
+  var value: String?
+  private var needsRestore: Bool
+
+  init(restoring value: String?) {
+    self.value = value
+    needsRestore = value != nil
+  }
+
+  mutating func reconcile(_ toolbar: inout ToolToolbar, previous: ToolToolbar) -> ToolToolbarEvent? {
+    guard let index = toolbar.actions.firstIndex(where: { $0.type == .search }) else { return nil }
+    var search = toolbar.actions[index]
+    if needsRestore, let value {
+      needsRestore = false
+      if search.value != value {
+        let revision = (search.inputRevision ?? 0) + 1
+        toolbar.actions[index].value = value
+        toolbar.actions[index].inputRevision = revision
+        return ToolToolbarEvent(revision: toolbar.revision, id: search.id, value: value, inputRevision: revision)
+      }
+    }
+    let old = previous.actions.first { $0.id == search.id && $0.type == .search }
+    if let old, (old.inputRevision ?? 0) > (search.inputRevision ?? 0) {
+      search.value = old.value
+      search.inputRevision = old.inputRevision
+      toolbar.actions[index] = search
+    }
+    value = search.value
+    return nil
+  }
+}

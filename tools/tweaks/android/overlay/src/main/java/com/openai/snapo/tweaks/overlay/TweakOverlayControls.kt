@@ -42,6 +42,7 @@ import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -212,6 +213,7 @@ private fun TweakOverlayLabelRow(
     compact: Boolean = false,
     field: @Composable () -> Unit,
 ) {
+    val colors = TweakOverlayColors.current
     val rowHeight = if (compact) 20.dp else 48.dp
     val isChanged by remember(tweak) {
         derivedStateOf(structuralEqualityPolicy()) { tweak.isChanged }
@@ -231,7 +233,7 @@ private fun TweakOverlayLabelRow(
             Text(
                 text = tweak.name.substringAfter('/'),
                 modifier = Modifier.weight(1f, fill = false),
-                color = TweakOverlayColors.foreground,
+                color = colors.foreground,
                 fontSize = 13.sp,
             )
 
@@ -254,7 +256,7 @@ private fun TweakOverlayLabelRow(
                             painter = painterResource(R.drawable.snapo_tweaks_restart),
                             contentDescription = "Reset ${tweak.name}",
                             modifier = Modifier.size(16.dp),
-                            tint = TweakOverlayColors.secondary,
+                            tint = colors.secondary,
                         )
                     }
                 }
@@ -282,6 +284,7 @@ private fun TweakNumericFieldValue(tweak: SnapOTweakEntry) {
 
 @Composable
 private fun TweakToggleField(tweak: SnapOTweakEntry) {
+    val colors = TweakOverlayColors.current
     val value = tweak.value.value as SnapOTweakValue.Toggle
 
     Checkbox(
@@ -290,14 +293,15 @@ private fun TweakToggleField(tweak: SnapOTweakEntry) {
             SnapOTweaks.update(tweak.name, value.copy(value = checked))
         },
         colors = CheckboxDefaults.colors(
-            checkedColor = TweakOverlayColors.foreground,
-            uncheckedColor = TweakOverlayColors.secondary,
+            checkedColor = colors.foreground,
+            uncheckedColor = colors.secondary,
         ),
     )
 }
 
 @Composable
 private fun TweakSelectionField(tweak: SnapOTweakEntry) {
+    val colors = TweakOverlayColors.current
     val selection = tweak.value.value as SnapOTweakValue.Selection
     var expanded by remember { mutableStateOf(false) }
 
@@ -317,20 +321,20 @@ private fun TweakSelectionField(tweak: SnapOTweakEntry) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             TweakFieldText(selection.value)
-            Text(text = "▾", color = TweakOverlayColors.secondary, fontSize = 11.sp)
+            Text(text = "▾", color = colors.secondary, fontSize = 11.sp)
         }
 
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(TweakOverlayColors.surface),
+            containerColor = colors.field,
         ) {
             selection.options.forEach { option ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = option,
-                            color = TweakOverlayColors.foreground,
+                            color = colors.foreground,
                             fontSize = 13.sp,
                         )
                     },
@@ -344,7 +348,7 @@ private fun TweakSelectionField(tweak: SnapOTweakEntry) {
                                 painter = painterResource(R.drawable.snapo_tweaks_check),
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = TweakOverlayColors.foreground,
+                                tint = colors.foreground,
                             )
                         }
                     } else {
@@ -425,6 +429,7 @@ private fun TweakNumericEditor(
     keyboardType: KeyboardType,
     onValueChange: (String) -> Unit,
 ) {
+    val colors = TweakOverlayColors.current
     var draft by rememberSaveable { mutableStateOf(committed) }
     var isFocused by remember { mutableStateOf(false) }
 
@@ -441,8 +446,9 @@ private fun TweakNumericEditor(
         modifier = Modifier
             .width(84.dp)
             .onFocusChanged { isFocused = it.isFocused },
+        cursorBrush = SolidColor(colors.foreground),
         textStyle = TextStyle(
-            color = TweakOverlayColors.foreground,
+            color = colors.foreground,
             fontSize = 13.sp,
             textAlign = TextAlign.End,
         ),
@@ -623,10 +629,11 @@ private fun TweakCompactSlider(
     steps: Int,
     modifier: Modifier = Modifier,
 ) {
-    val colors = SliderDefaults.colors(
-        thumbColor = TweakOverlayColors.foreground,
-        activeTrackColor = TweakOverlayColors.foreground,
-        inactiveTrackColor = TweakOverlayColors.outline,
+    val colors = TweakOverlayColors.current
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = colors.foreground,
+        activeTrackColor = colors.foreground,
+        inactiveTrackColor = colors.outline,
     )
     val interactionSource = remember { MutableInteractionSource() }
 
@@ -636,12 +643,12 @@ private fun TweakCompactSlider(
         modifier = modifier.fillMaxWidth(),
         valueRange = valueRange,
         steps = steps,
-        colors = colors,
+        colors = sliderColors,
         interactionSource = interactionSource,
         thumb = {
             SliderDefaults.Thumb(
                 interactionSource = interactionSource,
-                colors = colors,
+                colors = sliderColors,
                 thumbSize = DpSize(12.dp, 12.dp),
             )
         },
@@ -649,7 +656,7 @@ private fun TweakCompactSlider(
             SliderDefaults.Track(
                 sliderState = state,
                 modifier = Modifier.height(2.dp),
-                colors = colors,
+                colors = sliderColors,
                 drawStopIndicator = null,
                 drawTick = { _, _ -> },
                 thumbTrackGapSize = 0.dp,
@@ -663,6 +670,7 @@ private fun TweakCompactSlider(
 private fun TweakTextEditor(
     tweak: SnapOTweakEntry,
 ) {
+    val colors = TweakOverlayColors.current
     val value = tweak.value.value as SnapOTweakValue.Text
 
     BasicTextField(
@@ -673,10 +681,11 @@ private fun TweakTextEditor(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 7.dp)
-            .background(TweakOverlayColors.field, RoundedCornerShape(5.dp))
+            .background(colors.field, RoundedCornerShape(5.dp))
             .padding(horizontal = 10.dp, vertical = 10.dp),
+        cursorBrush = SolidColor(colors.foreground),
         textStyle = TextStyle(
-            color = TweakOverlayColors.foreground,
+            color = colors.foreground,
             fontSize = 13.sp,
         ),
         singleLine = true,
@@ -685,9 +694,10 @@ private fun TweakTextEditor(
 
 @Composable
 private fun TweakFieldText(value: String) {
+    val colors = TweakOverlayColors.current
     Text(
         text = value,
-        color = TweakOverlayColors.foreground,
+        color = colors.foreground,
         fontSize = 13.sp,
     )
 }

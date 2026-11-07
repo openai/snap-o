@@ -13,7 +13,8 @@ export function DetailContent({
   totalItems,
   streamIsRetrying,
   uiState,
-  onRetryResponseBody
+  onRetryResponseBody,
+  onRetryOriginalResponseBody
 }: {
   client: NetworkClient;
   record: ToolRecord | null;
@@ -22,6 +23,7 @@ export function DetailContent({
   streamIsRetrying: boolean;
   uiState: ToolUiState;
   onRetryResponseBody(): void;
+  onRetryOriginalResponseBody?(): void;
 }): JSX.Element {
   if (record == null) {
     const empty = resolveDetailEmptyState({ isConnected, totalItems, streamIsRetrying });
@@ -40,6 +42,7 @@ export function DetailContent({
       uiState={uiState}
       isConnected={isConnected}
       onRetryResponseBody={onRetryResponseBody}
+      onRetryOriginalResponseBody={onRetryOriginalResponseBody}
     />
   );
 }

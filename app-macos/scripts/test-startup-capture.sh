@@ -1,42 +1,30 @@
 #!/bin/sh
 set -eu
 
-APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-startup-tests.XXXXXX")
-trap 'rm -rf "$TEST_DIR"' EXIT
-cd "$APP_DIR"
-. "$APP_DIR/scripts/test-swift-packages.sh"
+case "${1:-}" in
+  ""|--controllers-only|--modes-only|--sessions-only|--connections-only) ;;
+  *) echo "Unknown test option: $1" >&2; exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+  echo "Expected at most one test option" >&2
+  exit 2
+fi
 
-# Compile the production startup code against deterministic device-service doubles.
-swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift \
-  Snap-O/Models/SnapOCommand.swift \
-  Snap-O/Models/Media.swift Snap-O/Models/Device+Formatting.swift Snap-O/Models/DeviceOpenRequest.swift \
-  Snap-O/Capture/CaptureMedia.swift Snap-O/Utilities/Perf.swift \
-  Snap-O/Capture/PreparedLivePreview.swift Snap-O/Capture/StartupCapturePreparation.swift \
-  Snap-O/CaptureWindow/PreparingScreenshotMode.swift Snap-O/CaptureWindow/LivePreviewManager.swift \
-  Snap-O/Capture/CaptureCoordinator.swift \
-  Snap-O/CaptureWindow/CaptureWindowSession.swift Snap-O/Tools/ToolSession.swift \
-  Snap-O/App/SnapOCommandCoordinator.swift Snap-O/DeviceManager/DeviceOpenResolver.swift \
-  Snap-O/Capture/CaptureServices.swift Snap-O/CaptureWindow/CaptureWindowController.swift \
-  Snap-O/CaptureWindow/CaptureWindowMode.swift Snap-O/CaptureWindow/RecordingMode.swift \
-  Snap-O/CaptureWindow/LivePreviewMode.swift Snap-O/CaptureWindow/MediaDisplayMode.swift \
-  Snap-O/CaptureWindow/LivePreviewConnection.swift \
-  Snap-O/LivePreview/LivePreviewThumbnail.swift \
-  Snap-O/CaptureWindow/CaptureSnapshotController.swift \
-  Snap-O/CaptureWindow/CaptureCropGeometry.swift Snap-O/CaptureWindow/CaptureTrimRange.swift \
-  Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/Support/DeviceManagerFake.swift \
-  Tests/CaptureSupport/TestSupport.swift Tests/CaptureSupport/WindowSessionTestSupport.swift \
-  Tests/CaptureMode/CaptureModeTests.swift Tests/StartupCapture/WindowSessionTests.swift \
-  Tests/StartupCapture/StartupCaptureTests.swift \
-  -o "$TEST_DIR/startup-tests"
-run_test "$TEST_DIR/startup-tests"
-swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/Device/ADBServerState.swift Snap-O/Device/Device.swift Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
-  Snap-O/LivePreview/LivePreviewFrameSource.swift \
-  Snap-O/Device/AndroidHostServiceProtocol.swift \
-  Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
-  Snap-O/Capture/ShowTouchesOverride.swift Snap-O/Capture/LivePreviewService.swift \
-  Snap-O/Capture/CaptureCoordinator.swift \
-  Snap-OTests/AsyncTestSupport.swift Tests/Support/TestGate.swift Tests/StartupCapture/LivePreviewSessionTests.swift -o "$TEST_DIR/session-tests"
-run_test "$TEST_DIR/session-tests"
+APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Keep the existing entry points while running the current owners.
+case "${1:-}" in
+  --controllers-only|--modes-only)
+    exec sh "$APP_DIR/scripts/test-media-lifetime.sh"
+    ;;
+  --connections-only)
+    exec sh "$APP_DIR/scripts/test-preview-input.sh"
+    ;;
+  --sessions-only)
+    sh "$APP_DIR/scripts/test-preview-input.sh"
+    exec sh "$APP_DIR/scripts/test-video-stream.sh"
+    ;;
+  "")
+    sh "$APP_DIR/scripts/test-media-lifetime.sh" --windows
+    exec sh "$APP_DIR/scripts/test-video-stream.sh"
+    ;;
+esac

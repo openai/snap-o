@@ -36,6 +36,7 @@ internal object CdpNetworkMethod {
 
     const val GetRequestPostData: String = "Network.getRequestPostData"
     const val GetResponseBody: String = "Network.getResponseBody"
+    const val GetOriginalResponseBody: String = "SnapO.getOriginalResponseBody"
 }
 
 @Serializable
@@ -62,6 +63,23 @@ internal data class CdpResponseReceivedParams(
     val timestamp: Double? = null,
     val type: String? = null,
     val response: CdpResponseData,
+    val snapoInterception: CdpResponseInterception? = null,
+)
+
+@Serializable
+internal data class CdpResponseInterception(
+    val outcome: String,
+    val originalResponse: CdpOriginalResponse? = null,
+)
+
+@Serializable
+internal data class CdpOriginalResponse(
+    val status: Int,
+    val headers: Map<String, String>,
+    val mimeType: String? = null,
+    val encodedDataLength: Double? = null,
+    val bodyEncoding: String? = null,
+    val bodyTruncatedBytes: Long? = null,
 )
 
 @Serializable
