@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { buildHar } from "./exporters";
@@ -5,11 +6,20 @@ import { buildHar } from "./exporters";
 const text = "abcdefghijklmnop";
 function record(overrides = {}) {
   return {
-    kind: "request", processId: "fixture", requestId: "request",
-    method: "GET", url: "https://example.com/fixture", requestHeaders: [],
+    kind: "request",
+    processId: "fixture",
+    requestId: "request",
+    method: "GET",
+    url: "https://example.com/fixture",
+    requestHeaders: [],
     responseHeaders: [{ name: "Content-Type", value: "application/octet-stream" }],
-    status: { kind: "success", code: 200 }, startedAt: 1, updatedAt: 2, endedAt: 2,
-    streamEvents: [], streamEventCount: 0, responseBody: text,
+    status: { kind: "success", code: 200 },
+    startedAt: 1,
+    updatedAt: 2,
+    endedAt: 2,
+    streamEvents: [],
+    streamEventCount: 0,
+    responseBody: text,
     ...overrides
   };
 }
@@ -17,9 +27,7 @@ function exported(overrides) {
   return JSON.parse(buildHar([record(overrides)], "fixture")).log.entries[0].response;
 }
 function bytes(content) {
-  return content.encoding === "base64"
-    ? Buffer.from(content.text, "base64")
-    : Buffer.from(content.text, "utf8");
+  return content.encoding === "base64" ? Buffer.from(content.text, "base64") : Buffer.from(content.text, "utf8");
 }
 
 describe("HAR response encoding metadata", () => {
@@ -38,7 +46,8 @@ describe("HAR response encoding metadata", () => {
     it(`honors explicit base64 with ${mime}`, () => {
       const raw = Buffer.from([0, 1, 255, 65]);
       const response = exported({
-        responseBody: raw.toString("base64"), responseBodyBase64Encoded: true,
+        responseBody: raw.toString("base64"),
+        responseBodyBase64Encoded: true,
         responseHeaders: [{ name: "Content-Type", value: mime }]
       });
       assert.equal(response.content.encoding, "base64");
@@ -76,8 +85,10 @@ describe("HAR response encoding metadata", () => {
 
   it("retains stream-event text rather than applying a response encoding flag", () => {
     const response = exported({
-      responseBody: null, responseBodyBase64Encoded: true,
-      streamEvents: [{ raw: "data: synthetic\n\n" }], streamEventCount: 1
+      responseBody: null,
+      responseBodyBase64Encoded: true,
+      streamEvents: [{ raw: "data: synthetic\n\n" }],
+      streamEventCount: 1
     });
     assert.equal(response.content.encoding, undefined);
     assert.equal(response.content.text, "data: synthetic\n\n");
@@ -87,7 +98,7 @@ describe("HAR response encoding metadata", () => {
     const original = record({ responseBodyBase64Encoded: false });
     original.requestHeaders = [{ name: "Authorization", value: "synthetic" }];
     original.responseHeaders.push({ name: "Set-Cookie", value: "synthetic" });
-    const before = structuredClone(original);
+    const before = globalThis.structuredClone(original);
     const entry = JSON.parse(buildHar([original], "fixture")).log.entries[0];
     assert.deepEqual(original, before);
     assert.deepEqual(entry.request.headers, []);
