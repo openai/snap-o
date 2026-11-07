@@ -15,6 +15,7 @@ type ProcessManifest = {
   app: { name: string; packageName: string; revision: string; inspectors: ToolDescriptor[] };
 };
 import { App } from "./App";
+import { InterceptionOverrides } from "./features/network-tool/components/InterceptionOverrides";
 
 const mocks = vi.hoisted(() => ({
   client: null as unknown as NetworkClient,
@@ -31,7 +32,11 @@ vi.mock("./network/client", () => ({ createNetworkClient: () => mocks.client }))
 vi.mock("./features/network-tool/NetworkToolApp", () => ({
   NetworkToolApp: ({ model }: { model: NetworkToolModel }) => {
     mocks.model = model;
-    return <div data-tool="network" />;
+    return (
+      <div data-tool="network">
+        <InterceptionOverrides runners={model.interceptionRunners} />
+      </div>
+    );
   }
 }));
 const metadata = {
@@ -176,6 +181,86 @@ describe("Network frontend with the shared host", () => {
     );
   }
 
+  async function captureOverwrittenResponse(status = 200, completed = true) {
+    await act(async () => render(<App />, container));
+    await flush();
+    await act(async () => {
+      for (const message of replayMessages) {
+        if (!completed && message.method === "Network.loadingFinished") continue;
+        const intercepted =
+          message.method === "Network.responseReceived"
+            ? {
+                ...message,
+                params: {
+                  ...message.params,
+                  response: { url: "https://example.test/items", status, headers: {}, mimeType: "application/json" },
+                  snapoInterception: {
+                    outcome: "modified",
+                    originalResponse: { status: 200, headers: {}, encodedDataLength: 12 }
+                  }
+                }
+              }
+            : message.method === "Network.loadingFinished" && status === 204
+              ? { ...message, params: { ...message.params, encodedDataLength: 0 } }
+              : message;
+        for (const receive of events)
+          receive({ streamId: "network-stream", processId: metadata.processIdentity, message: intercepted });
+      }
+    });
+  }
+
+  it.each([200, 204])("loads the original before the delivered %i response completes", async (status) => {
+    vi.mocked(mocks.client.loadBodies).mockImplementation(async ({ requestId }) => ({
+      requestId,
+      originalResponseBody: "upstream"
+    }));
+    await captureOverwrittenResponse(status, false);
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        status: { kind: "success", code: status },
+        originalResponseBody: "upstream",
+        interception: { originalResponse: { status: 200 } }
+      })
+    );
+    expect(mocks.client.loadBodies).toHaveBeenCalledExactlyOnceWith({
+      processId: metadata.processIdentity,
+      requestId: "request-1",
+      includeRequestBody: false,
+      includeResponseBody: false,
+      includeOriginalResponseBody: true
+    });
+  });
+
+  it("retries a failed original body without refetching or losing the delivered body", async () => {
+    let failOriginal = true;
+    vi.mocked(mocks.client.loadBodies).mockImplementation(async ({ requestId, includeOriginalResponseBody }) => {
+      if (includeOriginalResponseBody) {
+        if (failOriginal) throw new Error("temporary original failure");
+        return { requestId, originalResponseBody: "upstream" };
+      }
+      return { requestId, responseBody: "delivered" };
+    });
+    await captureOverwrittenResponse();
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        responseBody: "delivered",
+        originalResponseBodyLoadError: "failed"
+      })
+    );
+    failOriginal = false;
+    await act(() => mocks.model!.retryResponseBody("originalResponse"));
+    await vi.waitFor(() =>
+      expect(mocks.model?.selectedRecord).toMatchObject({
+        responseBody: "delivered",
+        originalResponseBody: "upstream",
+        originalResponseBodyLoadError: null
+      })
+    );
+    const calls = vi.mocked(mocks.client.loadBodies).mock.calls;
+    expect(calls.filter(([input]) => input.includeResponseBody)).toHaveLength(1);
+    expect(calls.filter(([input]) => input.includeOriginalResponseBody)).toHaveLength(2);
+  });
+
   it("shows host startup failures instead of waiting for Android", async () => {
     container.id = "root";
     mocks.host = new ToolHost({
@@ -300,16 +385,22 @@ describe("Network frontend with the shared host", () => {
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
-  it("uses host metadata with the real Network connection on each reconnect", async () => {
+  it("isolates observers and capture across app switches and reconnects", async () => {
     const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
     const streams: Events[] = [];
     class Events extends EventTarget {
-      constructor() {
+      static readonly CLOSED = 2;
+      readyState = 0;
+      constructor(readonly url: string) {
         super();
         streams.push(this);
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
       }
       close = vi.fn();
+      snapshot(id?: string) {
+        const runners = id ? [{ id, routes: [{ id: "route", method: "GET", path: `/${id}` }] }] : [];
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ runners }) }));
+      }
     }
     vi.stubGlobal("EventSource", Events);
     fetchRequest.mockImplementation(async (url) => {
@@ -323,14 +414,45 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() => expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network"]));
+    const capture = streams.find((stream) => stream.url === "/api/network")!;
+    const observer = streams.find((stream) => stream.url === "/api/interception")!;
+    const panel = () => container.querySelector('[aria-label="Registered overrides"]');
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("first-app"));
+    expect(panel()?.textContent).toContain("/first-app");
+    expect(panel()?.textContent).not.toContain("Managed by the CLI.");
+    await act(() => observer.snapshot());
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("first-app"));
+    await act(() => {
+      observer.dispatchEvent(new Event("error"));
+    });
+    expect(panel()).toBeNull();
+    expect(capture.close).not.toHaveBeenCalled();
+    await act(() => observer.snapshot("first-app"));
+    state.manifest = { ...state.manifest!, pid: 21, processIdentity: "boot:21:456" };
+    await publish(true);
+    expect(capture.close).toHaveBeenCalledOnce();
+    expect(observer.close).toHaveBeenCalledOnce();
+    expect(panel()).toBeNull();
+    await act(() => observer.snapshot("stale-first-app"));
+    expect(panel()).toBeNull();
+    const currentObserver = streams.filter((stream) => stream.url === "/api/interception").at(-1)!;
+    await act(() => currentObserver.snapshot("second-app"));
+    expect(panel()?.textContent).toContain("/second-app");
     await publish(false);
-    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(panel()).toBeNull();
+    expect(currentObserver.close).toHaveBeenCalledOnce();
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network", "/api/network"])
+      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual([
+        "/api/network",
+        "/api/network",
+        "/api/network"
+      ])
     );
     await act(async () => render(null, container));
-    expect(streams[1].close).toHaveBeenCalledOnce();
+    expect(streams.every((stream) => stream.close.mock.calls.length === 1)).toBe(true);
   });
 
   it("updates filters after successful writes and preserves them when writes fail", async () => {

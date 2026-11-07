@@ -24,7 +24,7 @@ Open Snap-O and select **Example app → Example**. You should see three fake va
 
 Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. Reinstall the APK to try the updated tool.
 
-The Tool Packager Gradle Plugin downloads Node and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. This example forbids project repositories, so it declares the Node download source in settings and sets `node.distBaseUrl` to `null` in the tool module. Builds that allow project repositories need neither change. See [Node configuration](../../tool-sdk/gradle-plugin/README.md#node-configuration) for version overrides and using an existing installation.
+The Tool Packager Gradle Plugin downloads Node 22.23.2 and npm 11.9.0 by default. Android Studio and CI builds do not need Node or npm on `PATH`. This example forbids project repositories, so it declares the Node download source in settings and sets `node.distBaseUrl` to `null` in the tool module. Builds that allow project repositories need neither change. See [Node configuration](../../tool-sdk/gradle-plugin/README.md#node-configuration) for version overrides and using an existing installation.
 
 Run `./gradlew :example-tool:devSnapoToolFrontend` to start the development server. Gradle prepares the SDK and installs dependencies automatically, including after a clean checkout or plugin upgrade. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build.
 

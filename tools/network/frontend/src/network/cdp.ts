@@ -25,6 +25,19 @@ export interface Header {
 export type RequestStatus =
   { kind: "pending" } | { kind: "success"; code: number } | { kind: "failure"; message?: string | null };
 
+export interface OriginalResponse {
+  status: number;
+  headers: Header[];
+  encodedDataLength?: number | null;
+  bodyEncoding?: string | null;
+  bodyTruncatedBytes?: number | null;
+}
+
+export interface ResponseInterception {
+  outcome: "unchanged" | "modified" | "mocked";
+  originalResponse?: OriginalResponse;
+}
+
 export interface RequestRecord {
   kind: "request";
   processId: string;
@@ -47,6 +60,11 @@ export interface RequestRecord {
   responseBodyTruncatedBytes?: number | null;
   responseBodyLoadCompleted?: boolean;
   responseBodyLoadError?: ResponseBodyLoadError | null;
+  interception?: ResponseInterception;
+  originalResponseBody?: string | null;
+  originalResponseBodyBase64Encoded?: boolean | null;
+  originalResponseBodyLoadCompleted?: boolean;
+  originalResponseBodyLoadError?: ResponseBodyLoadError | null;
   responseType?: string | null;
   hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
@@ -287,9 +305,30 @@ function reduceResponseReceived(
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
       responseType: stringAt(params, "type") ?? existing?.responseType,
       hasReceivedResponse: true,
+      interception: interceptionFrom(params),
       updatedAt: eventAt
     };
   });
+}
+
+function interceptionFrom(params: Record<string, unknown>): ResponseInterception | undefined {
+  const outcome = stringAt(params, "snapoInterception.outcome");
+  if (outcome !== "modified" && outcome !== "mocked" && outcome !== "unchanged") return undefined;
+  const original = plainObjectAt(params, "snapoInterception.originalResponse");
+  const status = original == null ? null : numberAt(original, "status");
+  return {
+    outcome,
+    originalResponse:
+      outcome !== "modified" || original == null || status == null
+        ? undefined
+        : {
+            status,
+            headers: headersFrom(plainObjectAt(original, "headers")),
+            encodedDataLength: numberAt(original, "encodedDataLength"),
+            bodyEncoding: stringAt(original, "bodyEncoding"),
+            bodyTruncatedBytes: numberAt(original, "bodyTruncatedBytes")
+          }
+  };
 }
 
 function reduceLoadingFinished(
@@ -487,7 +526,16 @@ export function applyRequestBodies(record: RequestRecord, bodies: RequestBodies)
     responseBodyBase64Encoded: bodies.responseBodyBase64Encoded ?? record.responseBodyBase64Encoded,
     responseBodyLoadCompleted: bodies.responseBodyLoadCompleted ?? record.responseBodyLoadCompleted,
     responseBodyLoadError:
-      bodies.responseBodyLoadError !== undefined ? bodies.responseBodyLoadError : record.responseBodyLoadError
+      bodies.responseBodyLoadError !== undefined ? bodies.responseBodyLoadError : record.responseBodyLoadError,
+    originalResponseBody: bodies.originalResponseBody ?? record.originalResponseBody,
+    originalResponseBodyBase64Encoded:
+      bodies.originalResponseBodyBase64Encoded ?? record.originalResponseBodyBase64Encoded,
+    originalResponseBodyLoadCompleted:
+      bodies.originalResponseBodyLoadCompleted ?? record.originalResponseBodyLoadCompleted,
+    originalResponseBodyLoadError:
+      bodies.originalResponseBodyLoadError !== undefined
+        ? bodies.originalResponseBodyLoadError
+        : record.originalResponseBodyLoadError
   };
 }
 

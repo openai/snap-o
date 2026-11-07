@@ -4,18 +4,17 @@ import GRPCNIOTransportHTTP2TransportServices
 import SwiftProtobuf
 
 struct EmulatorClipboardTransport: ClipboardTransport {
-  private let client: GRPCClient<HTTP2ClientTransport.TransportServices>
+  private let client: GRPCClient<HTTP2ClientTransport.WrappedChannel>
   private let authentication: EmulatorClipboardAuthentication
 
   static func connect(
+    target: DeviceTarget,
+    endpoint: EmulatorGRPCEndpoint,
     authentication: EmulatorClipboardAuthentication,
     isolation: isolated (any Actor)? = #isolation,
     body: (Self) async throws -> Void
   ) async throws {
-    let transport = try await HTTP2ClientTransport.TransportServices(
-      target: .ipv4(address: "127.0.0.1", port: authentication.port), transportSecurity: .plaintext
-    )
-    try await withGRPCClient(transport: transport, isolation: isolation) { client in
+    try await EmulatorGRPCConnection.withDevice(target: target, endpoint: endpoint, isolation: isolation) { client, _ in
       try await body(Self(client: client, authentication: authentication))
     }
   }
@@ -27,8 +26,8 @@ struct EmulatorClipboardTransport: ClipboardTransport {
     try await client.unary(
       request: ClientRequest(message: message, metadata: metadata()),
       descriptor: Self.method("setClipboard"),
-      serializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
-      deserializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
+      serializer: EmulatorProtobufCodec<Google_Protobuf_StringValue>(),
+      deserializer: EmulatorProtobufCodec<Google_Protobuf_Empty>(),
       options: Self.options(timeout: .seconds(5))
     ) { response in _ = try response.message }
   }
@@ -37,8 +36,8 @@ struct EmulatorClipboardTransport: ClipboardTransport {
     try await client.unary(
       request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata()),
       descriptor: Self.method("getClipboard"),
-      serializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
-      deserializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
+      serializer: EmulatorProtobufCodec<Google_Protobuf_Empty>(),
+      deserializer: EmulatorProtobufCodec<Google_Protobuf_StringValue>(),
       options: Self.options(timeout: .seconds(5))
     ) { try $0.message.value }
   }
@@ -47,8 +46,8 @@ struct EmulatorClipboardTransport: ClipboardTransport {
     try await client.serverStreaming(
       request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata()),
       descriptor: Self.method("streamClipboard"),
-      serializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
-      deserializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
+      serializer: EmulatorProtobufCodec<Google_Protobuf_Empty>(),
+      deserializer: EmulatorProtobufCodec<Google_Protobuf_StringValue>(),
       options: Self.options()
     ) { response in
       for try await message in response.messages {
@@ -72,15 +71,5 @@ struct EmulatorClipboardTransport: ClipboardTransport {
 
   private static func method(_ name: String) -> MethodDescriptor {
     MethodDescriptor(fullyQualifiedService: "android.emulation.control.EmulatorController", method: name)
-  }
-}
-
-private struct ClipboardProtobufCodec<Message: SwiftProtobuf.Message>: MessageSerializer, MessageDeserializer {
-  func serialize<Bytes: GRPCContiguousBytes>(_ message: Message) throws -> Bytes {
-    try Bytes(message.serializedData())
-  }
-
-  func deserialize(_ bytes: some GRPCContiguousBytes) throws -> Message {
-    try bytes.withUnsafeBytes { try Message(serializedBytes: Array($0)) }
   }
 }

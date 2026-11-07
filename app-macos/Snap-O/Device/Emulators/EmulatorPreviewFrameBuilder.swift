@@ -15,9 +15,18 @@ final class EmulatorPreviewFrameBuilder {
   private var size: CGSize = .zero
 
   func makeSample(rgba: Data, width: Int, height: Int, timestamp: UInt64) throws -> CMSampleBuffer? {
+    try makeSample(pixels: rgba, width: width, height: height, timestamp: timestamp, hasAlpha: true)
+  }
+
+  func makeSample(rgb: Data, width: Int, height: Int, timestamp: UInt64) throws -> CMSampleBuffer? {
+    try makeSample(pixels: rgb, width: width, height: height, timestamp: timestamp, hasAlpha: false)
+  }
+
+  private func makeSample(pixels: Data, width: Int, height: Int, timestamp: UInt64, hasAlpha: Bool) throws -> CMSampleBuffer? {
+    let bytesPerPixel = hasAlpha ? 4 : 3
     guard width > 0, height > 0, width <= 8192, height <= 8192,
           width * height <= 16 * 1024 * 1024,
-          rgba.count == width * height * 4,
+          pixels.count == width * height * bytesPerPixel,
           timestamp <= UInt64(Int64.max) else {
       throw EmulatorPreviewError(message: "The emulator returned an invalid preview frame.")
     }
@@ -47,20 +56,23 @@ final class EmulatorPreviewFrameBuilder {
     }
 
     CVPixelBufferLockBaseAddress(pixelBuffer, [])
-    let conversion: vImage_Error = rgba.withUnsafeBytes { bytes in
+    let conversion: vImage_Error = pixels.withUnsafeBytes { bytes in
       guard let sourceAddress = bytes.baseAddress,
             let destinationAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
         return vImage_Error(kvImageNullPointerArgument)
       }
       var source = vImage_Buffer(
         data: UnsafeMutableRawPointer(mutating: sourceAddress),
-        height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width * 4
+        height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width * bytesPerPixel
       )
       var destination = vImage_Buffer(
         data: destinationAddress,
         height: vImagePixelCount(height), width: vImagePixelCount(width),
         rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer)
       )
+      if !hasAlpha {
+        return vImageConvert_RGB888toBGRA8888(&source, nil, 255, &destination, false, vImage_Flags(kvImageNoFlags))
+      }
       return vImagePermuteChannels_ARGB8888(&source, &destination, [2, 1, 0, 3], vImage_Flags(kvImageNoFlags))
     }
     CVPixelBufferUnlockBaseAddress(pixelBuffer, [])

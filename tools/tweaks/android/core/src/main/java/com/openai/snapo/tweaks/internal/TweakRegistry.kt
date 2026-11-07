@@ -47,6 +47,9 @@ interface ExternalTweakBacking : TweakState<Any> {
     val name: String
     val descriptor: TweakDescriptor
 
+    /** Converts a registry value to the source's Kotlin type without reading the source again. */
+    fun decode(value: Any): Any = value
+
     fun onValueChange(value: Any)
 
     fun onReset()
@@ -56,6 +59,8 @@ interface ExternalTweakBacking : TweakState<Any> {
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 interface SelectedTweakState : TweakState<Any> {
+    fun decode(value: Any): Any
+
     fun isSelected(owner: TweakState<Any>): Boolean
 
     fun notifyChanged(owner: TweakState<Any>)
@@ -684,6 +689,10 @@ object TweakRegistry {
             selectedExternalBacking != null -> object : SelectedTweakState {
                 override val value: Any
                     get() = snapshot(cachedOnly = false).value
+
+                override fun decode(value: Any): Any = synchronized(lock) {
+                    selectedExternalBacking.value.decode(value)
+                }
 
                 override fun isSelected(owner: TweakState<Any>): Boolean =
                     selectedExternalBacking.value === owner

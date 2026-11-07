@@ -12,7 +12,7 @@ struct VideoLoopingView: View {
   var body: some View {
     Group {
       if let player {
-        CaptureVideoPlayer(player: player, onFocusChange: onFocusChange)
+        CaptureVideoPlayer(player: player, onFocusChange: onFocusChange, stepFrame: stepFrame)
       } else {
         // very brief fallback while preparing
         Color.black
@@ -43,6 +43,11 @@ struct VideoLoopingView: View {
     let looper = AVPlayerLooper(player: queue, templateItem: item)
     player = queue
     self.looper = looper
+  }
+
+  private func stepFrame(_ count: Int) {
+    player?.pause()
+    player?.currentItem?.step(byCount: count)
   }
 
   private func updateWindowVisibility(_ isVisible: Bool) {

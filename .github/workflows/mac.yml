@@ -88,7 +88,8 @@ jobs:
         timeout-minutes: 8
         run: |
           for scheme in Snap-OUnitTests Snap-OIntegrationTests; do
-            xcodebuild -project Snap-O.xcodeproj -scheme "$scheme" -configuration "$SNAPO_TEST_CONFIGURATION" \
+            python3 scripts/ci-run-with-diagnostics.py "build-$scheme" \
+              xcodebuild -project Snap-O.xcodeproj -scheme "$scheme" -configuration "$SNAPO_TEST_CONFIGURATION" \
               -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
               -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates -showBuildTimingSummary \
               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
@@ -97,7 +98,8 @@ jobs:
       - name: Run headless unit tests
         timeout-minutes: 2
         run: |
-          xcodebuild test-without-building \
+          python3 scripts/ci-run-with-diagnostics.py unit-tests \
+            xcodebuild test-without-building \
             -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"Snap-OUnitTests_*.xctestrun \
             -destination "platform=macOS" \
             -resultBundlePath "$RUNNER_TEMP/snap-o-unit-tests.xcresult" \
@@ -105,17 +107,19 @@ jobs:
       - name: Run app integration tests
         timeout-minutes: 2
         run: |
-          xcodebuild test-without-building \
+          python3 scripts/ci-run-with-diagnostics.py integration-tests \
+            xcodebuild test-without-building \
             -xctestrun "$RUNNER_TEMP/snap-o-derived-data/Build/Products/"Snap-OIntegrationTests_*.xctestrun \
             -destination "platform=macOS" \
             -resultBundlePath "$RUNNER_TEMP/snap-o-integration-tests.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-      - name: Upload failed test results
-        if: failure()
+      - name: Upload test logs and diagnostics
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mac-test-results
           path: |
+            ${{ runner.temp }}/mac-diagnostics
             ${{ runner.temp }}/snap-o-unit-tests.xcresult
             ${{ runner.temp }}/snap-o-integration-tests.xcresult
           if-no-files-found: ignore
@@ -123,10 +127,29 @@ jobs:
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-capture-export.sh
+      - name: Test media lifetime
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-media-lifetime.sh
+      - name: Test device connection identity
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+        run: sh scripts/test-device-connection.sh
+      - name: Test preview input
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-preview-input.sh
       - name: Test capture integration
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-startup-capture.sh
+      - name: Test app shutdown ordering
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
+          SNAPO_TEST_CONFIGURATION: Debug
+        run: sh scripts/test-app-runtime.sh
       - name: Test recording failures
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
@@ -143,7 +166,7 @@ jobs:
       - name: Device Manager tests
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
-        run: bash Tests/DeviceManager/test.sh
+        run: bash StandaloneTests/DeviceManager/test.sh
 
       - name: Compact compiler cache
         id: compact-swift-cache

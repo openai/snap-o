@@ -3,9 +3,9 @@ import SwiftUI
 
 @MainActor
 protocol SnapOCommandTarget: AnyObject {
-  func perform(_ command: SnapOCommand)
+  func showLivePreview()
   func openDevice(_ request: DeviceOpenRequest)
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail?
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail?
 }
 
 @MainActor
@@ -17,42 +17,64 @@ final class SnapOCommandCoordinator {
   private weak var lastTarget: (any SnapOCommandTarget)?
   private var pendingDeviceRequest: DeviceOpenRequest?
   private var isOpeningWorkspace = false
-  var openWorkspace: (() -> Void)?
-  private var pendingCommands: [SnapOCommand] = []
+  var openWorkspace: (() -> Void)? {
+    didSet { openWorkspaceIfNeeded() }
+  }
+
+  private var pendingLivePreview = false
+
+  var requiresDeviceLinkApproval: (DeviceOpenRequest) -> Bool = { _ in true }
+  var authorizeDeviceLink: ((DeviceOpenRequest) async -> DeviceOpenRequest?)?
+  private(set) var deviceLinkTask: Task<Void, Never>?
 
   init() {}
 
   func handle(url: URL) -> Bool {
-    guard url.scheme?.lowercased() == "snapo" else { return false }
-    if url.host?.lowercased() == "open" {
-      guard let request = DeviceOpenRequest(url: url) else { return false }
-      openDevice(request)
-      return true
-    }
-    guard let command = SnapOCommand.from(url: url) else { return false }
-    if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
-      target.perform(command)
-    } else {
-      pendingCommands.append(command)
+    guard let link = DeviceOpenURL(url: url) else { return false }
+    guard deviceLinkTask == nil else { return true }
+    switch link {
+    case .target(let request):
+      if let authorizeDeviceLink, requiresDeviceLinkApproval(request) {
+        deviceLinkTask = Task {
+          let approved = await authorizeDeviceLink(request)
+          self.deviceLinkTask = nil
+          if let approved { self.openDevice(approved) }
+        }
+      } else {
+        openDevice(request)
+      }
+    case .currentPreview:
+      if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
+        target.showLivePreview()
+      } else {
+        pendingLivePreview = true
+        openWorkspaceIfNeeded()
+      }
     }
     return true
   }
 
   func openDevice(_ request: DeviceOpenRequest) {
+    guard deviceLinkTask == nil else { return }
     if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
       target.openDevice(request)
     } else {
       pendingDeviceRequest = request
-      if !isOpeningWorkspace, let openWorkspace {
-        isOpeningWorkspace = true
-        openWorkspace()
-      }
+      openWorkspaceIfNeeded()
     }
   }
 
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
+  private func openWorkspaceIfNeeded() {
+    guard pendingDeviceRequest != nil || pendingLivePreview,
+          !isOpeningWorkspace, let openWorkspace else { return }
+    isOpeningWorkspace = true
+    openWorkspace()
+  }
+
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
+    guard connection.isValid else { return nil }
     for case let target as any SnapOCommandTarget in targets.allObjects {
-      if let thumbnail = target.liveThumbnail(deviceID: deviceID), thumbnail.videoRenderer != nil {
+      if let thumbnail = target.liveThumbnail(for: connection), thumbnail.videoRenderer != nil {
         return thumbnail
       }
     }
@@ -84,10 +106,9 @@ final class SnapOCommandCoordinator {
       pendingDeviceRequest = nil
       target.openDevice(request)
     }
-    let commands = pendingCommands
-    pendingCommands.removeAll()
-    for command in commands {
-      target.perform(command)
+    if pendingLivePreview {
+      pendingLivePreview = false
+      target.showLivePreview()
     }
   }
 
@@ -97,27 +118,18 @@ final class SnapOCommandCoordinator {
   }
 }
 
-extension SnapOCommand {
-  static func from(url: URL) -> SnapOCommand? {
-    let host = url.host?.lowercased() ?? ""
-    let pathComponent = url.pathComponents.dropFirst().first?.lowercased() ?? ""
-    let token = host.isEmpty ? pathComponent : host
-    return SnapOCommand(rawValue: token)
-  }
-}
-
 struct WindowCommandRegistration: NSViewRepresentable {
-  let perform: @MainActor (SnapOCommand) -> Void
+  let showLivePreview: @MainActor () -> Void
   let openDevice: @MainActor (DeviceOpenRequest) -> Void
   var attached: @MainActor (NSWindow) -> Void = { _ in }
-  let thumbnail: @MainActor (String) -> LivePreviewThumbnail?
+  let thumbnail: @MainActor (DeviceTarget) -> LivePreviewThumbnail?
 
   func makeNSView(context: Context) -> WindowCommandTargetView {
-    WindowCommandTargetView(perform: perform, openDevice: openDevice, attached: attached, thumbnail: thumbnail)
+    WindowCommandTargetView(showLivePreview: showLivePreview, openDevice: openDevice, attached: attached, thumbnail: thumbnail)
   }
 
   func updateNSView(_ nsView: WindowCommandTargetView, context: Context) {
-    nsView.performCommand = perform
+    nsView.showLivePreviewAction = showLivePreview
     nsView.openDeviceRequest = openDevice
     nsView.onAttached = attached
     nsView.thumbnailForDevice = thumbnail
@@ -131,21 +143,21 @@ struct WindowCommandRegistration: NSViewRepresentable {
 
 @MainActor
 final class WindowCommandTargetView: NSView, SnapOCommandTarget {
-  var performCommand: @MainActor (SnapOCommand) -> Void
+  var showLivePreviewAction: @MainActor () -> Void
   var openDeviceRequest: @MainActor (DeviceOpenRequest) -> Void
   var onAttached: @MainActor (NSWindow) -> Void
-  var thumbnailForDevice: @MainActor (String) -> LivePreviewThumbnail?
+  var thumbnailForDevice: @MainActor (DeviceTarget) -> LivePreviewThumbnail?
 
   private weak var observedWindow: NSWindow?
   private var notificationTokens: [NSObjectProtocol] = []
 
   init(
-    perform: @escaping @MainActor (SnapOCommand) -> Void,
+    showLivePreview: @escaping @MainActor () -> Void,
     openDevice: @escaping @MainActor (DeviceOpenRequest) -> Void,
     attached: @escaping @MainActor (NSWindow) -> Void = { _ in },
-    thumbnail: @escaping @MainActor (String) -> LivePreviewThumbnail?
+    thumbnail: @escaping @MainActor (DeviceTarget) -> LivePreviewThumbnail?
   ) {
-    performCommand = perform
+    showLivePreviewAction = showLivePreview
     openDeviceRequest = openDevice
     onAttached = attached
     thumbnailForDevice = thumbnail
@@ -162,22 +174,27 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     attach(to: window)
   }
 
-  func perform(_ command: SnapOCommand) {
-    performCommand(command)
+  func showLivePreview() {
+    showWindow()
+    showLivePreviewAction()
   }
 
   func openDevice(_ request: DeviceOpenRequest) {
+    showWindow()
+    openDeviceRequest(request)
+  }
+
+  private func showWindow() {
     // Let SwiftUI finish creating a hidden launch window before requesting focus.
     if let window, window.isVisible || window.isMiniaturized {
       NSApplication.shared.activate(ignoringOtherApps: true)
       window.deminiaturize(nil)
       window.makeKeyAndOrderFront(nil)
     }
-    openDeviceRequest(request)
   }
 
-  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
-    thumbnailForDevice(deviceID)
+  func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
+    thumbnailForDevice(connection)
   }
 
   func attach(to window: NSWindow?) {

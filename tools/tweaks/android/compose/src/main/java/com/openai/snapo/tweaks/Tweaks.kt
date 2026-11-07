@@ -5,8 +5,10 @@ package com.openai.snapo.tweaks
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -23,8 +25,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Exposes an application-owned Boolean, Int, Float, String, Color, or BezierCurve tweak.
+ * Exposes an application-owned Boolean, Int, Float, String, Color, enum, or BezierCurve tweak.
  *
+ * Assigning the returned state writes to the selected source. Make these writes on main.
  * The first observed value is the tool default; edits, resets, and status remain app-owned.
  * Sources with the same name must use the same setting and value type.
  * The first active source handles values, updates, resets, status, and observation.
@@ -35,13 +38,28 @@ import kotlinx.coroutines.flow.collectLatest
 fun <T : Any> tweak(
     source: TweakSource<T>,
     name: String,
-): State<T> {
+): MutableState<T> {
     val latestSource = rememberUpdatedState(source)
     if (!TweaksRuntimePolicy.isAllowed) {
         return remember(name) {
-            object : State<T> {
-                override val value: T
-                    get() = latestSource.value.value
+            object : MutableState<T> {
+                private val revision = mutableIntStateOf(0)
+
+                override var value: T
+                    get() {
+                        revision.intValue
+                        return latestSource.value.value
+                    }
+                    set(value) {
+                        val source = latestSource.value
+                        val previous = source.value
+                        source.value = value
+                        // The source may not read Compose state, so invalidate changed reads explicitly.
+                        if (source.value != previous) revision.intValue++
+                    }
+
+                override fun component1(): T = value
+                override fun component2(): (T) -> Unit = { value = it }
             }
         }
     }
@@ -65,19 +83,19 @@ fun <T : Any> tweak(
 fun tweak(
     default: BezierCurve,
     name: String,
-): State<BezierCurve> = rememberTweakState(
+): MutableState<BezierCurve> = rememberTweakState(
     TweakDescriptor(name, TweakType.BEZIER, default),
     default,
 ) { it as BezierCurve }
 
-/** Exposes a floating-point tweak as observable state. */
+/** Exposes a floating-point tweak as mutable state. */
 @Composable
 fun tweak(
     default: Float,
     name: String,
     range: ClosedFloatingPointRange<Float>? = null,
     step: Float? = null,
-): State<Float> = rememberTweakState(
+): MutableState<Float> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.FLOAT,
@@ -89,14 +107,14 @@ fun tweak(
     default = default,
 ) { value -> value as Float }
 
-/** Exposes an integer tweak as observable state. */
+/** Exposes an integer tweak as mutable state. */
 @Composable
 fun tweak(
     default: Int,
     name: String,
     range: IntRange? = null,
     step: Int? = null,
-): State<Int> = rememberTweakState(
+): MutableState<Int> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.INT,
@@ -108,12 +126,12 @@ fun tweak(
     default = default,
 ) { value -> value as Int }
 
-/** Exposes a color tweak as observable state. */
+/** Exposes a color tweak as mutable state. */
 @Composable
 fun tweak(
     default: Color,
     name: String,
-): State<Color> {
+): MutableState<Color> {
     val defaultValue = default.toTweakColorValue()
     return rememberTweakState(
         TweakDescriptor(
@@ -125,12 +143,12 @@ fun tweak(
     ) { value -> (value as TweakColorValue).color }
 }
 
-/** Exposes a boolean tweak as observable state. */
+/** Exposes a boolean tweak as mutable state. */
 @Composable
 fun tweak(
     default: Boolean,
     name: String,
-): State<Boolean> = rememberTweakState(
+): MutableState<Boolean> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.BOOLEAN,
@@ -139,12 +157,12 @@ fun tweak(
     default = default,
 ) { value -> value as Boolean }
 
-/** Exposes a text tweak as observable state. */
+/** Exposes a text tweak as mutable state. */
 @Composable
 fun tweak(
     default: String,
     name: String,
-): State<String> = rememberTweakState(
+): MutableState<String> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.STRING,
@@ -158,8 +176,8 @@ fun tweak(
 fun <E : Enum<E>> tweak(
     default: E,
     name: String,
-): State<E> {
-    if (!TweaksRuntimePolicy.isAllowed) return rememberUpdatedState(default)
+): MutableState<E> {
+    if (!TweaksRuntimePolicy.isAllowed) return remember(name, default) { mutableStateOf(default) }
 
     val enumClass = default.declaringJavaClass
     val descriptor = remember(default, name) { enumTweakDescriptor(default, name) }
@@ -173,8 +191,8 @@ fun <E : Enum<E>> tweak(
     return rememberTweakState(descriptor, default, decode)
 }
 
-internal fun <E : Enum<E>> enumTweakDescriptor(
-    default: E,
+internal fun enumTweakDescriptor(
+    default: Enum<*>,
     name: String,
 ): TweakDescriptor = TweakDescriptor(
     name = name,
@@ -205,12 +223,12 @@ private fun <T : Any> rememberTweakState(
     descriptor: TweakDescriptor,
     default: T,
     decode: (Any) -> T,
-): State<T> = if (TweaksRuntimePolicy.isAllowed) {
+): MutableState<T> = if (TweaksRuntimePolicy.isAllowed) {
     remember(descriptor, decode) {
         TweakRegistration(descriptor, decode)
     }
 } else {
-    rememberUpdatedState(default)
+    remember(descriptor) { mutableStateOf(default) }
 }
 
 internal suspend fun <T : Any> TweakRegistration<T>.observeSource(source: TweakSource<T>) {
@@ -227,7 +245,7 @@ internal class TweakRegistration<T : Any> private constructor(
     private val descriptor: TweakDescriptor?,
     private val decode: (Any) -> T,
     private val externalBinding: ExternalTweakBinding<T>?,
-) : RememberObserver, State<T> {
+) : RememberObserver, MutableState<T> {
 
     constructor(descriptor: TweakDescriptor, decode: (Any) -> T) : this(
         descriptor.name,
@@ -250,11 +268,29 @@ internal class TweakRegistration<T : Any> private constructor(
     private var registered = false
 
     private val observedValue = ComposeTweakRegistry.state {
-        decode((externalState?.value ?: state).value)
+        val current = externalState?.value ?: state
+        if (current is SelectedTweakState) {
+            @Suppress("UNCHECKED_CAST")
+            (current.decode(current.value) as T)
+        } else {
+            decode(current.value)
+        }
     }
 
-    override val value: T
+    override var value: T
         get() = observedValue.value
+        set(value) {
+            check(registered) { "Cannot update inactive tweak: $name" }
+            val encoded = when (value) {
+                is Color -> value.toTweakColorValue()
+                is Enum<*> -> value.name
+                else -> value
+            }
+            TweakRegistry.update(mapOf(name to encoded))
+        }
+
+    override fun component1(): T = value
+    override fun component2(): (T) -> Unit = { value = it }
 
     val isSelected: Boolean
         get() {
@@ -303,10 +339,12 @@ internal class ExternalTweakBinding<T : Any>(
     private val latestSource: State<TweakSource<T>>,
 ) : ExternalTweakBacking {
 
+    private val initial by lazy { latestSource.value.value }
     private var initialValuePending = true
 
     override val descriptor: TweakDescriptor by lazy {
-        val initial = latestSource.value.value
+        val initial = initial
+        if (initial is Enum<*>) return@lazy enumTweakDescriptor(initial, name)
         TweakDescriptor(
             name = name,
             type = when (initial) {
@@ -318,7 +356,7 @@ internal class ExternalTweakBinding<T : Any>(
                 is BezierCurve -> TweakType.BEZIER
                 else -> throw IllegalArgumentException(
                     "Unsupported tweak value type: ${initial.javaClass.name}. " +
-                        "Supported types are Boolean, Int, Float, String, Color, and BezierCurve.",
+                        "Supported types are Boolean, Int, Float, String, Color, enum, and BezierCurve.",
                 )
             },
             default = encode(initial),
@@ -347,9 +385,14 @@ internal class ExternalTweakBinding<T : Any>(
     override fun isModified(): Boolean = latestSource.value.isModified
 
     @Suppress("UNCHECKED_CAST")
-    fun decode(value: Any): T =
-        if (value is TweakColorValue) value.color as T else value as T
+    override fun decode(value: Any): T = when (val initial = initial) {
+        is Enum<*> -> java.lang.Enum.valueOf(initial.declaringJavaClass, value as String) as T
+        else -> if (value is TweakColorValue) value.color as T else value as T
+    }
 
-    private fun encode(value: T): Any =
-        if (value is Color) value.toTweakColorValue() else value
+    private fun encode(value: T): Any = when (value) {
+        is Color -> value.toTweakColorValue()
+        is Enum<*> -> value.name
+        else -> value
+    }
 }

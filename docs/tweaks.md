@@ -36,7 +36,7 @@ dependencyResolutionManagement {
 
 ## Add the Android dependencies {#install data-step="2"}
 
-Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary tweaks return their defaults; app-owned tweaks return their source’s current value without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.
+Add the real Tweaks implementation to debug builds and the matching no-op implementation to release builds. Both expose the same Compose functions without shipping the live registry or server in release. Ordinary Compose tweaks keep writable local state initialized from their defaults. App-owned Compose tweaks read and write their source without registering or observing it. Actions are not registered or invoked. The no-op artifacts remain the recommended release setup.
 
 The overlay dependencies are optional. Add both only if you want an on-device floating panel. Their matching public APIs let the same app-root code compile in debug and release.
 
@@ -46,7 +46,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "13.1.0"
+snapo = "14.2.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -74,12 +74,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks:14.2.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:14.2.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:14.2.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:14.2.0")
 }
 ```
 
@@ -89,7 +89,7 @@ dependencies {
 
 Add the Tweaks dependencies to each Android module that calls the `tweak(...)` function. In a multi-module app, a shared Gradle convention plugin can apply the debug and release pair consistently. Only the module that installs the optional overlay needs its additional overlay dependencies.
 
-If a real Tweaks artifact is included in a nondebuggable app, ordinary tweaks still return their defaults and app-owned tweaks return their source’s current value. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.
+If a real Tweaks artifact is included in a nondebuggable app, its Compose functions behave like the no-op implementation: ordinary tweaks keep writable local state, and app-owned tweaks read and write their source. The server does not start and the floating overlay stays hidden unless you explicitly enable Tweaks for that app.
 {.notice}
 
 <details markdown="1">
@@ -117,10 +117,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:13.1.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:13.1.0")
+    debugImplementation("com.openai.snapo:tweaks-core:14.2.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:14.2.0")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:13.1.0")
+    implementation("com.openai.snapo:tweaks-views:14.2.0")
 }
 ```
 
@@ -165,7 +165,7 @@ Register app-owned sources and close scopes containing them on main. Ordinary de
 
 ## Expose values from Compose {#expose-values data-step="3"}
 
-Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support [Bézier curves](#bezier-curves).
+Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `MutableState<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support [Bézier curves](#bezier-curves).
 
 ``` { .kotlin title="Kotlin · typography" }
 import androidx.compose.material3.Text
@@ -195,7 +195,7 @@ fun TypographyPreview() {
 
 ### Compose function reference
 
-Import `com.openai.snapo.tweaks.tweak` and call the overload matching your default value from composition. Every overload returns `State<T>`. Delegate the state with `by`, or read `tweak(...).value` immediately. Numeric ranges and increments are optional. Enum options follow declaration order and use each constant’s name. For strings, name the `name` argument to distinguish it from the default value.
+Import `com.openai.snapo.tweaks.tweak` and call the overload matching your default value from composition. Every overload returns `MutableState<T>`. Use `val value by tweak(...)` to read it, or `var value by tweak(...)` to read and write it. Import `androidx.compose.runtime.setValue` for writable delegates. Numeric ranges and increments are optional. Enum options follow declaration order and use each constant’s name. For strings, name the `name` argument to distinguish it from the default value.
 
 ``` { .kotlin title="com.openai.snapo.tweaks · Kotlin" }
 @Composable
@@ -204,7 +204,7 @@ fun tweak(
     name: String,
     range: IntRange? = null,
     step: Int? = null,
-): State<Int>
+): MutableState<Int>
 
 @Composable
 fun tweak(
@@ -212,47 +212,57 @@ fun tweak(
     name: String,
     range: ClosedFloatingPointRange<Float>? = null,
     step: Float? = null,
-): State<Float>
+): MutableState<Float>
 
 @Composable
 fun tweak(
     default: Color,
     name: String,
-): State<Color>
+): MutableState<Color>
 
 @Composable
 fun tweak(
     default: Boolean,
     name: String,
-): State<Boolean>
+): MutableState<Boolean>
 
 @Composable
 fun tweak(
     default: String,
     name: String,
-): State<String>
+): MutableState<String>
 
 @Composable
 fun <E : Enum<E>> tweak(
     default: E,
     name: String,
-): State<E>
+): MutableState<E>
 ```
 
 ``` { .kotlin title="Kotlin · enum options" }
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.openai.snapo.tweaks.tweak
 
 enum class MarkerShape { Circle, RoundedSquare, Square }
 
 @Composable
 fun MarkerPreview() {
-    val shape by tweak(MarkerShape.Circle, "Motion/Marker shape")
-    Text(shape.name)
+    var shape by tweak(MarkerShape.Circle, "Motion/Marker shape")
+    Column {
+        Text(shape.name)
+        Button(onClick = { shape = MarkerShape.Square }) {
+            Text("Use square")
+        }
+    }
 }
 ```
+
+In live builds, app writes use the same validation, shared value, and change notifications as tool edits. The no-op implementation retains local edits across recompositions. A changed name, default, or numeric constraint starts a new ordinary declaration.
 
 Keep the returned state unread until the phase that needs it. For a value used only during drawing or layout, read the delegated value inside the draw or layout callback to avoid recomposing the caller.
 
@@ -326,7 +336,7 @@ See the [protocol reference](tweaks-protocol.md#bezier-curves) for JSON updates.
 
 ## Delegate to app-owned settings {#app-owned-settings data-step="4"}
 
-Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, color, or Bézier curve; enum values are supported only by ordinary tweaks.
+Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, color, enum, or Bézier curve. Enum sources expose every constant in declaration order, using its exact name.
 
 ``` { .kotlin title="com.openai.snapo.tweaks · source contract" }
 interface TweakSource<T : Any> {
@@ -341,7 +351,7 @@ interface TweakSource<T : Any> {
 fun <T : Any> tweak(
     source: TweakSource<T>,
     name: String,
-): State<T>
+): MutableState<T>
 ```
 
 ### Example: SharedPreferences-backed settings {#shared-preferences-source}
@@ -351,7 +361,7 @@ This source reads and writes an existing preference. A stored key is an override
 ``` { .kotlin title="Kotlin · app-owned boolean preference" }
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import com.openai.snapo.tweaks.TweakSource
 import com.openai.snapo.tweaks.tweak
@@ -391,7 +401,7 @@ fun SharedPreferences.tweak(
     key: String,
     default: Boolean,
     name: String = key,
-): State<Boolean> {
+): MutableState<Boolean> {
     val source = remember(this, key, default) {
         SharedPreferencesBooleanSource(this, key, default)
     }
@@ -399,7 +409,7 @@ fun SharedPreferences.tweak(
 }
 ```
 
-Use it from composition with `preferences.tweak("motion_show", true, "Motion/Show")`. Snap-O edits `source.value`, calls `source.reset()` for resets, and uses `source.isModified` to decide whether an override exists. The initial value is shown as the tool default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.
+Use it from composition with `preferences.tweak("motion_show", true, "Motion/Show")`. Assigning the returned state writes to the source; make these assignments on the main thread. Snap-O edits `source.value`, calls `source.reset()` for resets, and uses `source.isModified` to decide whether an override exists. The initial value is shown as the tool default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.
 
 ### Source updates and lifecycle {#source-lifecycle}
 
@@ -489,6 +499,8 @@ fun MotionSection(isExpanded: Boolean) {
 {.notice}
 
 Controls appear only while their composables are in composition. In the example, turning off `Motion/Show` removes the motion controls; changing `Motion/Use spring` swaps the spring settings for the duration control. When the same UI returns during the app process, ordinary controls register again with their last edited values and original ordering. App-owned controls use the current value from their source instead.
+
+In the Compose sample, `Motion/State` is a writable enum tweak. **Tap to animate** changes it directly, and the dropdown follows the animation state. Selecting `A` or `B` in Snap-O also animates the marker. Reset returns it to state `A`.
 
 ## Interact with tweaks {#interact data-step="6"}
 
@@ -649,6 +661,8 @@ fun ProfileScreen() {
     )
 }
 ```
+
+The panel and its color and curve pickers follow the system’s light or dark appearance, independently of the app’s theme.
 
 The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
 
