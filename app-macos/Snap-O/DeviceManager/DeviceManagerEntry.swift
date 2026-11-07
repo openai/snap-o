@@ -77,7 +77,7 @@ enum DeviceManagerEntry: Identifiable {
       guard emulator.serial == nil, emulator.state == .starting, emulator.detail == nil else { return emulator }
       let avdName = emulator.avdName.replacingOccurrences(of: "_", with: " ")
       if let device = connectedDevices.first(where: {
-        $0.id.hasPrefix("emulator-") && !emulatorSerials.contains($0.id) && $0.avdName == avdName
+        $0.isLocalEmulator && !emulatorSerials.contains($0.id) && $0.avdName == avdName
       }) {
         emulatorSerials.insert(device.id)
         emulator.serial = device.id

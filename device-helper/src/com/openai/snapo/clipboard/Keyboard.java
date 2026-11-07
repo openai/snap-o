@@ -3,6 +3,7 @@ package com.openai.snapo.clipboard;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
 import android.os.SystemClock;
@@ -10,6 +11,7 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.ViewConfiguration;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -20,10 +22,11 @@ import java.nio.charset.StandardCharsets;
 
 /** Ordered input for one focused preview. No text is passed through a shell command. */
 final class Keyboard {
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private final ClipboardManager clipboard;
     private final Object inputManager;
     private final Method inject;
+    private final HeldKeys heldKeys;
     private final Object clipboardLock = new Object();
     private long clipboardRevision;
 
@@ -37,6 +40,16 @@ final class Keyboard {
         }
         inputManager = type.getMethod("getInstance").invoke(null);
         inject = type.getMethod("injectInputEvent", InputEvent.class, int.class);
+        Handler handler = new Handler(Looper.getMainLooper());
+        heldKeys = new HeldKeys((downTime, pressed, code, repeatCount) ->
+                keyEvent(downTime, pressed ? KeyEvent.ACTION_DOWN : KeyEvent.ACTION_UP, code, 0, repeatCount),
+                action -> handler.postDelayed(() -> {
+                    try {
+                        action.send();
+                    } catch (Exception error) {
+                        stopAfterInputFailure();
+                    }
+                }, ViewConfiguration.getLongPressTimeout()));
         clipboard.addPrimaryClipChangedListener(() -> {
             synchronized (clipboardLock) {
                 clipboardRevision++;
@@ -50,6 +63,7 @@ final class Keyboard {
         output.writeInt(VERSION);
         output.flush();
         new Thread(() -> {
+            int exitCode = 0;
             try {
                 DataInputStream input = new DataInputStream(System.in);
                 while (true) {
@@ -95,6 +109,13 @@ final class Keyboard {
                             output.flush();
                             continue;
                         }
+                    } else if (command == 5 || command == 6) {
+                        int code = input.readInt();
+                        if (code <= KeyEvent.KEYCODE_UNKNOWN || code > KeyEvent.getMaxKeyCode()) {
+                            throw new IOException("Invalid key");
+                        }
+                        if (command == 5) heldKeys.press(code, SystemClock.uptimeMillis());
+                        else heldKeys.release(code);
                     } else {
                         throw new IOException("Invalid input command");
                     }
@@ -102,11 +123,18 @@ final class Keyboard {
                     output.flush();
                 }
             } catch (EOFException disconnected) {
-                System.exit(0);
+                // Release any held keys before the helper exits.
             } catch (Exception error) {
                 // Framework exceptions may contain typed text.
-                System.exit(1);
+                exitCode = 1;
+            } finally {
+                try {
+                    heldKeys.releaseAll();
+                } catch (Exception error) {
+                    exitCode = 1;
+                }
             }
+            System.exit(exitCode);
         }, "snapo-keyboard-input").start();
         Looper.loop();
     }
@@ -129,6 +157,7 @@ final class Keyboard {
     }
 
     private void key(int code, int modifiers) throws Exception {
+        if (heldKeys.contains(code)) return;
         long now = SystemClock.uptimeMillis();
         boolean shift = (modifiers & KeyEvent.META_SHIFT_ON) != 0;
         int meta = shift ? KeyEvent.META_SHIFT_ON | KeyEvent.META_SHIFT_LEFT_ON : 0;
@@ -143,8 +172,22 @@ final class Keyboard {
     }
 
     private void keyEvent(long downTime, int action, int code, int meta) throws Exception {
-        send(new KeyEvent(downTime, SystemClock.uptimeMillis(), action, code, 0, meta,
-                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD));
+        keyEvent(downTime, action, code, meta, 0);
+    }
+
+    private void keyEvent(long downTime, int action, int code, int meta, int repeatCount) throws Exception {
+        int flags = repeatCount == 1 ? KeyEvent.FLAG_LONG_PRESS : 0;
+        send(new KeyEvent(downTime, SystemClock.uptimeMillis(), action, code, repeatCount, meta,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0, flags, InputDevice.SOURCE_KEYBOARD));
+    }
+
+    private void stopAfterInputFailure() {
+        try {
+            heldKeys.releaseAll();
+        } catch (Exception ignored) {
+            // Best effort after input injection has already failed.
+        }
+        System.exit(1);
     }
 
     private void send(KeyEvent event) throws Exception {

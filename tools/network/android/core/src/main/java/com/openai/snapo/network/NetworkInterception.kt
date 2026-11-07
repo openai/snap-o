@@ -1,5 +1,7 @@
 package com.openai.snapo.network
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import java.io.Closeable
@@ -13,8 +15,15 @@ class NetworkInterception {
     private val lock = Any()
     private val leases = mutableListOf<Lease>()
     private val pending = mutableMapOf<String, Exchange>()
+    private val mutableRegistrations = MutableStateFlow(InterceptionSnapshot(emptyList()))
+    internal val registrations = mutableRegistrations.asStateFlow()
 
-    internal fun configure(owner: Any, send: (CdpMessage) -> Boolean, params: JsonElement?) = synchronized(lock) {
+    internal fun configure(
+        owner: Any,
+        runnerId: String,
+        send: (CdpMessage) -> Boolean,
+        params: JsonElement?,
+    ) = synchronized(lock) {
         val config = ProtocolJson.decodeFromJsonElement(InterceptionConfig.serializer(), requireNotNull(params))
         require(config.routes.size in 1..128) { "Register between 1 and 128 routes" }
         require(config.timeoutMs in 100..120_000) { "timeoutMs must be between 100 and 120000" }
@@ -28,7 +37,8 @@ class NetworkInterception {
         }
         // In-flight requests keep the handler generation they started with.
         leases.removeAll { it.owner === owner }
-        leases.add(Lease(owner, send, config))
+        leases.add(Lease(owner, runnerId, send, config))
+        publishRegistrations()
     }
 
     internal fun resolve(owner: Any, params: JsonElement?) = synchronized(lock) {
@@ -45,8 +55,16 @@ class NetworkInterception {
     }
 
     internal fun disconnect(owner: Any) = synchronized(lock) {
-        leases.removeAll { it.owner === owner }
+        if (leases.removeAll { it.owner === owner }) publishRegistrations()
         pending.values.filter { it.owner === owner }.forEach { it.abort("Interception runner disconnected") }
+    }
+
+    private fun publishRegistrations() {
+        mutableRegistrations.value = InterceptionSnapshot(
+            leases.map {
+                InterceptionRunner(it.id, it.config.routes)
+            }
+        )
     }
 
     /** Returns null without reading the body when no route matches. */
@@ -148,7 +166,12 @@ class NetworkInterception {
         }
     }
 
-    private data class Lease(val owner: Any, val send: (CdpMessage) -> Boolean, val config: InterceptionConfig)
+    private data class Lease(
+        val owner: Any,
+        val id: String,
+        val send: (CdpMessage) -> Boolean,
+        val config: InterceptionConfig,
+    )
 }
 
 const val MaxInterceptionBodyBytes: Int = 1024 * 1024
@@ -158,6 +181,12 @@ internal data class InterceptionConfig(val routes: List<InterceptionRoute>, val 
 
 @Serializable
 internal data class InterceptionRoute(val id: String, val method: String, val path: String)
+
+@Serializable
+internal data class InterceptionSnapshot(val runners: List<InterceptionRunner>)
+
+@Serializable
+internal data class InterceptionRunner(val id: String, val routes: List<InterceptionRoute>)
 
 @Serializable
 data class InterceptionHeader(val name: String, val value: String)

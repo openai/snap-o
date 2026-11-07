@@ -33,9 +33,6 @@ final class UpdateCoordinator {
 
   func checkForUpdates() {
     NSApplication.shared.activate(ignoringOtherApps: true)
-    if let window = NSApplication.shared.windows.first(where: { $0.isVisible }) {
-      window.makeKeyAndOrderFront(nil)
-    }
     updaterController.updater.checkForUpdates()
   }
 }

@@ -11,23 +11,3 @@ struct CaptureMedia: Identifiable, Equatable {
     self.media = media
   }
 }
-
-struct CaptureFailure {
-  let device: Device
-  let error: Error
-
-  var message: String {
-    "\(device.displayTitle): \(error.localizedDescription)"
-  }
-}
-
-struct ScreenshotCaptureResult {
-  let media: [CaptureMedia]
-  let failures: [CaptureFailure]
-}
-
-extension [CaptureMedia] {
-  func media(forDeviceID id: String) -> CaptureMedia? {
-    first { $0.device.id == id }
-  }
-}

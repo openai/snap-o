@@ -102,7 +102,7 @@ A View that owns its own tweaks must also manage that scope. Use a fresh scope f
 val setting = tweaks.tweak(source = mySettingSource, name = "Settings/Show hints")
 ```
 
-`TweakSource<T>` supplies the current value, a setter, `reset()`, `isModified`, and `observe(): Flow<Unit>`. Emit when either the effective value or override status changes. Generic sources support Boolean, Int, Float, String, and BezierCurve; `tweakColor(source, name)` supports an ARGB Int source.
+`TweakSource<T>` supplies the current value, a setter, `reset()`, `isModified`, and `observe(): Flow<Unit>`. Emit when either the effective value or override status changes. Generic sources support Boolean, Int, Float, String, enums, and BezierCurve; `tweakColor(source, name)` supports an ARGB Int source.
 
 Sources sharing a name must represent the same setting and type. The first active source supplies the authoritative value and handles edits, resets, status, and observation. The next source takes over when that owner closes. Their consistency remains the caller's responsibility. A returning source supplies its current value; Snap-O never replays historical values into it.
 
@@ -121,4 +121,4 @@ The `samples:demo-tweaks-views` app uses a ViewModel and custom Canvas drawing w
 ./gradlew -Psnapo.samples.noop=true :samples:demo-tweaks-views:assembleDebug
 ```
 
-The package is `com.openai.snapo.demo.tweaks.views`. Use Snap-O to edit its shape radius, blur, and color. Rotate the device to recreate the Activity while retaining the ViewModel's tweaks.
+The package is `com.openai.snapo.demo.tweaks.views`. Use Snap-O to edit its shape kind, radius, blur, and color. **Change shape** updates the app-owned enum directly; the `Shape/Kind` dropdown follows it. Select a kind in Snap-O to update the preview, then reset it to restore the circle. Rotate the device to recreate the Activity while retaining the ViewModel's tweaks.

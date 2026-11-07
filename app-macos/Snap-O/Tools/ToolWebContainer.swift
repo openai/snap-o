@@ -3,7 +3,7 @@ import Foundation
 import WebKit
 
 @MainActor
-final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
+final class ToolWebContainer: NSObject, ToolPageContainer, WKNavigationDelegate, WKUIDelegate {
   let webView: WKWebView
   var pageReadinessChangedHandler: ((Bool) -> Void)?
   var pageLoadFailedHandler: ((String) -> Void)?

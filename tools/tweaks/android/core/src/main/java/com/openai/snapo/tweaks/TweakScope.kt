@@ -87,7 +87,7 @@ class TweakScope : Closeable {
         TweakDescriptor(name, TweakType.COLOR, default.toTweakColorValue()),
     ) { (it as TweakColorValue).toArgb() }
 
-    /** Exposes a Boolean, Int, Float, String, or BezierCurve using the source's own reset and override status. */
+    /** Exposes a Boolean, Int, Float, String, enum, or BezierCurve using the source's own reset and override status. */
     @MainThread
     fun <T : Any> tweak(source: TweakSource<T>, name: String): StateFlow<T> =
         registerSource(source, name, color = false)
@@ -165,7 +165,8 @@ class TweakScope : Closeable {
         val pending = arrayListOf<Closeable>(Closeable { TweakRegistry.unregister(name, binding) })
         var transferred = false
         try {
-            val value = observeState(state, binding::decode) { pending.add(it) }
+            @Suppress("UNCHECKED_CAST")
+            val value = observeState(state, { state.decode(it) as T }) { pending.add(it) }
             val selected = MutableStateFlow(state.isSelected(binding))
             pending.add(TweakRegistry.observeChanges { selected.value = state.isSelected(binding) })
             val job = observationScope.launch {
@@ -205,6 +206,7 @@ private class ScopeSourceBinding<T : Any>(
     private val initial by lazy { source.value }
     private var initialValuePending = true
     override val descriptor: TweakDescriptor by lazy {
+        val initial = initial
         val type = when {
             color -> TweakType.COLOR
             initial is Boolean -> TweakType.BOOLEAN
@@ -212,9 +214,19 @@ private class ScopeSourceBinding<T : Any>(
             initial is Float -> TweakType.FLOAT
             initial is String -> TweakType.STRING
             initial is BezierCurve -> TweakType.BEZIER
+            initial is Enum<*> -> TweakType.ENUM
             else -> error("Unsupported tweak value type: ${initial.javaClass.name}")
         }
-        TweakDescriptor(name, type, encode(initial))
+        TweakDescriptor(
+            name,
+            type,
+            encode(initial),
+            options = if (initial is Enum<*>) {
+                requireNotNull(initial.declaringJavaClass.enumConstants).map { it.name }
+            } else {
+                emptyList()
+            },
+        )
     }
 
     override val value: Any
@@ -229,13 +241,18 @@ private class ScopeSourceBinding<T : Any>(
     override fun isModified(): Boolean = source.isModified
 
     @Suppress("UNCHECKED_CAST")
-    fun decode(value: Any): T = when {
-        color -> (value as TweakColorValue).toArgb() as T
-        else -> value as T
+    override fun decode(value: Any): T {
+        val initial = initial
+        return when {
+            color -> (value as TweakColorValue).toArgb() as T
+            initial is Enum<*> -> java.lang.Enum.valueOf(initial.declaringJavaClass, value as String) as T
+            else -> value as T
+        }
     }
 
     private fun encode(value: T): Any = when {
         color -> (value as Int).toTweakColorValue()
+        value is Enum<*> -> value.name
         else -> value
     }
 }

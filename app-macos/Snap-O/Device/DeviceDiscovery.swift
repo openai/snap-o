@@ -1,6 +1,18 @@
 import Foundation
 
 public enum DeviceDiscovery {
+  static func firstTransportID(inDevicesList output: String) -> String? {
+    for line in output.split(separator: "\n") {
+      let fields = line.split(whereSeparator: \.isWhitespace)
+      guard fields.count >= 2, fields[1] == "device" || fields[1] == "emulator" else { continue }
+      for field in fields.dropFirst(2) where field.hasPrefix("transport_id:") {
+        let value = String(field.dropFirst("transport_id:".count))
+        if let number = UInt64(value), number > 0 { return value }
+      }
+    }
+    return nil
+  }
+
   public static func processNames(inProcessList output: String) -> [Int: String] {
     let lines = output.split(whereSeparator: \.isNewline)
     guard let header = lines.first?.split(whereSeparator: \.isWhitespace),
@@ -41,34 +53,5 @@ public enum DeviceDiscovery {
         guard state == "device" || state == "emulator" else { return nil }
         return String(fields[0])
       }
-  }
-
-  public static func processName(
-    deviceID: String,
-    using adb: ADBClient,
-    pid: Int
-  ) async -> String? {
-    guard pid > 0,
-          let output = try? await adb.runDiscoveryShellString(
-            deviceID: deviceID,
-            command: "cat /proc/\(pid)/cmdline 2>/dev/null"
-          )
-    else {
-      return nil
-    }
-    return processName(inCmdline: output)
-  }
-
-  public static func androidUserID(
-    deviceID: String,
-    using adb: ADBClient,
-    pid: Int
-  ) async -> Int? {
-    guard pid > 0,
-          let output = try? await adb.runDiscoveryShellString(
-            deviceID: deviceID,
-            command: "cat /proc/\(pid)/status 2>/dev/null"
-          ) else { return nil }
-    return androidUserID(inProcStatus: output)
   }
 }

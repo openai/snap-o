@@ -5,7 +5,8 @@ import {
   filterRecords,
   responseBodyCaptureMetadata,
   shouldRequestRequestBody,
-  shouldRequestResponseBody
+  shouldRequestResponseBody,
+  shouldRequestOriginalResponseBody
 } from "./records";
 
 describe("persistent exclusion filters", () => {
@@ -93,6 +94,17 @@ describe("persistent exclusion filters", () => {
 });
 
 describe("request body loading", () => {
+  it("does not load an empty original when the override adds a response body", () => {
+    const overwritten = request({
+      status: { kind: "success", code: 200 },
+      endedAt: 2,
+      encodedDataLength: 10,
+      interception: { outcome: "modified", originalResponse: { status: 204, headers: [], encodedDataLength: 0 } }
+    });
+    expect(shouldRequestResponseBody(overwritten)).toBe(true);
+    expect(shouldRequestOriginalResponseBody(overwritten)).toBe(false);
+  });
+
   it("waits until request transmission has completed", () => {
     expect(shouldRequestRequestBody(request())).toBe(false);
     expect(shouldRequestRequestBody(request({ hasReceivedResponse: true }))).toBe(true);

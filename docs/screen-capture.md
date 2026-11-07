@@ -15,7 +15,7 @@ breadcrumbs:
 
 # Screen capture
 
-Capture screenshots or recordings from all connected Android devices, then crop images or trim recordings before sharing. Save the captures you want to keep in Capture History.
+Capture a screenshot or recording of the selected Android device, then crop or trim it before sharing. Save captures you want to keep in Capture History.
 {.lead}
 
 ## Live Preview
@@ -36,7 +36,7 @@ With keyboard focus outside the device image, press `Esc` to stop the preview, o
 
 ## Device and emulator controls
 
-Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device.
+Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device. Hold a control to send a long press. For example, hold **Power/Wake** to open the power menu on devices configured for it.
 
 Physical devices and emulators offer **Rotate Left** and **Rotate Right**. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.
 
@@ -84,7 +84,7 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ### Open a device from a link
 
-Use a `snapo://open` URL to open a connected device by its ADB serial:
+Use `snapo://open` without parameters to show the current device’s Live Preview. To select a connected device, include its ADB serial:
 
 ```bash
 open 'snapo://open?serial=emulator-5554'
@@ -98,23 +98,48 @@ open 'snapo://open?avd=Pixel_8&start=true'
 
 Use either `serial` or `avd`, and percent-encode spaces or other special characters in its value.
 
+<details markdown="1" id="remote-adb">
+<summary>ADB servers</summary>
+
+If you have an ADB server on another computer accessible via SSH, you can connect to it with Snap-O. Open **Device → ADB Servers…** and click **Add Server**.
+
+Set up SSH access in your Terminal first. Snap-O cannot display SSH login or host-key prompts. The SSH server must allow port forwarding. The ADB server must already be running on the remote computer’s loopback address (`127.0.0.1`, port `5037` by default).
+
+To open a device on an already-connected SSH server, use its saved SSH destination:
+
+```bash
+open 'snapo://open?serial=emulator-5554&server=devbox&port=2222&adb_port=5038'
+```
+
+`server` matches the saved destination exactly, including an SSH config alias or `user@host`. `port` matches the saved SSH port override; omit it when no override is configured. If omitted, the destination and ADB port must identify one enabled server. `adb_port` defaults to `5037`.
+
+Omit `server` or use `server=localhost` for the local ADB server. These connection parameters apply only to `serial` links; `port` applies only to SSH servers.
+
+For a saved but disabled SSH server, Snap-O asks you to enable it and open the requested device. Cancel leaves the server disabled. Links wait for connection and device discovery after approval.
+
+For an unknown SSH server, Snap-O first warns that an external link requested a new server. **Review Server** opens a prefilled **Add ADB Server** dialog without connecting. Review or edit the connection, then choose **Add and Open** to save it, connect, and open the requested device. Cancel at either step discards the request.
+
+Incoming confirmations do not accept Enter as approval. Additional device links are ignored while a request is being reviewed or saved. Once approved, the request stays bound to that server and reports connection or device discovery errors without selecting another device. Choose **Retry** to try the request again, or **Cancel** to return to the available preview. When multiple devices are available, you can also select one in the preview picker.
+
+</details>
+
 ## Take a screenshot
 
-Press `⇧⌘S` to capture a screenshot from all connected Android devices. The screenshots open for review. Use the thumbnails or `⌘[` and `⌘]` to switch between devices.
+Press `⇧⌘S` to capture a screenshot of the device shown in the window. The screenshot opens for review.
 
 ## Record the screen
 
-Press `⇧⌘V` to start recording the screens of all connected Android devices. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recordings open for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
+Press `⇧⌘V` to start recording the device shown in the window. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recording opens for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
 
-During recording, the hover picker and `⌘[` / `⌘]` switch between devices in that recording. Newly connected devices join Live Preview, but do not join a recording already in progress.
+The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.
 
 ## Review, crop, and trim {#review-and-crop}
 
-New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop. Each device keeps its own crop.
+New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop.
 
 For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Saved and shared copies use the selected crop and trim.
 
-Click the checkmark (**Save to History**) to keep all captures in the review with their crops and trims. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved captures and return to Live Preview.
+Click the checkmark (**Save to History**) to keep the capture with its crop and trim. Enter an optional name, then click **Save**. Click the cross (**Discard**) to remove the unsaved capture and return to Live Preview.
 
 Press `Esc` to open a discard confirmation. Press `Enter` to discard, or `Esc` again to keep editing. During a crop drag or while trimming a recording, `Esc` cancels that edit first.
 
@@ -134,9 +159,11 @@ Capture History keeps the screenshots and recordings you save from review, along
 
 Open **Window → Capture History** (`⌘Y`) to browse captures by day, newest first.
 
-Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
+Double-click an entry to preview it. Press Left or Right Arrow, or click the arrows at the sides of the preview, to browse captures in grid order. Click a recording to use the arrow keys to step one frame at a time. Click the space beside the recording to browse captures with the keyboard again. Press `Esc` to return to the grid.
 
-Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all devices in that capture.
+Each new capture creates one entry. Older entries can contain multiple captures. In a grouped entry, you can also use the toolbar thumbnails or `⌘[` and `⌘]` to switch devices.
+
+Captures saved without a name appear as **Untitled**. Click the name in the history preview to rename it, or choose **Rename** from the history grid's context menu. The name applies to all captures in the entry.
 
 Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or `⌘Delete`, or right-click a selected entry and choose **Delete…**, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
 
