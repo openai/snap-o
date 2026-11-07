@@ -429,6 +429,11 @@ def sanitize_event(message):
         response = dict(params.get("response") or {})
         response["headers"] = redact_headers(response.get("headers"), RESPONSE_HEADERS)
         params["response"] = response
+        interception = params.get("snapoInterception")
+        if isinstance(interception, dict) and isinstance(interception.get("originalResponse"), dict):
+            original = dict(interception["originalResponse"])
+            original["headers"] = redact_headers(original.get("headers"), RESPONSE_HEADERS)
+            params["snapoInterception"] = {**interception, "originalResponse": original}
     elif method == "Network.webSocketCreated":
         params["headers"] = redact_headers(params.get("headers"), REQUEST_HEADERS)
     elif method == "Network.webSocketHandshakeResponseReceived":

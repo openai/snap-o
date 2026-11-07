@@ -27,7 +27,7 @@ final class ToolHostModel {
     activePage?.isReady ?? false
   }
 
-  var webContainer: ToolWebContainer? {
+  var webContainer: (any ToolPageContainer)? {
     activePage?.container
   }
 
@@ -92,32 +92,45 @@ final class ToolHostModel {
   @MainActor
   final class Page {
     let identity: PageIdentity
-    let container: ToolWebContainer
+    let container: any ToolPageContainer
     var isReady = false
     var error: String?
     var endpointID: UUID?
     var connection = ToolConnectionState()
     var toolbar = ToolToolbar(revision: 0, actions: [])
+    @ObservationIgnored var search = ToolToolbarSearch(restoring: nil)
 
-    init(identity: PageIdentity, container: ToolWebContainer) {
+    init(identity: PageIdentity, container: any ToolPageContainer) {
       self.identity = identity
       self.container = container
     }
   }
 
   private var pages: [ToolID: Page] = [:]
+  @ObservationIgnored private var searchValues: [UUID: String] = [:]
   @ObservationIgnored private let service: ToolService
   @ObservationIgnored private var pageTransitions: [ToolID: Task<Void, Never>] = [:]
   @ObservationIgnored private var bindings: [ToolID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var pendingWork: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var stopTask: Task<Void, Never>?
   @ObservationIgnored private var isStopped = false
   @ObservationIgnored private let appTool: AppToolModel
   @ObservationIgnored private let preferences: UserDefaults
 
-  init(service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil) {
+  @ObservationIgnored private let makeContainer: @MainActor (ToolWebBridge, UUID?, URL?) -> any ToolPageContainer
+
+  init(
+    service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil,
+    configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] },
+    makeContainer: @escaping @MainActor (ToolWebBridge, UUID?, URL?) -> any ToolPageContainer = {
+      ToolWebContainer(bridge: $0, storageIdentifier: $1, developmentURL: $2)
+    }
+  ) {
+    self.makeContainer = makeContainer
     self.service = service
     self.preferences = preferences
     let appTool = appTool ?? AppToolModel(
-      preferences: preferences,
+      preferences: preferences, configuredServerIDs: configuredServerIDs,
       discover: { try await service.discoverPlugins() },
       changes: { await service.changes() },
       currentDiscovery: { await service.currentPlugins() },
@@ -129,14 +142,12 @@ final class ToolHostModel {
     appTool.start()
   }
 
-  func stop() {
-    guard !isStopped else { return }
+  @discardableResult
+  func stop() -> Task<Void, Never> {
+    if let stopTask { return stopTask }
     isStopped = true
-    appTool.stop()
-    for task in pageTransitions.values {
-      task.cancel()
-    }
-    for task in bindings.values {
+    let modelCleanup = appTool.stop()
+    for task in pendingWork.values {
       task.cancel()
     }
     bindings.removeAll()
@@ -144,6 +155,27 @@ final class ToolHostModel {
       removePage(kind: kind)
     }
     activePageIdentity = nil
+    searchValues.removeAll()
+    let pending = Array(pendingWork.values)
+    pageTransitions.removeAll()
+    let task = Task {
+      await modelCleanup.value
+      for task in pending {
+        await task.value
+      }
+    }
+    stopTask = task
+    return task
+  }
+
+  private func startWork(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    let id = UUID()
+    let task = Task {
+      await operation()
+      pendingWork[id] = nil
+    }
+    pendingWork[id] = task
+    return task
   }
 
   func selectApp(_ app: InspectableApp) {
@@ -172,6 +204,7 @@ final class ToolHostModel {
       let revision = (page.toolbar.actions[index].inputRevision ?? 0) + 1
       page.toolbar.actions[index].value = value
       page.toolbar.actions[index].inputRevision = revision
+      page.search.value = value
       event.value = value
       event.inputRevision = revision
     }
@@ -233,7 +266,7 @@ final class ToolHostModel {
       setEndpoint(nil, kind: kind)
       return
     }
-    bindings[kind] = Task { [weak self, weak container = page.container] in
+    bindings[kind] = startWork { [weak self, weak container = page.container] in
       guard let self, let container else { return }
       do {
         let target = try await service.pluginEndpoint(for: selection.server)
@@ -265,11 +298,14 @@ final class ToolHostModel {
 
   private func removePage(kind: ToolID) {
     guard let page = pages.removeValue(forKey: kind) else { return }
+    if let scope = page.identity.storageIdentifier {
+      searchValues[scope] = page.search.value
+    }
     page.container.stop()
     bindings.removeValue(forKey: kind)?.cancel()
     let transition = pageTransitions[kind]
     transition?.cancel()
-    pageTransitions[kind] = Task {
+    pageTransitions[kind] = startWork {
       await transition?.value
       await page.container.finishStopping()
     }
@@ -279,10 +315,7 @@ final class ToolHostModel {
     let metadata = appTool.snapshot.pageState(for: kind).selectedApp?.metadata
     removePage(kind: kind)
     let bridge = ToolWebBridge()
-    let container = ToolWebContainer(
-      bridge: bridge,
-      storageIdentifier: identity.storageIdentifier, developmentURL: identity.developmentURL
-    )
+    let container = makeContainer(bridge, identity.storageIdentifier, identity.developmentURL)
     bridge.isActiveHandler = { [weak self, weak container] in
       guard let self, let container else { return false }
       return !isStopped && activePage?.container === container
@@ -295,30 +328,30 @@ final class ToolHostModel {
       guard let self, let container, let page = pages[kind], page.container === container,
             toolbar.revision > page.toolbar.revision else { return }
       var toolbar = toolbar
-      for index in toolbar.actions.indices where toolbar.actions[index].type == .search {
-        if let old = page.toolbar.actions.first(where: { $0.id == toolbar.actions[index].id && $0.type == .search }),
-           (old.inputRevision ?? 0) > (toolbar.actions[index].inputRevision ?? 0) {
-          toolbar.actions[index].value = old.value
-          toolbar.actions[index].inputRevision = old.inputRevision
-        }
-      }
+      let restoredSearch = page.search.reconcile(&toolbar, previous: page.toolbar)
       page.toolbar = toolbar
+      if let restoredSearch { container.sendPageEvent(name: "host:toolbar", payload: restoredSearch) }
     }
     container.pageReadinessChangedHandler = { [weak self, weak container] isReady in
       guard let self, let container, pages[kind]?.container === container else { return }
       pages[kind]?.isReady = isReady
       if isReady { pages[kind]?.error = nil }
-      if !isReady { pages[kind]?.toolbar = ToolToolbar(revision: 0, actions: []) }
+      if !isReady, let page = pages[kind] {
+        page.toolbar = ToolToolbar(revision: 0, actions: [])
+        page.search = ToolToolbarSearch(restoring: page.identity.storageIdentifier == nil ? nil : page.search.value)
+      }
       synchronizeConnection(kind: kind)
     }
     container.pageLoadFailedHandler = { [weak self, weak container] message in
       guard let self, let container, pages[kind]?.container === container else { return }
       pages[kind]?.error = message
     }
-    pages[kind] = Page(identity: identity, container: container)
+    let page = Page(identity: identity, container: container)
+    page.search = ToolToolbarSearch(restoring: identity.storageIdentifier.flatMap { searchValues[$0] })
+    pages[kind] = page
     let transition = pageTransitions[kind]
     transition?.cancel()
-    pageTransitions[kind] = Task { [weak self] in
+    pageTransitions[kind] = startWork { [weak self] in
       await transition?.value
       guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
       defer {

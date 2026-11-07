@@ -124,6 +124,9 @@ class NetworkInspectorServer internal constructor(
             CdpNetworkMethod.GetResponseBody ->
                 handleGetResponseBodyCommand(commandId, message.params)
 
+            CdpNetworkMethod.GetOriginalResponseBody ->
+                handleGetResponseBodyCommand(commandId, message.params, original = true)
+
             else -> errorResponse(commandId, "Unsupported method: $method")
         }
     }
@@ -161,6 +164,7 @@ class NetworkInspectorServer internal constructor(
     private suspend fun handleGetResponseBodyCommand(
         commandId: Int,
         paramsElement: JsonElement?,
+        original: Boolean = false,
     ): CdpMessage {
         val params = paramsElement?.let { element ->
             runCatching {
@@ -175,9 +179,13 @@ class NetworkInspectorServer internal constructor(
         }
 
         val responseBody = bufferLock.withLock {
-            eventBuffer.findResponseBody(params.requestId)
+            if (original) {
+                eventBuffer.findOriginalResponseBody(params.requestId)
+            } else {
+                eventBuffer.findResponseBody(params.requestId)
+            }
         }
-        val streamBody = if (responseBody?.body.isNullOrEmpty()) {
+        val streamBody = if (!original && responseBody?.body.isNullOrEmpty()) {
             joinSseBody(params.requestId)
         } else {
             null
@@ -218,7 +226,7 @@ class NetworkInspectorServer internal constructor(
     private fun NetworkEventRecord.withoutInlineBodyPayloads(): NetworkEventRecord {
         return when (this) {
             is RequestWillBeSent -> copy(body = null)
-            is ResponseReceived -> copy(bodyPreview = null, body = null)
+            is ResponseReceived -> copy(bodyPreview = null, body = null, interception = interception?.withoutBody())
             else -> this
         }
     }

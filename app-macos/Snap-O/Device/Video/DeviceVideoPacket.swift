@@ -1,10 +1,13 @@
 @preconcurrency import AVFoundation
 import Foundation
+import zlib
 
-/// The helper sends complete AVC access units, including their device timestamps.
+/// The helper sends complete AVC access units or compressed RGBA frames with device timestamps.
 enum DeviceVideoPacket {
   case display(width: Int, height: Int, density: Int, rotation: Int)
   case frame(flags: UInt32, timestamp: Int64, data: Data)
+  case rgba(width: Int, height: Int, timestamp: Int64, pixels: Data)
+  case failure(DeviceVideoFailure)
 
   static let magic: UInt32 = 0x534E_5631
 
@@ -18,7 +21,9 @@ enum DeviceVideoPacket {
 
   static func read(from readBytes: (Int) throws -> Data) throws -> Self {
     func number(_ count: Int) throws -> UInt64 {
-      try readBytes(count).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+      let bytes = try readBytes(count)
+      guard bytes.count == count else { throw ADBError.protocolFailure("Truncated video packet") }
+      return bytes.reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
     }
     switch try number(1) {
     case 1:
@@ -39,9 +44,82 @@ enum DeviceVideoPacket {
         throw ADBError.protocolFailure("Invalid video packet")
       }
       return try .frame(flags: flags, timestamp: Int64(timestamp), data: readBytes(count))
+    case 3:
+      let stage = try UInt8(number(1))
+      let retryable = try number(1)
+      let code = try UInt32(number(4))
+      guard let stage = DeviceVideoFailure.Stage(rawValue: stage), retryable <= 1 else {
+        throw ADBError.protocolFailure("Invalid video failure packet")
+      }
+      return .failure(DeviceVideoFailure(stage: stage, retryable: retryable == 1, codecError: Int32(bitPattern: code)))
+    case 4:
+      let width = try Int(number(4))
+      let height = try Int(number(4))
+      let timestamp = try number(8)
+      let count = try Int(number(4))
+      guard (2 ... 8192).contains(width), (2 ... 8192).contains(height),
+            width * height * 4 <= maximumBytes, timestamp <= Int64.max,
+            count > 0, count <= maximumBytes else {
+        throw ADBError.protocolFailure("Invalid RGBA video packet")
+      }
+      let compressed = try readBytes(count)
+      guard compressed.count == count else { throw ADBError.protocolFailure("Truncated RGBA video packet") }
+      let pixels = try inflateRGBA(compressed, byteCount: width * height * 4)
+      return .rgba(width: width, height: height, timestamp: Int64(timestamp), pixels: pixels)
     default:
       throw ADBError.protocolFailure("Unknown video packet")
     }
+  }
+
+  private static func inflateRGBA(_ data: Data, byteCount: Int) throws -> Data {
+    var pixels = Data(count: byteCount)
+    var outputCount = uLongf(byteCount)
+    var inputCount = uLong(data.count)
+    let status = pixels.withUnsafeMutableBytes { output in
+      data.withUnsafeBytes { input in
+        uncompress2(
+          output.baseAddress?.assumingMemoryBound(to: Bytef.self), &outputCount,
+          input.baseAddress?.assumingMemoryBound(to: Bytef.self), &inputCount
+        )
+      }
+    }
+    guard status == Z_OK, outputCount == byteCount, inputCount == data.count else {
+      throw ADBError.protocolFailure("Invalid compressed RGBA frame")
+    }
+    return pixels
+  }
+}
+
+/// Fixed protocol fields keep framework messages and display metadata off the wire.
+struct DeviceVideoFailure: LocalizedError, Equatable {
+  enum Stage: UInt8, CaseIterable {
+    case setup = 1, display, encoder, capabilities, configuration, inputSurface, mirror, start, stream, capture
+
+    var action: String {
+      switch self {
+      case .setup: "start the device helper"
+      case .display: "read the device display"
+      case .encoder: "open an H.264 encoder"
+      case .capabilities: "find a supported video configuration"
+      case .configuration: "configure the video encoder"
+      case .inputSurface: "create the encoder input surface"
+      case .mirror: "mirror the device display"
+      case .start: "start the video encoder"
+      case .stream: "encode the device display"
+      case .capture: "capture the device display"
+      }
+    }
+  }
+
+  let stage: Stage
+  let retryable: Bool
+  /// Zero means that Android did not provide a codec error code.
+  let codecError: Int32
+
+  var errorDescription: String? {
+    var message = "Could not \(stage.action) on this device."
+    if codecError != 0 { message += " Codec error: \(codecError)." }
+    return message
   }
 }
 

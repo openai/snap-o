@@ -2,32 +2,59 @@ import Dependencies
 import Foundation
 
 public final class RecordingSession: @unchecked Sendable {
+  let target: DeviceTarget?
   public let deviceID: String
   public let remotePath: String
   public let startedAt: Date
   public let pid: Int32
 
-  private let connection: ADBSocketConnection
-  private let completionTask: Task<Void, Error>
+  private let closeStream: @Sendable () -> Void
+  private let completionTask: Task<Duration, Error>
 
-  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, startedAt: Date) {
-    self.deviceID = deviceID
-    self.remotePath = remotePath
-    self.pid = pid
-    self.connection = connection
-    self.startedAt = startedAt
-
-    completionTask = Task.detached(priority: .userInitiated) { [connection] in
-      try await withCheckedThrowingContinuation { continuation in
+  convenience init(
+    deviceID: String,
+    remotePath: String,
+    pid: Int32,
+    connection: any ADBConnection,
+    startedAt: Date,
+    target: DeviceTarget? = nil
+  ) {
+    self.init(deviceID: deviceID, remotePath: remotePath, pid: pid, startedAt: startedAt, target: target, drain: {
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
         DispatchQueue.global(qos: .userInitiated).async {
           continuation.resume(with: Result { try connection.drainToEnd() })
         }
       }
+    }, close: { connection.close() })
+  }
+
+  init(
+    deviceID: String, remotePath: String, pid: Int32, startedAt: Date, target: DeviceTarget? = nil,
+    drain: @escaping @Sendable () async throws -> Void, close: @escaping @Sendable () -> Void
+  ) {
+    self.target = target
+    self.deviceID = deviceID
+    self.remotePath = remotePath
+    self.pid = pid
+    closeStream = close
+    self.startedAt = startedAt
+
+    @Dependency(\.continuousClock)
+    var sourceClock
+    let clock = AnyClock(sourceClock)
+    let started = clock.now
+    completionTask = Task.detached(priority: .userInitiated) { [clock] in
+      try await drain()
+      return started.duration(to: clock.now)
     }
   }
 
-  public func waitUntilStopped() async throws {
+  func recordedDuration() async throws -> Duration {
     try await completionTask.value
+  }
+
+  public func waitUntilStopped() async throws {
+    _ = try await completionTask.value
   }
 
   func waitUntilStopped(
@@ -54,6 +81,6 @@ public final class RecordingSession: @unchecked Sendable {
 
   public func close() {
     completionTask.cancel()
-    connection.close()
+    closeStream()
   }
 }

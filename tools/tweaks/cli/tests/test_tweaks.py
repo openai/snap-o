@@ -121,16 +121,10 @@ def tweak_descriptors():
     ]
 
 
-class TweakHTTPServer:
-    def __init__(
-        self,
-        descriptors=None,
-        error=None,
-        stream_events=None,
-        adjusted_descriptors=None,
-        update_errors=None,
-    ):
-        self.descriptors = json.loads(json.dumps(descriptors or tweak_descriptors()))
+class FakeTweakConnection:
+    def __init__(self, descriptors=None, error=None, stream_events=None,
+                 adjusted_descriptors=None, update_errors=None):
+        self.descriptors = json.loads(json.dumps(descriptors if descriptors is not None else tweak_descriptors()))
         self.adjusted_descriptors = self.descriptors if adjusted_descriptors is None else adjusted_descriptors
         self.error = error
         self.update_errors = update_errors or {}
@@ -140,122 +134,118 @@ class TweakHTTPServer:
         self.protocol_version = 6
         self.protocol_error = None
         self.protocol_content_type = "application/json"
+        self.closed = False
+        self.opened = False
+
+    def __enter__(self):
+        self.opened = True
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        self.closed = True
+
+    def reply(self, method, path, payload=None):
+        if path == "/tweaks/protocol":
+            self.protocol_requests.append(path)
+            if self.protocol_error:
+                status, detail = self.protocol_error
+                return status, {"error": detail}, "application/json"
+            return 200, {"version": self.protocol_version}, self.protocol_content_type
+        self.requests.append((method, path, payload))
+        if method == "GET":
+            if path == "/tweaks":
+                return 200, {"tweaks": self.descriptors}, "application/json"
+            if path == "/tweaks?include=adjusted":
+                return 200, {"tweaks": self.adjusted_descriptors}, "application/json"
+            if path == "/tweaks/events":
+                events = self.stream_events or [
+                    ": keep-alive\n\n",
+                    'event: ignored\ndata: {"unexpected":true}\n\n',
+                    "event: tweaks\ndata: " + json.dumps({"tweaks": self.descriptors}) + "\n\n",
+                ]
+                return 200, "".join(events), "text/event-stream"
+        if self.error:
+            status, detail = self.error
+            return status, {"error": detail}, "application/json"
+        if method == "PATCH" and path == "/tweaks":
+            if set(payload) != {"values"} or not isinstance(payload["values"], dict):
+                return 400, {"error": "Invalid tweak mutation request"}, "application/json"
+            descriptors = {item["name"]: item for item in self.descriptors}
+            updates, errors = [], []
+            for name, value in payload["values"].items():
+                error = self.update_errors.get(name)
+                if name not in descriptors:
+                    error = f"Unknown tweak: {name}"
+                if error:
+                    errors.append({"name": name, "error": error})
+                    continue
+                descriptor = descriptors[name]
+                value = descriptor["default"] if value is None else value
+                if descriptor["type"] == "color":
+                    value = value.upper()
+                descriptor["value"] = value
+                update = {"name": name, "value": value}
+                if value != descriptor["default"]:
+                    descriptor["modified"] = update["modified"] = True
+                else:
+                    descriptor.pop("modified", None)
+                updates.append(update)
+            response = {"tweaks": updates}
+            if errors:
+                response["errors"] = errors
+            return 200, response, "application/json"
+        if method == "POST" and path == "/tweaks/action":
+            actions = [item for item in self.descriptors
+                       if item["name"] == payload.get("name") and item["type"] == "action"]
+            if not actions:
+                return 404, {"error": f"Unknown action: {payload.get('name')}"}, "application/json"
+            if len(actions) != 1 or actions[0].get("conflicted") is True:
+                return 409, {"error": f"Conflicting action registrations: {payload.get('name')}"}, "application/json"
+            return 200, {"name": payload["name"]}, "application/json"
+        raise AssertionError(f"Unexpected request: {method} {path}")
+
+    def request(self, method, path, payload=None, stream=False):
+        status, response, content_type = self.reply(method, path, payload)
+        if status != 200:
+            raise snapo.SnapOError(f"Snap-O tweaks server returned HTTP {status}: {response['error']}")
+        if stream:
+            assert content_type == "text/event-stream"
+            return io.BytesIO(response.encode())
+        return json.loads(json.dumps(response))
+
+
+class TweakHTTPServer(FakeTweakConnection):
+    """Real sockets are used only by transport and protocol tests."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
-            def do_GET(self):
-                if self.path == "/tweaks/protocol":
-                    owner.protocol_requests.append(self.path)
-                    if owner.protocol_error is not None:
-                        status, detail = owner.protocol_error
-                        self.send_json(status, {"error": detail})
-                        return
-                    self.send_json(200, {"version": owner.protocol_version}, owner.protocol_content_type)
-                    return
-                owner.requests.append(("GET", self.path, None))
-                if self.path == "/tweaks":
-                    self.send_json(200, {"tweaks": owner.descriptors})
-                elif self.path == "/tweaks?include=adjusted":
-                    self.send_json(200, {"tweaks": owner.adjusted_descriptors})
-                elif self.path == "/tweaks/events":
-                    events = owner.stream_events or [
-                        ": keep-alive\n\n",
-                        "event: ignored\ndata: {\"unexpected\":true}\n\n",
-                        "event: tweaks\ndata: " + json.dumps({"tweaks": owner.descriptors}) + "\n\n",
-                    ]
-                    body = "".join(events).encode("utf-8")
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/event-stream")
+            def respond(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length)) if length else None
+                status, response, content_type = owner.reply(self.command, self.path, payload)
+                streaming = content_type == "text/event-stream"
+                body = response.encode() if streaming else json.dumps(response).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Connection", "close")
+                if streaming:
                     self.send_header("Transfer-Encoding", "chunked")
-                    self.send_header("Connection", "close")
-                    self.end_headers()
-                    # Split SSE lines across HTTP chunks to exercise response decoding.
+                else:
+                    self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if streaming:
                     for offset in range(0, len(body), 7):
                         chunk = body[offset:offset + 7]
                         self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
                     self.wfile.write(b"0\r\n\r\n")
-                    self.wfile.flush()
                 else:
-                    self.send_json(404, {"error": f"Unknown endpoint: {self.path}"})
+                    self.wfile.write(body)
 
-            def do_PATCH(self):
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                owner.requests.append(("PATCH", self.path, payload))
-                if owner.error is not None:
-                    status, message = owner.error
-                    self.send_json(status, {"error": message})
-                    return
-
-                descriptors = {item["name"]: item for item in owner.descriptors}
-                if set(payload) != {"values"} or not isinstance(payload["values"], dict):
-                    self.send_json(400, {"error": "Invalid tweak mutation request"})
-                    return
-
-                updates = []
-                errors = []
-                for name, value in payload["values"].items():
-                    if name not in descriptors:
-                        message = f"Unknown tweak: {name}"
-                        errors.append({"name": name, "error": message})
-                        continue
-                    if name in owner.update_errors:
-                        message = owner.update_errors[name]
-                        errors.append({"name": name, "error": message})
-                        continue
-                    if value is None:
-                        value = descriptors[name]["default"]
-                    if descriptors[name]["type"] == "color":
-                        value = value.upper()
-                    descriptors[name]["value"] = value
-                    modified = value != descriptors[name]["default"]
-                    update = {"name": name, "value": value}
-                    if modified:
-                        descriptors[name]["modified"] = True
-                        update["modified"] = True
-                    else:
-                        descriptors[name].pop("modified", None)
-                    updates.append(update)
-                response = {"tweaks": updates}
-                if errors:
-                    response["errors"] = errors
-                self.send_json(200, response)
-
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                owner.requests.append(("POST", self.path, payload))
-                if owner.error is not None:
-                    status, message = owner.error
-                    self.send_json(status, {"error": message})
-                    return
-                if self.path != "/tweaks/action":
-                    self.send_json(404, {"error": f"Unknown endpoint: {self.path}"})
-                    return
-
-                actions = [
-                    item
-                    for item in owner.descriptors
-                    if item["name"] == payload.get("name") and item["type"] == "action"
-                ]
-                if not actions:
-                    self.send_json(404, {"error": f"Unknown action: {payload.get('name')}"})
-                    return
-                if len(actions) != 1 or actions[0].get("conflicted") is True:
-                    self.send_json(409, {"error": f"Conflicting action registrations: {payload.get('name')}"})
-                    return
-                self.send_json(200, {"name": payload["name"]})
-
-            def send_json(self, status, payload, content_type="application/json"):
-                body = json.dumps(payload).encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.wfile.write(body)
+            do_GET = do_PATCH = do_POST = respond
 
             def log_message(self, format, *arguments):
                 return None
@@ -529,6 +519,15 @@ class TweakTransportTests(unittest.TestCase):
             ],
         )
 
+    def test_chunked_event_stream_preserves_sse_records(self):
+        adb = FakeTweakADB()
+        server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+        with TweakHTTPServer() as wire:
+            adb.forward_port = wire.port
+            with snapo.TweakConnection(adb, server) as connection:
+                response = connection.request("GET", "/tweaks/events", stream=True)
+                self.assertEqual(next(snapo.tweak_events(response)), {"tweaks": wire.descriptors})
+
     def test_explicit_adb_endpoint_sends_http_through_direct_smart_socket(self):
         payload = {"tweaks": tweak_descriptors()}
         with TweakSmartSocketServer(payload) as wire:
@@ -578,12 +577,16 @@ class TweakTransportTests(unittest.TestCase):
 
 
 class TweakCommandTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(socket, "socket", side_effect=AssertionError("Command tests must not open sockets"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def run_command(self, arguments, wire, adb=None):
         adb = adb or FakeTweakADB()
-        adb.forward_port = wire.port
         stdout = io.StringIO()
         stderr = io.StringIO()
-        with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
+        with mock.patch.object(snapo, "TweakConnection", return_value=wire), mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
             with mock.patch.object(snapo, "ADB", return_value=adb):
                 with contextlib.redirect_stdout(stdout):
                     with contextlib.redirect_stderr(stderr):
@@ -591,8 +594,8 @@ class TweakCommandTests(unittest.TestCase):
         return result, stdout.getvalue(), stderr.getvalue(), adb
 
     def test_apps_identifies_each_running_application_from_its_tweak_server(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, adb = self.run_command(["apps", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, adb = self.run_command(["apps", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         app = json.loads(output)
@@ -614,8 +617,8 @@ class TweakCommandTests(unittest.TestCase):
                 raise snapo.SnapOError("process exited")
             return read_process(server)
         adb.process_info = process_info
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["apps", "--json"], wire, adb)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["apps", "--json"], wire, adb)
         self.assertEqual(result, 0)
         self.assertIn("process exited", errors)
         rows = [json.loads(line) for line in output.splitlines()]
@@ -625,15 +628,15 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(adb.calls, [])
 
     def test_apps_does_not_probe_tool_protocols(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["apps", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["apps", "--json"], wire)
         self.assertEqual(result, 0, errors)
         self.assertNotIn("protocolVersion", json.loads(output))
-        self.assertEqual(wire.protocol_requests, [])
+        self.assertFalse(wire.opened)
 
     def test_apps_preserves_existing_human_readable_output(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["apps"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["apps"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(
@@ -643,25 +646,23 @@ class TweakCommandTests(unittest.TestCase):
 
 
     def test_list_emits_one_complete_json_snapshot(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, adb = self.run_command(["list", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, adb = self.run_command(["list", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": wire.descriptors})
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_list_all_includes_previously_adjusted_inactive_tweaks(self):
         active = tweak_descriptors()[0]
         inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7, "modified": True}
 
-        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
-            result, output, errors, adb = self.run_command(["list", "--all", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=[active], adjusted_descriptors=[active, inactive])
+        result, output, errors, adb = self.run_command(["list", "--all", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": [active, inactive]})
         self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_list_all_preserves_independently_adjusted_tweaks_with_the_same_name(self):
         active = tweak_descriptors()[1]
@@ -669,16 +670,16 @@ class TweakCommandTests(unittest.TestCase):
         second = {**first, "default": 24, "value": 32, "max": 64}
         expanded = [active, first, second]
 
-        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=expanded) as wire:
-            result, output, errors, _ = self.run_command(["list", "--all", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=[active], adjusted_descriptors=expanded)
+        result, output, errors, _ = self.run_command(["list", "--all", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": expanded})
         self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
 
     def test_list_renders_descriptive_human_readable_values(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["list"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["list"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertIn("Typography/Font size = 16 [int]", output)
@@ -692,8 +693,8 @@ class TweakCommandTests(unittest.TestCase):
             {"name": "Preview/Refresh", "type": "action"},
             {"name": "Preview/Reload", "type": "action", "conflicted": True},
         ]
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["list"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["list"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertIn("Preview/Refresh [action]", output)
@@ -707,8 +708,8 @@ class TweakCommandTests(unittest.TestCase):
             {"name": "Preview/Refresh", "type": "action"},
             {"name": "Preview/Reload", "type": "action", "conflicted": True},
         ]
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["list", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": descriptors})
@@ -717,8 +718,8 @@ class TweakCommandTests(unittest.TestCase):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 20
 
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["list", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": descriptors})
@@ -728,16 +729,16 @@ class TweakCommandTests(unittest.TestCase):
         descriptors = tweak_descriptors()
         descriptors[0]["modified"] = True
 
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["list", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": descriptors})
         self.assertTrue(json.loads(output)["tweaks"][0]["modified"])
 
     def test_get_accepts_tweak_names_with_slashes_and_spaces(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["get", "Typography/Font size", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["get", "Typography/Font size", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), wire.descriptors[0])
@@ -745,8 +746,8 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_get_displays_an_action_descriptor_without_a_value(self):
         action = {"name": "Preview/Refresh", "type": "action"}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, _ = self.run_command(["get", action["name"]], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, _ = self.run_command(["get", action["name"]], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(output, "Preview/Refresh [action]\n")
@@ -756,41 +757,38 @@ class TweakCommandTests(unittest.TestCase):
         active = tweak_descriptors()[0]
         inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7, "modified": True}
 
-        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
-            result, output, errors, adb = self.run_command(
-                ["get", inactive["name"], "--all", "--json"],
-                wire,
-            )
+        wire = FakeTweakConnection(descriptors=[active], adjusted_descriptors=[active, inactive])
+        result, output, errors, adb = self.run_command(
+            ["get", inactive["name"], "--all", "--json"],
+            wire,
+        )
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), inactive)
         self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_get_all_rejects_independently_adjusted_tweaks_with_the_same_name(self):
         active = tweak_descriptors()[1]
         first = {**tweak_descriptors()[0], "value": 20, "modified": True}
         second = {**first, "default": 24, "value": 32, "max": 64}
 
-        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, first, second]) as wire:
-            result, output, errors, adb = self.run_command(["get", first["name"], "--all", "--json"], wire)
+        wire = FakeTweakConnection(descriptors=[active], adjusted_descriptors=[active, first, second])
+        result, output, errors, adb = self.run_command(["get", first["name"], "--all", "--json"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
         self.assertIn(f"Multiple tweaks named '{first['name']}'", errors)
         self.assertIn("snapo-tweaks list --all --json", errors)
         self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_get_reports_unknown_tweaks_without_mutating_the_application(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, adb = self.run_command(["get", "Motion/Missing", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, adb = self.run_command(["get", "Motion/Missing", "--json"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
         self.assertIn("Unknown tweak: Motion/Missing", errors)
         self.assertEqual([request[0] for request in wire.requests], ["GET"])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_set_parses_values_using_each_descriptor_type(self):
         cases = (
@@ -809,8 +807,8 @@ class TweakCommandTests(unittest.TestCase):
         )
         for name, raw, expected in cases:
             with self.subTest(name=name, value=raw):
-                with TweakHTTPServer() as wire:
-                    result, output, errors, adb = self.run_command(["set", name, raw], wire)
+                wire = FakeTweakConnection()
+                result, output, errors, adb = self.run_command(["set", name, raw], wire)
 
                 self.assertEqual(result, 0, errors)
                 self.assertEqual(output, "")
@@ -822,7 +820,6 @@ class TweakCommandTests(unittest.TestCase):
                     self.assertEqual(sent.upper(), expected)
                 else:
                     self.assertEqual(sent, expected)
-                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_set_rejects_invalid_values_without_sending_a_patch(self):
         cases = (
@@ -837,36 +834,33 @@ class TweakCommandTests(unittest.TestCase):
         )
         for name, raw in cases:
             with self.subTest(name=name, value=raw):
-                with TweakHTTPServer() as wire:
-                    result, output, errors, adb = self.run_command(["set", name, raw], wire)
+                wire = FakeTweakConnection()
+                result, output, errors, adb = self.run_command(["set", name, raw], wire)
 
                 self.assertEqual(result, 1)
                 self.assertEqual(output, "")
                 self.assertTrue(errors.startswith("snapo-tweaks:"), errors)
                 self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
-                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_set_rejects_actions_without_sending_a_patch(self):
         action = {"name": "Preview/Refresh", "type": "action"}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, adb = self.run_command(["set", action["name"], "true"], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, adb = self.run_command(["set", action["name"], "true"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
         self.assertIn(f"Action '{action['name']}' cannot be set", errors)
         self.assertIn("snapo-tweaks action NAME", errors)
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_action_invokes_the_exact_app_owned_name_without_fetching_a_snapshot(self):
         action = {"name": "Preview/Refresh visible content", "type": "action"}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, adb = self.run_command(["action", action["name"]], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, adb = self.run_command(["action", action["name"]], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(output, "")
         self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": action["name"]})])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_action_surfaces_unknown_non_action_and_conflicting_registrations(self):
         conflicted = {"name": "Preview/Reload", "type": "action", "conflicted": True}
@@ -878,19 +872,19 @@ class TweakCommandTests(unittest.TestCase):
         )
         for name, status, detail in cases:
             with self.subTest(name=name):
-                with TweakHTTPServer(descriptors=[value, conflicted]) as wire:
-                    result, output, errors, adb = self.run_command(["action", name], wire)
+                wire = FakeTweakConnection(descriptors=[value, conflicted])
+                result, output, errors, adb = self.run_command(["action", name], wire)
 
                 self.assertEqual(result, 1)
                 self.assertEqual(output, "")
                 self.assertIn(f"HTTP {status}", errors)
                 self.assertIn(detail, errors)
+                self.assertTrue(wire.closed)
                 self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": name})])
-                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_set_updates_the_modified_state(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["set", "Typography/Font size", "24"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, _ = self.run_command(["set", "Typography/Font size", "24"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(output, "")
@@ -899,10 +893,10 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_set_reports_a_named_batch_error(self):
         name = "Motion/Enabled"
-        with TweakHTTPServer(
+        wire = FakeTweakConnection(
             update_errors={name: "The value could not be changed."},
-        ) as wire:
-            result, output, errors, _ = self.run_command(["set", name, "false"], wire)
+        )
+        result, output, errors, _ = self.run_command(["set", name, "false"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
@@ -914,11 +908,11 @@ class TweakCommandTests(unittest.TestCase):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
         descriptors[0]["modified"] = True
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(
-                ["reset", "Typography/Font size"],
-                wire,
-            )
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(
+            ["reset", "Typography/Font size"],
+            wire,
+        )
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Typography/Font size": None}}))
@@ -931,8 +925,8 @@ class TweakCommandTests(unittest.TestCase):
         descriptor = next(item for item in descriptors if item["name"] == "Appearance/Theme")
         descriptor["value"] = "Dark"
 
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "Appearance/Theme"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["reset", "Appearance/Theme"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Appearance/Theme": None}}))
@@ -951,11 +945,11 @@ class TweakCommandTests(unittest.TestCase):
         descriptors[2]["modified"] = True
         failed_name = descriptors[2]["name"]
 
-        with TweakHTTPServer(
+        wire = FakeTweakConnection(
             descriptors=descriptors,
             update_errors={failed_name: "The owner rejected this value."},
-        ) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+        )
+        result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
@@ -989,8 +983,8 @@ class TweakCommandTests(unittest.TestCase):
             for descriptor in descriptors
             if descriptor.get("modified") is True
         }
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(
@@ -1014,8 +1008,8 @@ class TweakCommandTests(unittest.TestCase):
             for descriptor in descriptors
             if descriptor["type"] != "action" and descriptor.get("modified") is True
         }
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(
@@ -1027,8 +1021,8 @@ class TweakCommandTests(unittest.TestCase):
     def test_reset_all_with_no_modified_tweaks_sends_no_patch(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
@@ -1037,8 +1031,8 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_reset_one_unmodified_tweak_still_sends_a_null_value(self):
         descriptors = tweak_descriptors()
-        with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "Typography/Font size"], wire)
+        wire = FakeTweakConnection(descriptors=descriptors)
+        result, output, errors, _ = self.run_command(["reset", "Typography/Font size"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(
@@ -1052,8 +1046,8 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_reset_all_with_only_actions_sends_no_patch(self):
         action = {"name": "Preview/Refresh", "type": "action"}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
@@ -1061,8 +1055,8 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_reset_rejects_an_action_without_sending_a_patch(self):
         action = {"name": "Preview/Refresh", "type": "action"}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, _ = self.run_command(["reset", action["name"]], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, _ = self.run_command(["reset", action["name"]], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
@@ -1122,49 +1116,48 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("unrecognized arguments: --json", errors.getvalue())
 
-    def test_server_validation_errors_reach_stderr_and_remove_the_forward(self):
+    def test_server_validation_errors_reach_stderr_and_close_the_connection(self):
         for status, detail in ((404, "Unknown tweak: Motion/Enabled"), (422, "Value exceeds the maximum.")):
             with self.subTest(status=status):
-                with TweakHTTPServer(error=(status, detail)) as wire:
-                    result, output, errors, adb = self.run_command(
-                        ["set", "Motion/Enabled", "false"],
-                        wire,
-                    )
+                wire = FakeTweakConnection(error=(status, detail))
+                result, output, errors, adb = self.run_command(
+                    ["set", "Motion/Enabled", "false"],
+                    wire,
+                )
 
                 self.assertEqual(result, 1)
                 self.assertEqual(output, "")
                 self.assertIn(f"HTTP {status}", errors)
                 self.assertIn(detail, errors)
-                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+                self.assertTrue(wire.closed)
 
     def test_watch_ignores_keepalives_and_other_events_then_emits_a_complete_snapshot(self):
-        with TweakHTTPServer() as wire:
-            result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
+        wire = FakeTweakConnection()
+        result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": wire.descriptors})
         self.assertEqual(len(output.splitlines()), 1)
         self.assertEqual(wire.requests, [("GET", "/tweaks/events", None)])
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_watch_displays_action_descriptors_without_values(self):
         action = {"name": "Preview/Refresh", "type": "action", "conflicted": True}
-        with TweakHTTPServer(descriptors=[action]) as wire:
-            result, output, errors, _ = self.run_command(["watch", "--once"], wire)
+        wire = FakeTweakConnection(descriptors=[action])
+        result, output, errors, _ = self.run_command(["watch", "--once"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(output, "Preview/Refresh [action, conflicted]\n")
         self.assertEqual(wire.requests, [("GET", "/tweaks/events", None)])
 
-    def test_watch_rejects_malformed_snapshots_and_still_removes_its_forward(self):
+    def test_watch_rejects_malformed_snapshots_and_closes_the_connection(self):
         events = ["event: tweaks\ndata: {\"tweaks\":\"not-a-list\"}\n\n"]
-        with TweakHTTPServer(stream_events=events) as wire:
-            result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
+        wire = FakeTweakConnection(stream_events=events)
+        result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
 
         self.assertEqual(result, 1)
         self.assertEqual(output, "")
         self.assertIn("invalid tweak list", errors)
-        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+        self.assertTrue(wire.closed)
 
 
 class ProtocolTests(unittest.TestCase):

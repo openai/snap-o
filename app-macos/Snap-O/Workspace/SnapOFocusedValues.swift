@@ -1,0 +1,40 @@
+import AppKit
+import SwiftUI
+
+private struct CaptureImageKey: FocusedValueKey {
+  typealias Value = NSImage
+}
+
+private struct CaptureControllerKey: FocusedValueKey {
+  typealias Value = CapturePaneSession
+}
+
+private struct WorkspaceControllerKey: FocusedValueKey {
+  typealias Value = WorkspaceLayoutController
+}
+
+private struct ToolHostKey: FocusedValueKey {
+  typealias Value = ToolHostModel
+}
+
+extension FocusedValues {
+  var captureImage: NSImage? {
+    get { self[CaptureImageKey.self] }
+    set { self[CaptureImageKey.self] = newValue }
+  }
+
+  var toolHost: ToolHostModel? {
+    get { self[ToolHostKey.self] }
+    set { self[ToolHostKey.self] = newValue }
+  }
+
+  var captureController: CapturePaneSession? {
+    get { self[CaptureControllerKey.self] }
+    set { self[CaptureControllerKey.self] = newValue }
+  }
+
+  var workspaceController: WorkspaceLayoutController? {
+    get { self[WorkspaceControllerKey.self] }
+    set { self[WorkspaceControllerKey.self] = newValue }
+  }
+}

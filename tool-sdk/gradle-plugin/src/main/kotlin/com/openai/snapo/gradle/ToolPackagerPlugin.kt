@@ -34,6 +34,7 @@ class ToolPackagerPlugin : Plugin<Project> {
         val node = extensions.getByType<NodeExtension>().apply {
             version.set("22.23.2")
             download.set(true)
+            npmVersion.convention(download.map { managed -> if (managed) "11.9.0" else "" })
             nodeProjectDir.set(tool.frontendDirectory)
             npmInstallCommand.set("ci")
             enableTaskRules.set(false)

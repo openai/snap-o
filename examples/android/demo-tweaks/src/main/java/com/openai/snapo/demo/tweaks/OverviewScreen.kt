@@ -29,9 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +54,8 @@ private enum class MotionMarkerShape(val shape: Shape) {
     RoundedSquare(RoundedCornerShape(28)),
     Square(RectangleShape),
 }
+
+private enum class MotionState { A, B }
 
 @Composable
 internal fun OverviewScreen(modifier: Modifier) {
@@ -171,8 +171,10 @@ private fun MotionSection(dividerColor: Color) {
 
 @Composable
 private fun MotionPreview() {
-    var isStateB by rememberSaveable { mutableStateOf(false) }
-    TweakAction("Motion/Toggle animation") { isStateB = !isStateB }
+    var motionState by tweak(MotionState.A, "Motion/State")
+    val isStateB = motionState == MotionState.B
+    val toggle = { motionState = if (motionState == MotionState.A) MotionState.B else MotionState.A }
+    TweakAction("Motion/Toggle animation", toggle)
     val useSpring by tweak(true, "Motion/Use spring")
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
@@ -208,9 +210,9 @@ private fun MotionPreview() {
         MotionTrack(
             progress = progress,
             isStateB = isStateB,
-            onToggle = { isStateB = !isStateB },
+            onToggle = toggle,
         )
-        Button(onClick = { isStateB = !isStateB }) {
+        Button(onClick = toggle) {
             Text("Tap to animate")
         }
         AnimationDetails(
