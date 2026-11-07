@@ -71,7 +71,7 @@ export function TweaksToolApp({
               try {
                 const response = await client.listTweaks();
                 if (!isCurrent()) return;
-                // A completed write can make this snapshot stale, even with no pending edits.
+                // A newer write or streamed snapshot can supersede this reload.
                 if (revision !== updateRevision.current) continue;
                 const pendingAtReply = new Map(pending);
                 const inFlightAtReply = new Set(inFlight);
@@ -123,6 +123,7 @@ export function TweaksToolApp({
           connection,
           (snapshot) => {
             if (disposed || failed || connection.signal.aborted) return;
+            updateRevision.current += 1;
             // Preserve queue state at receipt, before Preact defers this update.
             const pending = new Map(queue.pending);
             const inFlight = new Set(queue.inFlight);

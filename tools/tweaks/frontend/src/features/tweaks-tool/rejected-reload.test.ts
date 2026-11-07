@@ -137,3 +137,25 @@ it("does not retry a late response after unmounting", async () => {
   expect(f.client.listTweaks).toHaveBeenCalledOnce();
   expect(f.container.textContent).toBe("");
 });
+
+it.each([false, true])("retries a reload superseded by a streamed snapshot, failure=%s", async (failure) => {
+  const f = await mount();
+  vi.mocked(f.client.listTweaks).mockResolvedValueOnce(snapshot("streamed"));
+  const receive = vi.mocked(f.client.subscribeTweaks).mock.calls[0]![1];
+  await act(async () => {
+    receive(snapshot("streamed"));
+  });
+  expect(f.value(first)).toBe("streamed");
+  await act(async () => {
+    if (failure) {
+      f.stale.reject(new Error("Obsolete snapshot error"));
+      await f.stale.promise.catch(() => {});
+    } else {
+      f.stale.resolve(snapshot());
+      await f.stale.promise;
+    }
+  });
+  expect(f.value(first)).toBe("streamed");
+  expect(f.container.textContent).not.toContain("Obsolete snapshot error");
+  expect(f.client.listTweaks).toHaveBeenCalledTimes(2);
+});
