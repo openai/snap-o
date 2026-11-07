@@ -1,4 +1,3 @@
-@preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -6,7 +5,6 @@ import ImageIO
 enum Media: Equatable {
   case image(url: URL, data: MediaCommon)
   case video(url: URL, data: MediaCommon)
-  case livePreview(data: MediaCommon)
 }
 
 struct MediaCommon: Equatable {
@@ -27,14 +25,13 @@ struct DisplayInfo: Equatable {
 extension Media {
   var common: MediaCommon {
     switch self {
-    case .image(_, let data), .video(_, let data), .livePreview(let data): data
+    case .image(_, let data), .video(_, let data): data
     }
   }
 
   var url: URL? {
     switch self {
     case .image(let urlValue, _), .video(let urlValue, _): urlValue
-    case .livePreview: nil
     }
   }
 
@@ -44,10 +41,6 @@ extension Media {
 
   var isVideo: Bool {
     if case .video = self { true } else { false }
-  }
-
-  var isLivePreview: Bool {
-    if case .livePreview = self { true } else { false }
   }
 
   var aspectRatio: CGFloat {
@@ -70,7 +63,6 @@ extension Media {
     switch self {
     case .image: .image
     case .video: .video
-    case .livePreview: nil
     }
   }
 }
@@ -113,15 +105,6 @@ extension Media {
       data: MediaCommon(capturedAt: capturedAt, display: display)
     )
   }
-
-  static func livePreview(
-    capturedAt: Date,
-    display: DisplayInfo
-  ) -> Media {
-    .livePreview(
-      data: MediaCommon(capturedAt: capturedAt, display: display)
-    )
-  }
 }
 
 func pngSize(from data: Data) throws -> CGSize {
@@ -133,34 +116,4 @@ func pngSize(from data: Data) throws -> CGSize {
     throw CocoaError(.fileReadCorruptFile)
   }
   return CGSize(width: CGFloat(width), height: CGFloat(height))
-}
-
-extension Media {
-  static func video(
-    from asset: AVURLAsset,
-    url: URL,
-    capturedAt: Date,
-    densityProvider: @escaping @Sendable () async -> CGFloat?
-  ) async throws -> Media? {
-    async let densityTask = densityProvider()
-    let tracks = try await asset.load(.tracks)
-    guard let videoTrack = tracks.first(where: { $0.mediaType == .video }) else {
-      _ = await densityTask
-      return nil
-    }
-
-    async let naturalSizeTask = videoTrack.load(.naturalSize)
-    async let transformTask = videoTrack.load(.preferredTransform)
-    let (naturalSize, transform) = try await (naturalSizeTask, transformTask)
-    let density = await densityTask
-    let applied = naturalSize.applying(transform)
-    let size = CGSize(width: abs(applied.width), height: abs(applied.height))
-    let display = DisplayInfo(size: size, densityScale: density)
-
-    return Media.video(
-      url: url,
-      capturedAt: capturedAt,
-      display: display
-    )
-  }
 }

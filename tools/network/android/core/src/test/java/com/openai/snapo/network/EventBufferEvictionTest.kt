@@ -1,6 +1,7 @@
 package com.openai.snapo.network
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -52,6 +53,53 @@ class EventBufferEvictionTest {
         assertEquals(true, updated)
         assertEquals(emptyList<NetworkEventRecord>(), buffer.snapshot())
         assertEquals(null, buffer.findResponseBody(HTTP_ID))
+    }
+
+    @Test
+    fun `original bodies use the buffer budget and expire with their request`() {
+        val original = OriginalResponse(200, emptyList(), body = "x".repeat(BYTE_LIMIT.toInt()))
+        val modified = response(HTTP_ID, 2L).copy(interception = ResponseInterception("modified", original))
+        val bounded = EventBuffer(NetworkInspectorConfig(maxBufferedBytes = BYTE_LIMIT))
+        bounded.append(request(HTTP_ID, 1L))
+        bounded.append(modified)
+        assertEquals(emptyList<NetworkEventRecord>(), bounded.snapshot())
+        assertEquals(null, bounded.findOriginalResponseBody(HTTP_ID))
+
+        val expiring = EventBuffer(NetworkInspectorConfig(bufferWindow = 5.milliseconds))
+        expiring.append(modified)
+        assertEquals(original.body, expiring.findOriginalResponseBody(HTTP_ID)?.body)
+        expiring.append(request(TRIGGER_ID, 10L))
+        assertEquals(null, expiring.findOriginalResponseBody(HTTP_ID))
+    }
+
+    @Test
+    fun `original capture stays independent and events omit bodies and redact original cookies`() {
+        val original = OriginalResponse(
+            200,
+            listOf(Header("sEt-CoOkIe", "original-private-cookie=1"), Header("X-Example", "visible")),
+            body = "original-private-body",
+        )
+        val record = response(HTTP_ID, 1L).copy(
+            body = "delivered-private-body",
+            interception = ResponseInterception("modified", original),
+        )
+        val buffer = EventBuffer(NetworkInspectorConfig())
+        buffer.append(record)
+        buffer.updateLatestResponseBody(HTTP_ID, null, "updated-private-body", null, null, 20L)
+        assertEquals("original-private-body", buffer.findOriginalResponseBody(HTTP_ID)?.body)
+        assertEquals("updated-private-body", buffer.findResponseBody(HTTP_ID)?.body)
+        val retained = buffer.snapshot().single() as ResponseReceived
+        assertEquals(null, requireNotNull(retained.interception?.originalResponse).body)
+        assertEquals(original.headers, retained.interception?.originalResponse?.headers)
+        for (candidate in listOf(record, retained)) {
+            val params = checkNotNull(candidate.toCdpMessage(null).params)
+            assertFalse(params.toString().contains("private-body"))
+            val event = ProtocolJson.decodeFromJsonElement(CdpResponseReceivedParams.serializer(), params)
+            assertEquals(
+                mapOf("sEt-CoOkIe" to "[REDACTED]", "X-Example" to "visible"),
+                event.snapoInterception?.originalResponse?.headers,
+            )
+        }
     }
 
     @Test

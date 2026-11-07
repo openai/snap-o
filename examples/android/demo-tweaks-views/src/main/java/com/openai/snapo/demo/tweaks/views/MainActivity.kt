@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.os.Bundle
 import android.view.View
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -16,6 +17,8 @@ import com.openai.snapo.tweaks.views.bindTweak
 
 class PreviewViewModel : ViewModel() {
     private val tweaks = TweakScope()
+    private val shapeSource = ShapeSource()
+    val shape = tweaks.tweak(shapeSource, "Shape/Kind")
     val radius = tweaks.tweak(64f, "Shape/Radius", 16f..128f)
     val blur = tweaks.tweak(12f, "Shape/Blur", 0f..32f)
     val color = tweaks.tweakColor(0xFF526DDE.toInt(), "Shape/Color")
@@ -23,6 +26,8 @@ class PreviewViewModel : ViewModel() {
     init {
         addCloseable(tweaks)
     }
+
+    fun toggleShape() = shapeSource.toggle()
 }
 
 class MainActivity : ComponentActivity() {
@@ -52,8 +57,15 @@ class MainActivity : ComponentActivity() {
                 textSize = 16f
             }
         )
+        header.addView(
+            Button(this).apply {
+                setOnClickListener { model.toggleShape() }
+                bindTweak(model.shape) { text = "Change shape (${it.name})" }
+            }
+        )
         content.addView(header)
         val preview = ShapeView(this)
+        preview.bindTweak(model.shape) { preview.shape = it }
         preview.bindTweak(model.radius) { preview.radiusDp = it }
         preview.bindTweak(model.blur) { preview.setBlur(it) }
         preview.bindTweak(model.color) { preview.setColor(it) }
@@ -64,6 +76,11 @@ class MainActivity : ComponentActivity() {
 
 private class ShapeView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    var shape = ShapeKind.Circle
+        set(value) {
+            field = value
+            invalidate()
+        }
     var radiusDp = 64f
         set(value) {
             field = value
@@ -90,6 +107,18 @@ private class ShapeView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawCircle(width / 2f, height / 2f, radiusDp * resources.displayMetrics.density, paint)
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val radius = radiusDp * resources.displayMetrics.density
+        when (shape) {
+            ShapeKind.Circle -> canvas.drawCircle(centerX, centerY, radius, paint)
+            ShapeKind.Square -> canvas.drawRect(
+                centerX - radius,
+                centerY - radius,
+                centerX + radius,
+                centerY + radius,
+                paint,
+            )
+        }
     }
 }

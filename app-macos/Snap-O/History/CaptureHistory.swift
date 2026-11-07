@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 import Observation
 
@@ -5,16 +6,24 @@ import Observation
 @MainActor
 final class CaptureHistory {
   let repository: CaptureHistoryRepository
+  private let writeFrame: @Sendable (CaptureMedia) async -> Void
   private(set) var entries: [CaptureHistoryEntry] = []
   private(set) var retention = CaptureHistoryRetention()
   private(set) var errorMessage: String?
   private(set) var isLoaded = false
   @ObservationIgnored private var observationTask: Task<Void, Never>?
   @ObservationIgnored private var cleanupTask: Task<Void, Never>?
-  @ObservationIgnored private var frameExports: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var pendingUpdate: (id: UUID, task: Task<Void, Never>)?
+  @ObservationIgnored private var shutdownTask: Task<Void, Never>?
+  @Dependency(\.continuousClock)
+  @ObservationIgnored private var clock
 
-  init(repository: CaptureHistoryRepository = CaptureHistoryRepository()) {
+  init(
+    repository: CaptureHistoryRepository = CaptureHistoryRepository(),
+    writeFrame: (@Sendable (CaptureMedia) async -> Void)? = nil
+  ) {
     self.repository = repository
+    self.writeFrame = writeFrame ?? { await repository.recordFrame($0) }
   }
 
   var byteCount: Int64 {
@@ -26,7 +35,7 @@ final class CaptureHistory {
   }
 
   func start() {
-    guard observationTask == nil else { return }
+    guard observationTask == nil, shutdownTask == nil else { return }
     let repository = repository
     observationTask = Task { [weak self] in
       for await snapshot in await repository.updates() {
@@ -37,40 +46,53 @@ final class CaptureHistory {
         isLoaded = true
       }
     }
-    cleanupTask = Task {
+    cleanupTask = Task { [clock] in
       while !Task.isCancelled {
         await repository.prune()
-        do { try await Task.sleep(for: .seconds(60)) } catch { return }
+        do { try await clock.sleep(for: .seconds(60)) } catch { return }
       }
     }
   }
 
-  func stop() {
-    observationTask?.cancel()
+  /// Reject new writes, then wait for pending writes and background tasks.
+  func shutdown() async {
+    if let shutdownTask {
+      await shutdownTask.value
+      return
+    }
+    let observation = observationTask
+    let cleanup = cleanupTask
+    let update = pendingUpdate?.task
+    observation?.cancel()
+    cleanup?.cancel()
     observationTask = nil
-    cleanupTask?.cancel()
     cleanupTask = nil
+    let task = Task {
+      await observation?.value
+      await cleanup?.value
+      await update?.value
+    }
+    shutdownTask = task
+    await task.value
   }
 
-  func recordFrame(url: URL, size: CGSize, deviceProvider: @escaping @Sendable () async -> Device) {
-    let exportID = UUID()
-    let capturedAt = Date()
-    frameExports[exportID] = Task {
-      defer { frameExports[exportID] = nil }
-      let device = await deviceProvider()
-      let id = await repository.begin(kind: .image, devices: [device], at: capturedAt)
-      let capture = CaptureMedia(device: device, media: .image(
-        url: url, capturedAt: capturedAt, display: DisplayInfo(size: size, densityScale: nil)
-      ))
-      // The drag session still owns the temporary export file.
-      _ = await repository.record(capture, in: id, moveOriginal: false)
-      await repository.finish(id)
+  /// Queue each write before returning. Keep writes in order and wait for them on shutdown.
+  @discardableResult
+  func update(_ operation: @escaping @Sendable (CaptureHistoryRepository) async -> Void) -> Task<Void, Never>? {
+    guard shutdownTask == nil else { return nil }
+    let id = UUID()
+    let previous = pendingUpdate?.task
+    let task = Task {
+      await previous?.value
+      await operation(repository)
+      if pendingUpdate?.id == id { pendingUpdate = nil }
     }
+    pendingUpdate = (id, task)
+    return task
   }
 
-  func finishFrameExports() async {
-    for task in Array(frameExports.values) {
-      await task.value
-    }
+  func recordFrame(_ capture: CaptureMedia) {
+    let writeFrame = writeFrame
+    update { _ in await writeFrame(capture) }
   }
 }

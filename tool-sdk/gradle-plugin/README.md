@@ -27,7 +27,7 @@ snapoTool {
 
 Place `package.json`, `package-lock.json`, and frontend sources in the module's `frontend/` directory. Its `build` script must write `dist/index.html` and use relative asset URLs. Its `dev` script starts a local development server. Set `frontendDirectory` to use another source directory.
 
-The plugin downloads Node.js 22.23.2 and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. Downloads are cached between builds. Direct `npm` commands still require a local Node installation.
+The plugin downloads Node.js 22.23.2 and npm 11.9.0. Android Studio and CI builds do not need Node or npm on `PATH`. Downloads are cached between builds. Direct `npm` commands still require a local Node installation.
 
 The Android build prepares the bundled host SDK, then runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
 

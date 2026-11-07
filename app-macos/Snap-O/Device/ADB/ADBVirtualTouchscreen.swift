@@ -20,7 +20,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
   public let initialDisplayRotation: ADBDisplayRotation
   public let supportsSynchronization: Bool
 
-  private let connection: ADBSocketConnection
+  private let connection: any ADBConnection
   private var activeGeometry: UInputTouchscreenProtocol.Geometry?
   private var activeContactCount = 0
   private var nextTrackingID = 1
@@ -28,7 +28,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
   private var isClosed = false
 
   fileprivate init(
-    connection: ADBSocketConnection,
+    connection: any ADBConnection,
     initialDisplayRotation: ADBDisplayRotation,
     supportsSynchronization: Bool
   ) {

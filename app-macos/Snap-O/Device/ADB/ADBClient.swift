@@ -4,9 +4,11 @@ import Foundation
 public struct ADBClient: Sendable {
   @Dependency(\.continuousClock)
   private var clock
-  private let connectionFactory: @Sendable () throws -> ADBSocketConnection
+  private var connectionFactory: @Sendable () throws -> any ADBConnection
   private let discoveryTimeout: Duration
   private var requestTimeout: Duration?
+  private var target: DeviceTarget?
+  private var serverID: ADBServerID = .local
   private static let recordingCommandTimeout: Duration = .seconds(3)
   private static let recordingDownloadIdleTimeout: Duration = .seconds(5)
 
@@ -14,6 +16,22 @@ public struct ADBClient: Sendable {
     var client = self
     client.requestTimeout = timeout
     return client
+  }
+
+  func bound(to target: DeviceTarget) -> ADBClient {
+    var client = self
+    client.target = target
+    if let server = target.server {
+      client.connectionFactory = { try server.makeOperationConnection() }
+      client.serverID = server.serverID
+    }
+    return client
+  }
+
+  init(serverID: ADBServerID, connectionFactory: @escaping @Sendable () throws -> any ADBConnection) {
+    self.serverID = serverID
+    self.connectionFactory = connectionFactory
+    discoveryTimeout = .seconds(3)
   }
 
   // MARK: - Public entry points
@@ -25,7 +43,7 @@ public struct ADBClient: Sendable {
 
   init(
     discoveryTimeout: Duration,
-    connectionFactory: @escaping @Sendable () throws -> ADBSocketConnection
+    connectionFactory: @escaping @Sendable () throws -> any ADBConnection
   ) {
     self.discoveryTimeout = discoveryTimeout
     self.connectionFactory = connectionFactory
@@ -74,18 +92,21 @@ public struct ADBClient: Sendable {
       remotePath: remote,
       pid: pidValue,
       connection: connection,
-      startedAt: Date()
+      startedAt: Date(),
+      target: target
     )
   }
 
   public func signalScreenrecordStop(session: RecordingSession) async throws {
     let command = "kill -INT \(session.pid) >/dev/null 2>&1 || true"
-    _ = try await withTimeout(Self.recordingCommandTimeout).runShellString(deviceID: session.deviceID, command: command)
+    _ = try await client(for: session).withTimeout(Self.recordingCommandTimeout).runShellString(
+      deviceID: session.deviceID, command: command
+    )
   }
 
   public func downloadScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
     do {
-      try await pull(
+      try await client(for: session).pull(
         deviceID: session.deviceID, remote: session.remotePath, to: localURL,
         idleTimeout: Self.recordingDownloadIdleTimeout
       )
@@ -95,10 +116,15 @@ public struct ADBClient: Sendable {
   }
 
   func removeScreenrecord(session: RecordingSession) async throws {
-    _ = try await withTimeout(Self.recordingCommandTimeout).runShellString(
+    _ = try await client(for: session).withTimeout(Self.recordingCommandTimeout).runShellString(
       deviceID: session.deviceID,
       command: "rm -f \(session.remotePath)"
     )
+  }
+
+  private func client(for session: RecordingSession) -> ADBClient {
+    if let target = session.target { return bound(to: target) }
+    return self
   }
 
   func isBootComplete(deviceID: String) async throws -> Bool {
@@ -237,12 +263,21 @@ public struct ADBClient: Sendable {
       }
     }
 
+    let server = ADBServerSession(tracking: connection, timeout: discoveryTimeout, serverID: serverID, connectionFactory: connectionFactory)
     let stream = AsyncThrowingStream<String, Error> { continuation in
       let streamTask = Task.detached(priority: .userInitiated) {
+        defer { server.close() }
+        var reader = connection
+        var prepared = false
         do {
           while !Task.isCancelled {
-            guard let payload = try connection.readLengthPrefixedPayload() else { break }
+            guard let payload = try reader.readLengthPrefixedPayload() else { break }
             guard let payloadString = String(bytes: payload, encoding: .utf8) else { break }
+            if !prepared, let transportID = DeviceDiscovery.firstTransportID(inDevicesList: payloadString) {
+              reader = try server.prepareTracking(transportID: transportID, replacing: reader)
+              prepared = true
+              continue
+            }
             #if PERF_TRACING
             Perf.startupEvent("adb device list received")
             #endif
@@ -257,12 +292,12 @@ public struct ADBClient: Sendable {
 
       continuation.onTermination = { _ in
         streamTask.cancel()
-        connection.close()
+        server.close()
       }
     }
 
-    let handle = TrackDevicesHandle {
-      connection.close()
+    let handle = TrackDevicesHandle(server: server) {
+      server.close()
     }
 
     return (handle, stream)
@@ -279,14 +314,24 @@ public struct ADBClient: Sendable {
   }
 
   func emulatorConnections(checkBoot: Bool = true) async throws -> [EmulatorConnection] {
-    let connections = try await EmulatorConnection.parse(devicesList())
-    guard checkBoot else { return connections }
+    guard checkBoot else { return try await EmulatorConnection.parse(devicesList()) }
+    let (handle, stream) = try await trackDevices()
+    defer { handle.cancel() }
+    let connections = try await EmulatorConnection.parse(firstDeviceSnapshot(from: stream))
+    try Task.checkCancellation()
+    guard let server = handle.server,
+          connections.contains(where: {
+            $0.state == .starting && UInt64($0.transportID ?? "0").map { $0 > 0 } == true
+          }) else {
+      return try await EmulatorConnection.parse(devicesList())
+    }
     let checked = await withTaskGroup(of: EmulatorConnection.self) { group in
       for connection in connections {
         group.addTask {
           var connection = connection
+          let target = DeviceTarget(serial: connection.serial, transportID: connection.transportID, server: server)
           if connection.state == .starting,
-             await (try? isBootComplete(deviceID: connection.serial)) == true {
+             await (try? bound(to: target).isBootComplete(deviceID: connection.serial)) == true {
             connection.state = .running
           }
           return connection
@@ -299,8 +344,45 @@ public struct ADBClient: Sendable {
       return result
     }
     try Task.checkCancellation()
-    let current = try await EmulatorConnection.parse(devicesList())
-    return EmulatorConnection.reconcileBootChecks(checked, current: current)
+    do {
+      let current = try await verifiedDevicesList(server: server)
+      return EmulatorConnection.reconcileBootChecks(checked, current: EmulatorConnection.parse(current))
+    } catch {
+      try Task.checkCancellation()
+      // A fresh list is useful, but boot results from the old server cannot enrich it.
+      return try await EmulatorConnection.parse(devicesList())
+    }
+  }
+
+  private func firstDeviceSnapshot(from stream: AsyncThrowingStream<String, Error>) async throws -> String {
+    try await withThrowingTaskGroup(of: String.self) { group in
+      group.addTask {
+        var iterator = stream.makeAsyncIterator()
+        return try await iterator.next() ?? ""
+      }
+      group.addTask {
+        try await clock.sleep(for: discoveryTimeout)
+        throw ADBError.requestTimedOut("ADB device discovery timed out.")
+      }
+      defer { group.cancelAll() }
+      guard let snapshot = try await group.next() else { throw CancellationError() }
+      return snapshot
+    }
+  }
+
+  private func verifiedDevicesList(server: any DeviceServerConnection) async throws -> String {
+    try await withConnection(maxAttempts: 1) { connection in
+      var output = ""
+      try server.verifyConnection {
+        try connection.withRequestTimeout(discoveryTimeout) {
+          try connection.sendDevicesList()
+          if let payload = try connection.readLengthPrefixedPayload() {
+            output = String(data: payload, encoding: .utf8) ?? ""
+          }
+        }
+      }
+      return output
+    }
   }
 
   public func connectedDeviceIDs() async throws -> [String] {
@@ -357,19 +439,19 @@ public struct ADBClient: Sendable {
   }
 
   public func legacyPluginMetadata(
-    reference: ToolServerReference, kind: ToolID, pid: Int
+    deviceID: String, socketName: String, kind: ToolID, pid: Int
   ) async throws -> LegacyPluginMetadata? {
-    guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)",
+    guard pid > 0, socketName == "snapo_\(kind.rawValue)_\(pid)",
           let request = LegacyPluginReader.request(kind: kind) else { return nil }
     try Task.checkCancellation()
     let clock = AnyClock<Duration>(self.clock)
     do {
       return try await withConnection(maxAttempts: 1) { connection in
         try connection.withRequestTimeout(.seconds(2)) {
-          try connection.sendTransport(to: reference.deviceId)
-          try connection.sendLocalAbstract(reference.socketName)
+          try connection.sendTransport(to: deviceID)
+          try connection.sendLocalAbstract(socketName)
           let deadline = clock.now.advanced(by: .seconds(2))
-          try connection.writeLine(String(request.dropLast()))
+          try connection.writeFully(Data(request.utf8))
           let http = request.hasPrefix("GET ")
           var bytes = Data()
           while true {
@@ -409,7 +491,7 @@ public struct ADBClient: Sendable {
   public func openLocalAbstract(
     deviceID: String,
     abstractSocket: String
-  ) async throws -> ADBSocketConnection {
+  ) async throws -> any ADBConnection {
     try await runWithRetry(maxAttempts: 1) { connection in
       try await withCheckedThrowingContinuation { continuation in
         DispatchQueue.global(qos: .userInitiated).async {
@@ -426,7 +508,7 @@ public struct ADBClient: Sendable {
   }
 
   /// Opens a connection for transports that need direct control of the ADB protocol.
-  public func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
+  public func makeConnection(maxAttempts: Int = 3) async throws -> any ADBConnection {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in connection }
   }
 
@@ -464,7 +546,7 @@ public struct ADBClient: Sendable {
 
   func withConnection<T: Sendable>(
     maxAttempts: Int = 3,
-    _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
+    _ body: @escaping @Sendable (any ADBConnection) throws -> T
   ) async throws -> T {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in
       // Blocking ADB I/O must not occupy Swift's cooperative executor threads.
@@ -480,7 +562,7 @@ public struct ADBClient: Sendable {
 
   private func runWithRetry<T: Sendable>(
     maxAttempts: Int,
-    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
+    _ operation: @escaping @Sendable (any ADBConnection) async throws -> T
   ) async throws -> T {
     var lastError: Error?
 
@@ -488,8 +570,15 @@ public struct ADBClient: Sendable {
       try Task.checkCancellation()
 
       do {
-        let connection = try connectionFactory()
+        if let target { _ = try target.requireTransport(for: target.serial) }
+        let factory = connectionFactory
+        let connection = try await withCheckedThrowingContinuation { continuation in
+          DispatchQueue.global(qos: .userInitiated).async {
+            continuation.resume(with: Result { try factory() })
+          }
+        }
         do {
+          if let target { try connection.bind(to: target) }
           let value = try await withTaskCancellationHandler {
             try await perform(operation, on: connection)
           } onCancel: {
@@ -517,8 +606,8 @@ public struct ADBClient: Sendable {
   }
 
   private func perform<T: Sendable>(
-    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T,
-    on connection: ADBSocketConnection
+    _ operation: @escaping @Sendable (any ADBConnection) async throws -> T,
+    on connection: any ADBConnection
   ) async throws -> T {
     guard let requestTimeout else { return try await operation(connection) }
     return try await withThrowingTaskGroup(of: T.self) { group in
@@ -608,9 +697,11 @@ public struct ADBClient: Sendable {
 }
 
 public struct TrackDevicesHandle: Sendable {
+  let server: (any DeviceServerConnection)?
   private let cancelClosure: @Sendable () -> Void
 
-  init(_ cancelClosure: @escaping @Sendable () -> Void) {
+  init(server: (any DeviceServerConnection)? = nil, _ cancelClosure: @escaping @Sendable () -> Void) {
+    self.server = server
     self.cancelClosure = cancelClosure
   }
 

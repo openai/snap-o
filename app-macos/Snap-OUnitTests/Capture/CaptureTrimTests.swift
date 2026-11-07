@@ -2,6 +2,21 @@ import AppKit
 import Testing
 
 struct CaptureTrimTests {
+  @Test
+  func trimRangeRejectsInvalidBounds() {
+    for range in [
+      CaptureTrimRange(start: -1, end: 1),
+      CaptureTrimRange(start: 1, end: 1),
+      CaptureTrimRange(start: 2, end: 1),
+      CaptureTrimRange(start: 1, end: 4),
+      CaptureTrimRange(start: .nan, end: 1),
+      CaptureTrimRange(start: 0, end: .infinity)
+    ] {
+      #expect(!range.isValid(for: 3))
+    }
+    #expect(CaptureTrimRange(start: 0, end: 3).isValid(for: 3))
+  }
+
   @Test(arguments: [24.0, 30, 60, 29.97])
   func timecodesRoundTripFrameBoundaries(frameRate: Double) throws {
     let timecode = CaptureTrimTimecode(frameRate: frameRate)

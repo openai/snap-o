@@ -1,5 +1,6 @@
 import Dependencies
 import Foundation
+import Observation
 
 struct AppLaunchState: Encodable {
   let pending: Bool
@@ -43,6 +44,8 @@ struct AppToolSnapshot {
 final class AppToolModel {
   var stateChanged: ((AppToolSnapshot) -> Void)?
 
+  private let configuredServerIDs: () -> Set<ADBServerID>
+  private var discoveredApps: [InspectableApp] = []
   private let discover: () async throws -> ToolDiscoverySnapshot
   private let changes: (() async -> AsyncStream<Void>)?
   private let currentDiscovery: (() async -> ToolDiscoverySnapshot)?
@@ -65,15 +68,18 @@ final class AppToolModel {
   private var launchOpening = false
   private var launchWaiting = false
   private var launchError: String?
+  private var pendingWork: [UUID: Task<Void, Never>] = [:]
 
   init(
     preferences: UserDefaults = .standard,
+    configuredServerIDs: @escaping () -> Set<ADBServerID> = { [.local] },
     discover: @escaping () async throws -> ToolDiscoverySnapshot,
     changes: (() async -> AsyncStream<Void>)? = nil,
     currentDiscovery: (() async -> ToolDiscoverySnapshot)? = nil,
     openApp: @escaping (OpenAppInput) async throws -> Void
   ) {
     self.preferences = preferences
+    self.configuredServerIDs = configuredServerIDs
     self.discover = discover
     self.changes = changes
     self.currentDiscovery = currentDiscovery
@@ -95,9 +101,22 @@ final class AppToolModel {
   func start() -> Task<Void, Never>? {
     guard !running else { return nil }
     running = true
+    reconcileSelection()
+    let configuredServerIDs = configuredServerIDs
+    let initialServerIDs = configuredServerIDs()
+    _ = startWork { [weak self] in
+      var previousServerIDs = initialServerIDs
+      for await serverIDs in Observations({ configuredServerIDs() }) {
+        guard !Task.isCancelled, let self, running else { return }
+        guard serverIDs != previousServerIDs else { continue }
+        previousServerIDs = serverIDs
+        reconcileSelection()
+        publish()
+      }
+    }
     let initialScan = refresh()
     if let changes, let currentDiscovery {
-      updatesTask = Task { [weak self] in
+      updatesTask = startWork { [weak self] in
         for await _ in await changes() {
           guard !Task.isCancelled else { return }
           let discovery = await currentDiscovery()
@@ -107,7 +126,7 @@ final class AppToolModel {
       }
     }
     let clock = clock
-    pollingTask = Task { [weak self] in
+    pollingTask = startWork { [weak self] in
       while !Task.isCancelled {
         do { try await clock.sleep(for: .milliseconds(2500)) } catch { return }
         guard !Task.isCancelled, let self else { return }
@@ -119,13 +138,13 @@ final class AppToolModel {
 
   @discardableResult
   func stop() -> Task<Void, Never> {
-    let pending = [pollingTask, refreshTask, updatesTask, launchTask, launchPollingTask].compactMap(\.self)
+    let pending = Array(pendingWork.values)
+    for task in pending {
+      task.cancel()
+    }
     running = false
-    pollingTask?.cancel()
     pollingTask = nil
-    refreshTask?.cancel()
     refreshTask = nil
-    updatesTask?.cancel()
     updatesTask = nil
     cancelLaunch()
     return Task {
@@ -142,7 +161,7 @@ final class AppToolModel {
       discovery = .searching
       publish()
     }
-    refreshTask = Task { [weak self] in
+    refreshTask = startWork { [weak self] in
       guard let self, running, !Task.isCancelled else { return }
       defer { if !Task.isCancelled { refreshTask = nil } }
       do {
@@ -162,6 +181,16 @@ final class AppToolModel {
     return refreshTask
   }
 
+  private func startWork(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    let id = UUID()
+    let task = Task {
+      await operation()
+      pendingWork[id] = nil
+    }
+    pendingWork[id] = task
+    return task
+  }
+
   private func applyDiscovery(_ discovery: ToolDiscoverySnapshot) {
     guard running else { return }
     // Scan completion must publish even if a newer pushed snapshot already supplied the data.
@@ -170,12 +199,18 @@ final class AppToolModel {
       guard discoveryRevision.map({ revision > $0 }) ?? true else { return }
       discoveryRevision = revision
     }
+    discoveredApps = discovery.apps
+    reconcileSelection()
+  }
+
+  private func reconcileSelection() {
     let previous = launchKey
-    selection.reconcile(discovery.apps)
+    selection.reconcile(discoveredApps, serverIDs: configuredServerIDs())
     if previous != launchKey { cancelLaunch() }
   }
 
   func selectApp(_ app: InspectableApp) {
+    guard configuredServerIDs().contains(DeviceID(storedValue: app.deviceId).serverID) else { return }
     let previous = launchKey
     selection.selectApp(app)
     if previous != launchKey { cancelLaunch() }
@@ -183,6 +218,7 @@ final class AppToolModel {
   }
 
   func selectTool(_ app: InspectableApp, option: AppToolOption) {
+    guard configuredServerIDs().contains(DeviceID(storedValue: app.deviceId).serverID) else { return }
     let previous = launchKey
     selection.selectTool(app, option: option)
     if previous != launchKey { cancelLaunch() }
@@ -204,7 +240,7 @@ final class AppToolModel {
     launchError = nil
     publish()
     let clock = clock
-    launchPollingTask = Task { [weak self] in
+    launchPollingTask = startWork { [weak self] in
       for _ in 0 ..< 10 {
         do { try await clock.sleep(for: .milliseconds(500)) } catch { return }
         guard !Task.isCancelled, self?.launchID == id else { return }
@@ -215,7 +251,7 @@ final class AppToolModel {
       if !launchOpening { launchID = nil }
       publish()
     }
-    launchTask = Task { [weak self] in
+    launchTask = startWork { [weak self] in
       guard let self else { return }
       do {
         try await openApp(input)

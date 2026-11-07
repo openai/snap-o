@@ -2,6 +2,9 @@ import Foundation
 
 @objc(AndroidHostServiceProtocol)
 protocol AndroidHostServiceProtocol {
+  func openADBTunnel(_ id: String, configuration: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func connectADBTunnel(_ id: String, reply: @escaping @Sendable (FileHandle?, String?) -> Void)
+  func closeADBTunnel(_ id: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -10,8 +13,31 @@ protocol AndroidHostServiceProtocol {
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func delete(_ avdID: String, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func stop(_ avdID: String, serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
-  func controls(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
-  func control(_ serial: String, avdPath: String, action: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func controls(_ serial: String, native: Data, display: any EmulatorDisplayProvider, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func control(
+    _ serial: String, request: Data, display: any EmulatorDisplayProvider,
+    reply: @escaping @Sendable (Data?, String?) -> Void
+  )
+}
+
+/// The helper requests readings from the app's already selected device connection.
+@objc(EmulatorDisplayProvider)
+protocol EmulatorDisplayProvider: Sendable {
+  func readDisplay(reply: @escaping @Sendable (String?, String?) -> Void)
+}
+
+enum AndroidHostInterface {
+  static func make() -> NSXPCInterface {
+    let interface = NSXPCInterface(with: AndroidHostServiceProtocol.self)
+    let display = NSXPCInterface(with: EmulatorDisplayProvider.self)
+    interface.setInterface(
+      display, for: #selector(AndroidHostServiceProtocol.controls(_:native:display:reply:)), argumentIndex: 2, ofReply: false
+    )
+    interface.setInterface(
+      display, for: #selector(AndroidHostServiceProtocol.control(_:request:display:reply:)), argumentIndex: 2, ofReply: false
+    )
+    return interface
+  }
 }
 
 enum EmulatorControlAction: String, Codable, CaseIterable {
@@ -206,15 +232,55 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
   }
 }
 
+struct EmulatorControlRequest: Codable {
+  let native: EmulatorNativeConnection
+  let avdPath: String
+  let action: EmulatorControlAction
+}
+
+/// Identifies the verified gRPC peer kept alive during a native console operation.
+struct EmulatorNativeConnection: Codable {
+  let processID: Int32
+  let grpcPort: Int
+  let clientPort: Int
+}
+
 /// Credentials stay in memory and are used only for the local emulator connection.
 struct EmulatorGRPCEndpoint: Codable {
   let port: Int
   let token: String?
   var expiresAt: Date?
+  var processID: Int32?
 
   static func isEmulator(_ deviceID: String) -> Bool {
     guard deviceID.hasPrefix("emulator-"),
           let port = UInt16(deviceID.dropFirst(9)) else { return false }
     return port >= 1024
   }
+}
+
+struct SSHConfiguration: Codable, Equatable {
+  let destination: String
+  var port: UInt16?
+  var adbPort: UInt16 = 5037
+
+  var displayAddress: String {
+    var ports: [String] = []
+    if let port, port != 22 { ports.append("SSH \(port)") }
+    if adbPort != 5037 { ports.append("ADB \(adbPort)") }
+    return destination + (ports.isEmpty ? "" : " (" + ports.joined(separator: ", ") + ")")
+  }
+
+  func validate() throws {
+    guard !destination.isEmpty, destination.utf8.count <= 512,
+          !destination.hasPrefix("-"),
+          !destination.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains($0) }),
+          port != 0, adbPort != 0 else {
+      throw NSError(domain: "SnapO.SSH", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid SSH server configuration."])
+    }
+  }
+}
+
+struct ADBTunnelHandle: Codable {
+  let id: String
 }

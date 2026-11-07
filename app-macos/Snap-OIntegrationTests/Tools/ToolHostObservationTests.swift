@@ -1,0 +1,347 @@
+import Clocks
+import Dependencies
+import DependenciesTestSupport
+import Foundation
+import Observation
+@testable import Snap_O
+import Synchronization
+import Testing
+import WebKit
+
+@Suite(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
+@MainActor
+struct ToolHostObservationTests {
+  @Test
+  func toolbarAndConnectionUpdatesDoNotInvalidateMenuState() {
+    let page = makePage()
+    defer { page.container.stop() }
+    let menuChanges = Mutex(0)
+    withObservationTracking {
+      _ = page.isReady
+      _ = page.identity.storageIdentifier
+      _ = page.identity.developmentURL
+    } onChange: {
+      menuChanges.withLock { $0 += 1 }
+    }
+
+    for revision in 1 ... 10 {
+      page.toolbar = ToolToolbar(revision: revision, actions: [])
+      page.connection.revision = revision
+      page.error = "Synthetic load failure \(revision)"
+    }
+    #expect(menuChanges.withLock { $0 } == 0)
+
+    page.isReady = true
+    #expect(menuChanges.withLock { $0 } == 1)
+  }
+
+  @Test
+  func toolbarChangesRemainObservable() {
+    let page = makePage()
+    defer { page.container.stop() }
+    let toolbarChanges = Mutex(0)
+    withObservationTracking {
+      _ = page.toolbar.actions
+    } onChange: {
+      toolbarChanges.withLock { $0 += 1 }
+    }
+
+    page.isReady = true
+    page.connection.connected = true
+    #expect(toolbarChanges.withLock { $0 } == 0)
+
+    page.toolbar.actions.append(ToolToolbarAction(
+      placement: .start, type: .button, id: "clear", icon: .clear,
+      label: "Clear", enabled: true, value: nil, inputRevision: nil
+    ))
+    #expect(toolbarChanges.withLock { $0 } == 1)
+    #expect(page.toolbar.actions.map(\.id) == ["clear"])
+  }
+
+  @Test(arguments: [false, true])
+  func waitingForAnAppDoesNotCreateAWebView(restoreSelection: Bool) throws {
+    let suite = "ToolHostWaitingTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let app = selectionApp()
+    if restoreSelection {
+      var selection = ToolSelection()
+      selection.reconcile([app])
+      defaults.set(selection.serialized, forKey: "inspectorPreferences")
+    }
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+
+    #expect(host.preferredPluginID == (restoreSelection ? .network : nil))
+    #expect(host.selectedTool == nil)
+    #expect(host.presentation != .tool)
+    #expect(host.webContainer == nil)
+    #expect(!host.isPageReady)
+
+    // A remembered app or toolbar choice does not mean its process is available.
+    host.selectTool(app, option: app.tools[0])
+    #expect(host.selectedToolApp?.id == app.id)
+    #expect(host.selectedTool == nil)
+    #expect(host.presentation != .tool)
+    #expect(host.webContainer == nil)
+  }
+
+  @Test(arguments: [false, true])
+  func switchingToAnUnavailableAppRemovesThePreviousPage(reusePID: Bool) async throws {
+    let suite = "ToolHostSwitchTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var first = selectionApp(kinds: [.network], processIdentity: "boot:10:1")
+    first.tools[0].compatibility = .unknown
+    var next = selectionApp(
+      reusePID ? 10 : 20, kinds: [.network],
+      process: reusePID ? "com.example.demo" : "com.example.other",
+      processIdentity: reusePID ? "boot:10:2" : "boot:20:1"
+    )
+    next.tools[0].compatibility = .unknown
+    var apps = [first]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+    try await waitForState { host.webContainer != nil }
+    let previous = try #require(host.webContainer)
+    let lateReadiness = previous.pageReadinessChangedHandler
+    previous.pageReadinessChangedHandler?(true)
+    #expect(host.isPageReady)
+
+    apps = []
+    appTool.refresh()
+    try await waitForState { host.presentation != .tool }
+    #expect(host.webContainer === previous, "Keep cached content when the same app disconnects")
+
+    host.selectTool(next, option: next.tools[0])
+    #expect(host.selectedTool == nil)
+    #expect(host.webContainer == nil)
+    #expect(!host.isPageReady)
+    #expect(host.toolbarActions.isEmpty)
+    #expect(!host.canConfigureDevelopmentServer)
+    #expect(host.developmentURL == nil)
+    lateReadiness?(true)
+    #expect(!host.isPageReady, "Callbacks from the removed page must not restore its readiness")
+
+    apps = [next]
+    appTool.refresh()
+    try await waitForState { host.webContainer != nil }
+    #expect(host.webContainer !== previous)
+    #expect(host.selectedTool?.appId == next.id)
+    #expect(!host.isPageReady)
+  }
+
+  @Test
+  func developmentServerCanBeChangedAndClearedWhileDisconnected() async throws {
+    let suite = "ToolHostDevelopmentServerTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var app = selectionApp(kinds: [.network])
+    app.tools[0].compatibility = .unknown
+    var apps = [app]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+    try await waitForState { host.webContainer != nil }
+    let firstURL = try #require(URL(string: "http://127.0.0.1:5173/"))
+    host.useDevelopmentServer(firstURL)
+    #expect(host.developmentURL == firstURL)
+
+    apps = []
+    appTool.refresh()
+    try await waitForState { host.presentation != .tool }
+    let secondURL = try #require(URL(string: "http://127.0.0.1:5174/"))
+    host.useDevelopmentServer(secondURL)
+    #expect(host.webContainer == nil)
+    #expect(host.developmentURL == secondURL)
+    #expect(host.canConfigureDevelopmentServer)
+
+    host.useDevelopmentServer(nil)
+    #expect(host.developmentURL == nil)
+    #expect(host.canConfigureDevelopmentServer)
+    apps = [app]
+    appTool.refresh()
+    try await waitForState { host.webContainer != nil }
+    #expect(host.developmentURL == nil)
+  }
+
+  @Test
+  func appDiscoveryIsNotLoadedUntilTheFirstSuccessfulScan() async throws {
+    let suite = "ToolHostDiscoveryTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var selection = ToolSelection()
+    selection.reconcile([selectionApp()])
+    defaults.set(selection.serialized, forKey: "inspectorPreferences")
+    var scans = 0
+    var shouldFail = true
+    var apps: [InspectableApp] = []
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      scans += 1
+      if shouldFail { throw NSError(domain: "ToolHostDiscoveryTests", code: 1) }
+      return ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+
+    #expect(host.presentation == .findingApps)
+    try await waitForState { host.presentation == .discoveryFailed }
+    #expect(scans == 1)
+    #expect(host.presentation == .discoveryFailed, "A failed scan does not establish that no apps exist")
+    #expect(host.webContainer == nil)
+
+    shouldFail = false
+    appTool.refresh()
+    try await waitForState { host.presentation == .noApps }
+    #expect(host.toolApps.isEmpty)
+    #expect(host.selectedToolApp == nil)
+
+    apps = [selectionApp(20, process: "com.example.other")]
+    appTool.refresh()
+    try await waitForState { !host.toolApps.isEmpty }
+    #expect(host.presentation == .needsSelection)
+    #expect(host.selectedToolApp == nil, "An unmatched saved preference still needs an explicit selection")
+    #expect(host.webContainer == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1)), .dependency(\.continuousClock, TestClock()))
+  func cachedUpdatesDoNotCompleteDiscoveryOrClearFailure() async throws {
+    let suite = "ToolHostCachedDiscoveryTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let (updates, continuation) = AsyncStream<Void>.makeStream()
+    let (scans, scanContinuation) = AsyncStream<CheckedContinuation<ToolDiscoverySnapshot, Error>>.makeStream()
+    let (snapshots, snapshotContinuation) = AsyncStream<AppToolSnapshot>.makeStream()
+    defer {
+      continuation.finish()
+      scanContinuation.finish()
+      snapshotContinuation.finish()
+    }
+    var scanRequests = scans.makeAsyncIterator()
+    var publications = snapshots.makeAsyncIterator()
+    var reads = 0
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      try await withCheckedThrowingContinuation { scanContinuation.yield($0) }
+    }, changes: {
+      continuation.yield(())
+      return updates
+    }, currentDiscovery: {
+      reads += 1
+      return ToolDiscoverySnapshot(apps: [], revision: UInt64(reads + 10))
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+    let applySnapshot = appTool.stateChanged
+    appTool.stateChanged = { snapshot in
+      applySnapshot?(snapshot)
+      snapshotContinuation.yield(snapshot)
+    }
+
+    let firstScan = try #require(await scanRequests.next())
+    let initialUpdate = try #require(await publications.next())
+    #expect(initialUpdate.presentation == .findingApps)
+    #expect(host.presentation == .findingApps)
+    #expect(host.webContainer == nil)
+    firstScan.resume(throwing: NSError(domain: "DiscoveryTests", code: 1))
+    let failure = try #require(await publications.next())
+    #expect(failure.presentation == .discoveryFailed)
+    continuation.yield(())
+    let cachedUpdate = try #require(await publications.next())
+    #expect(reads == 2)
+    #expect(cachedUpdate.presentation == .discoveryFailed)
+    #expect(host.presentation == .discoveryFailed)
+
+    host.retryDiscovery()
+    let retry = try #require(await publications.next())
+    #expect(retry.presentation == .findingApps)
+    let secondScan = try #require(await scanRequests.next())
+    // Finishing a scan establishes the empty state even when its data revision is older.
+    secondScan.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
+    let completed = try #require(await publications.next())
+    #expect(completed.presentation == .noApps)
+    #expect(host.presentation == .noApps)
+    #expect(host.webContainer == nil)
+  }
+
+  @Test
+  func switchingAppsDiscardsHiddenToolPages() async throws {
+    let suite = "ToolHostHiddenPageTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var first = selectionApp()
+    for index in first.tools.indices {
+      first.tools[index].compatibility = .unknown
+    }
+    var next = selectionApp(20, process: "com.example.other")
+    for index in next.tools.indices {
+      next.tools[index].compatibility = .unknown
+    }
+    let apps = [first, next]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool, makeContainer: { _, _, _ in FakeToolPage() })
+    defer { host.stop() }
+    try await waitForState { host.webContainer != nil }
+    let network = try #require(host.webContainer)
+    let lateReadiness = network.pageReadinessChangedHandler
+    host.selectTool(first, option: first.tools[1])
+    let tweaks = try #require(host.webContainer)
+    #expect(tweaks !== network)
+    host.selectTool(first, option: first.tools[0])
+    #expect(host.webContainer === network, "Switching tools preserves the same app's page")
+    host.selectTool(next, option: next.tools[1])
+    #expect(host.webContainer !== tweaks)
+    lateReadiness?(true)
+    #expect(!host.isPageReady)
+    host.selectTool(first, option: first.tools[0])
+    #expect(host.webContainer !== network, "A hidden page cannot outlive its selected app")
+    #expect(!host.isPageReady)
+  }
+
+  private func makePage() -> ToolHostModel.Page {
+    ToolHostModel.Page(
+      identity: ToolHostModel.PageIdentity(
+        appID: nil, server: nil, processIdentity: nil, storageIdentifier: UUID(),
+        packageRevision: nil, frontend: nil, developmentURL: nil, compatibility: .unknown
+      ),
+      container: FakeToolPage()
+    )
+  }
+}
+
+@MainActor
+private final class FakeToolPage: ToolPageContainer {
+  var webView: WKWebView {
+    preconditionFailure("Model tests must not request a native view")
+  }
+
+  var pageReadinessChangedHandler: ((Bool) -> Void)?
+  var pageLoadFailedHandler: ((String) -> Void)?
+  func start(frontend: ToolFrontendBundle?) {}
+  func setServer(_ endpoint: ToolHTTPService.Endpoint?) {}
+  func sendPageEvent(name: String, payload: some Encodable) {}
+  func stop() {}
+  func finishStopping() async {}
+  func closeNativeColorPanel() {}
+  #if DEBUG
+  func showWebInspector() {}
+  #endif
+}
