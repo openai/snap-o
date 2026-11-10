@@ -1,24 +1,34 @@
 package com.openai.snapo.tweaks.overlay
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
@@ -26,14 +36,16 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,8 +53,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -50,8 +71,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import com.openai.snapo.tweaks.SnapOTweakEntry
 import com.openai.snapo.tweaks.SnapOTweakValue
@@ -62,9 +88,16 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val MaximumDiscreteSliderIntervals = 1_000
+private val ControlHorizontalPadding = 6.dp
+private val InlineFieldSpacing = 4.dp
+private val MinimumInlineLabelWidth = 72.dp
+private val MinimumSliderTrackWidth = 96.dp
+private val SliderTrackHeight = 12.dp
+private val NumericEditorWidth = 84.dp
 
 @Composable
 internal fun TweakOverlayControl(
@@ -79,26 +112,29 @@ internal fun TweakOverlayControl(
     ) {
         when (val defaultValue = tweak.defaultValue) {
             is SnapOTweakValue.Integer -> if (defaultValue.hasSliderBounds()) {
-                TweakNumericControl(tweak) { modifier ->
-                    TweakIntegerSlider(tweak, defaultValue, modifier)
-                }
+                TweakNumericControl(
+                    tweak = tweak,
+                    slider = { TweakIntegerSlider(tweak, defaultValue, it) },
+                    editor = { TweakIntegerEditor(tweak, defaultValue, it) },
+                )
             } else {
                 TweakOverlayLabelRow(tweak) {
-                    TweakIntegerEditor(tweak, defaultValue)
+                    TweakIntegerEditor(tweak, defaultValue, Modifier.width(NumericEditorWidth))
                 }
             }
             is SnapOTweakValue.Floating -> if (defaultValue.hasSliderBounds()) {
-                TweakNumericControl(tweak) { modifier ->
-                    TweakFloatingSlider(tweak, defaultValue, modifier)
-                }
+                TweakNumericControl(
+                    tweak = tweak,
+                    slider = { TweakFloatingSlider(tweak, defaultValue, it) },
+                    editor = { TweakFloatingEditor(tweak, defaultValue, it) },
+                )
             } else {
                 TweakOverlayLabelRow(tweak) {
-                    TweakFloatingEditor(tweak, defaultValue)
+                    TweakFloatingEditor(tweak, defaultValue, Modifier.width(NumericEditorWidth))
                 }
             }
-            is SnapOTweakValue.Text -> {
-                TweakOverlayLabelRow(tweak) {}
-                TweakTextEditor(tweak)
+            is SnapOTweakValue.Text -> TweakInlineFieldRow(tweak) { modifier ->
+                TweakTextEditor(tweak, modifier)
             }
             is SnapOTweakValue.Toggle -> TweakOverlayLabelRow(tweak) {
                 TweakToggleField(tweak)
@@ -113,13 +149,7 @@ internal fun TweakOverlayControl(
                 TweakColorField(tweak, onSelectColor)
             }
             is SnapOTweakValue.Action -> TweakOverlayLabelRow(tweak) {
-                val action = tweak.value.value as SnapOTweakValue.Action
-                TextButton(
-                    onClick = { SnapOTweaks.invokeAction(tweak.name) },
-                    enabled = !action.conflicted,
-                ) {
-                    Text(if (action.conflicted) "Conflict" else "Run")
-                }
+                TweakActionField(tweak)
             }
         }
     }
@@ -185,72 +215,137 @@ internal fun hasRepresentableFloatingSliderBounds(
 private fun TweakNumericControl(
     tweak: SnapOTweakEntry,
     slider: @Composable (Modifier) -> Unit,
+    editor: @Composable (Modifier) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = TweakOverlayLayout.sliderRowHeight),
-        verticalArrangement = Arrangement.spacedBy(
-            (TweakOverlayLayout.sliderLabelSpacing - 36.dp).coerceIn(-24.dp, 0.dp),
-        ),
-    ) {
-        TweakOverlayLabelRow(
-            tweak = tweak,
-            compact = true,
+    val colors = TweakOverlayColors.current
+    var editingNumber by remember { mutableStateOf(false) }
+    val editorWidth = if (editingNumber) NumericEditorWidth else 52.dp
+    val minimumFieldWidth = with(LocalDensity.current) {
+        val sliderWidth = MinimumSliderTrackWidth.roundToPx() + 2 * ControlHorizontalPadding.roundToPx()
+        (sliderWidth + InlineFieldSpacing.roundToPx() + editorWidth.roundToPx()).toDp()
+    }
+    TweakInlineFieldRow(tweak, reservedFieldWidth = minimumFieldWidth) { modifier ->
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(InlineFieldSpacing),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            TweakNumericFieldValue(tweak)
+            slider(Modifier.weight(1f).semantics { contentDescription = tweak.name })
+            editor(
+                Modifier
+                    .width(editorWidth)
+                    .heightIn(min = TweakOverlayLayout.fieldRowHeight)
+                    .onFocusChanged { editingNumber = it.isFocused }
+                    .semantics { contentDescription = "Edit ${tweak.name}" }
+                    .wrapContentHeight()
+                    .background(colors.field, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 6.dp, vertical = 5.dp),
+            )
         }
-        slider(
-            Modifier.requiredHeight(48.dp),
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TweakInlineFieldRow(
+    tweak: SnapOTweakEntry,
+    reservedFieldWidth: Dp? = null,
+    field: @Composable (Modifier) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = ControlHorizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(InlineFieldSpacing),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        val labelModifier = if (reservedFieldWidth == null) {
+            Modifier.weight(1f).widthIn(min = MinimumInlineLabelWidth)
+        } else {
+            Modifier.layout { measurable, constraints ->
+                val inlineWidth = constraints.maxWidth - reservedFieldWidth.roundToPx() - InlineFieldSpacing.roundToPx()
+                // Let FlowRow place the controls below the label when an inline label would be too narrow.
+                val labelConstraints = if (inlineWidth >= MinimumInlineLabelWidth.roundToPx()) {
+                    constraints.copy(maxWidth = inlineWidth)
+                } else {
+                    constraints
+                }
+                val label = measurable.measure(labelConstraints)
+                layout(label.width, label.height) { label.placeRelative(0, 0) }
+            }
+        }
+        TweakOverlayLabel(
+            tweak = tweak,
+            resetButtonHeight = 20.dp,
+            modifier = labelModifier,
+            reserveResetSpace = true,
         )
+        // FlowRow uses the field's intrinsic width to decide when it needs its own line.
+        field(Modifier.weight(2f).width(reservedFieldWidth ?: 152.dp))
     }
 }
 
 @Composable
 private fun TweakOverlayLabelRow(
     tweak: SnapOTweakEntry,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
     field: @Composable () -> Unit,
 ) {
+    Layout(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = ControlHorizontalPadding)
+            .heightIn(min = TweakOverlayLayout.fieldRowHeight),
+        content = {
+            TweakOverlayLabel(tweak, TweakOverlayLayout.fieldRowHeight)
+            Box(contentAlignment = Alignment.CenterEnd) { field() }
+        },
+    ) { (label, control), constraints ->
+        val gap = 8.dp.roundToPx()
+        val available = constraints.copy(minWidth = 0, minHeight = 0).offset(horizontal = -gap)
+        // Reserve up to 40% for the label. A compact control gives the label the remaining space.
+        val preferredLabelWidth = label.maxIntrinsicWidth(available.maxHeight)
+        val labelReserve = minOf(preferredLabelWidth, (available.maxWidth * 0.4f).roundToInt())
+        val measuredControl = control.measure(available.offset(horizontal = -labelReserve))
+        val measuredLabel = label.measure(available.offset(horizontal = -measuredControl.width))
+        val width = constraints.constrainWidth(measuredLabel.width + gap + measuredControl.width)
+        val height = constraints.constrainHeight(maxOf(measuredLabel.height, measuredControl.height))
+        layout(width, height) {
+            measuredLabel.placeRelative(0, (height - measuredLabel.height) / 2)
+            measuredControl.placeRelative(width - measuredControl.width, (height - measuredControl.height) / 2)
+        }
+    }
+}
+
+@Composable
+private fun TweakOverlayLabel(
+    tweak: SnapOTweakEntry,
+    resetButtonHeight: Dp,
+    modifier: Modifier = Modifier,
+    reserveResetSpace: Boolean = false,
+) {
     val colors = TweakOverlayColors.current
-    val rowHeight = if (compact) 20.dp else 48.dp
     val isChanged by remember(tweak) {
         derivedStateOf(structuralEqualityPolicy()) { tweak.isChanged }
     }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp)
-            .heightIn(min = rowHeight),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = tweak.name.substringAfter('/'),
-                modifier = Modifier.weight(1f, fill = false),
-                color = colors.foreground,
-                fontSize = 13.sp,
-            )
-
-            if (isChanged) {
-                val spacing = TweakOverlayLayout.resetButtonSpacing
-
-                Box(
-                    modifier = Modifier
-                        .width(24.dp + spacing)
-                        .height(rowHeight),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
+    val emptyResetSlot = reserveResetSpace && !isChanged
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = tweak.name.substringAfter('/'),
+            modifier = if (emptyResetSlot) Modifier else Modifier.weight(1f, fill = false),
+            color = colors.foreground,
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+        )
+        if (isChanged || reserveResetSpace) {
+            val slotWidth = if (reserveResetSpace) 24.dp else 24.dp + TweakOverlayLayout.resetButtonSpacing
+            // Measure the text first while the reset slot is empty. The slot takes only the space left over.
+            val slotModifier = if (emptyResetSlot) Modifier.weight(1f, fill = false) else Modifier
+            Box(
+                modifier = slotModifier.width(slotWidth).height(resetButtonHeight),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (isChanged) {
                     IconButton(
                         onClick = { SnapOTweaks.reset(tweak.name) },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .offset(x = spacing - 12.dp),
+                        modifier = Modifier.size(width = 24.dp, height = 48.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.snapo_tweaks_restart),
@@ -262,41 +357,70 @@ private fun TweakOverlayLabelRow(
                 }
             }
         }
-
-        Box(
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            field()
-        }
     }
-}
-
-@Composable
-private fun TweakNumericFieldValue(tweak: SnapOTweakEntry) {
-    val value = when (val currentValue = tweak.value.value) {
-        is SnapOTweakValue.Integer -> currentValue.value.toString()
-        is SnapOTweakValue.Floating -> currentValue.value.toString()
-        else -> return
-    }
-
-    TweakFieldText(value)
 }
 
 @Composable
 private fun TweakToggleField(tweak: SnapOTweakEntry) {
     val colors = TweakOverlayColors.current
     val value = tweak.value.value as SnapOTweakValue.Toggle
+    val interactionSource = remember { MutableInteractionSource() }
 
-    Checkbox(
-        checked = value.value,
-        onCheckedChange = { checked ->
-            SnapOTweaks.update(tweak.name, value.copy(value = checked))
-        },
-        colors = CheckboxDefaults.colors(
-            checkedColor = colors.foreground,
-            uncheckedColor = colors.secondary,
-        ),
-    )
+    Box(
+        modifier = Modifier
+            .size(width = 48.dp, height = TweakOverlayLayout.fieldRowHeight)
+            .toggleable(
+                value = value.value,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Checkbox,
+            ) { checked ->
+                SnapOTweaks.update(tweak.name, value.copy(value = checked))
+            }
+            .semantics { contentDescription = tweak.name.substringAfter('/') },
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Checkbox(
+            checked = value.value,
+            onCheckedChange = null,
+            modifier = Modifier.size(20.dp).indication(interactionSource, ripple(bounded = false, radius = 20.dp)),
+            colors = CheckboxDefaults.colors(
+                checkedColor = colors.foreground,
+                uncheckedColor = colors.secondary,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun TweakActionField(tweak: SnapOTweakEntry) {
+    val action = tweak.value.value as SnapOTweakValue.Action
+    val colors = ButtonDefaults.textButtonColors()
+    Box(
+        modifier = Modifier
+            .sizeIn(minWidth = 48.dp, minHeight = TweakOverlayLayout.fieldRowHeight)
+            .clickable(enabled = !action.conflicted, role = Role.Button) { SnapOTweaks.invokeAction(tweak.name) }
+            .semantics {
+                contentDescription = if (action.conflicted) "Conflict for ${tweak.name}" else "Run ${tweak.name}"
+            },
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        if (action.conflicted) {
+            Text("Conflict", color = colors.disabledContentColor, style = MaterialTheme.typography.labelLarge)
+        } else {
+            Box(
+                modifier = Modifier.size(28.dp).background(TweakOverlayColors.current.field, RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.snapo_tweaks_play),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.contentColor,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -306,23 +430,12 @@ private fun TweakSelectionField(tweak: SnapOTweakEntry) {
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        Row(
-            modifier = Modifier
-                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                .clickable(
-                    role = Role.Button,
-                    onClick = { expanded = true },
-                )
-                .semantics {
-                    contentDescription = "Choose option for ${tweak.name}. Current value: ${selection.value}"
-                }
-                .padding(start = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            TweakFieldText(selection.value)
-            Text(text = "▾", color = colors.secondary, fontSize = 11.sp)
-        }
+        TweakSelectionButton(
+            name = tweak.name,
+            value = selection.value,
+            expanded = expanded,
+            onClick = { expanded = true },
+        )
 
         DropdownMenu(
             expanded = expanded,
@@ -361,9 +474,46 @@ private fun TweakSelectionField(tweak: SnapOTweakEntry) {
 }
 
 @Composable
+private fun TweakSelectionButton(
+    name: String,
+    value: String,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = TweakOverlayColors.current
+    Row(
+        modifier = Modifier
+            .sizeIn(minWidth = 48.dp, minHeight = TweakOverlayLayout.fieldRowHeight)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Choose option for $name. Current value: $value" }
+            .padding(vertical = 8.dp)
+            .background(colors.field, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = value,
+            modifier = Modifier.weight(1f, fill = false),
+            color = colors.foreground,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            painter = painterResource(R.drawable.snapo_tweaks_chevron_down),
+            contentDescription = null,
+            modifier = Modifier.rotate(if (expanded) 180f else 0f),
+            tint = colors.foreground,
+        )
+    }
+}
+
+@Composable
 private fun TweakIntegerEditor(
     tweak: SnapOTweakEntry,
     defaultValue: SnapOTweakValue.Integer,
+    modifier: Modifier,
 ) {
     val value = tweak.value.value as SnapOTweakValue.Integer
     val origin = defaultValue.min ?: defaultValue.value
@@ -371,6 +521,7 @@ private fun TweakIntegerEditor(
     TweakNumericEditor(
         committed = value.value.toString(),
         keyboardType = numericKeyboardType(defaultValue.min),
+        modifier = modifier,
     ) { updated ->
         val parsed = updated.toIntOrNull() ?: return@TweakNumericEditor
         val isValid = isValidIntegerEditorValue(
@@ -392,6 +543,7 @@ private fun TweakIntegerEditor(
 private fun TweakFloatingEditor(
     tweak: SnapOTweakEntry,
     defaultValue: SnapOTweakValue.Floating,
+    modifier: Modifier,
 ) {
     val value = tweak.value.value as SnapOTweakValue.Floating
     val origin = defaultValue.min ?: defaultValue.value
@@ -399,6 +551,7 @@ private fun TweakFloatingEditor(
     TweakNumericEditor(
         committed = value.value.toString(),
         keyboardType = numericKeyboardType(defaultValue.min),
+        modifier = modifier,
     ) { updated ->
         val parsed = updated.toFloatOrNull() ?: return@TweakNumericEditor
         val isValid = isValidFloatingEditorValue(
@@ -427,6 +580,7 @@ internal fun numericKeyboardType(minimum: Number?): KeyboardType =
 private fun TweakNumericEditor(
     committed: String,
     keyboardType: KeyboardType,
+    modifier: Modifier,
     onValueChange: (String) -> Unit,
 ) {
     val colors = TweakOverlayColors.current
@@ -434,7 +588,7 @@ private fun TweakNumericEditor(
     var isFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(committed, isFocused) {
-        if (!isFocused) draft = committed
+        if (!isFocused || draft.toDoubleOrNull() != committed.toDoubleOrNull()) draft = committed
     }
 
     BasicTextField(
@@ -443,9 +597,7 @@ private fun TweakNumericEditor(
             draft = updated
             onValueChange(updated)
         },
-        modifier = Modifier
-            .width(84.dp)
-            .onFocusChanged { isFocused = it.isFocused },
+        modifier = modifier.onFocusChanged { isFocused = it.isFocused },
         cursorBrush = SolidColor(colors.foreground),
         textStyle = TextStyle(
             color = colors.foreground,
@@ -478,6 +630,7 @@ private fun TweakIntegerSlider(
         },
         valueRange = min.toFloat()..snapper.effectiveMaximum.toFloat(),
         steps = snapper.materialSteps,
+        stepSize = defaultValue.step.coerceAtLeast(1).toDouble(),
         modifier = modifier,
     )
 }
@@ -505,6 +658,7 @@ private fun TweakFloatingSlider(
         },
         valueRange = min..snapper.effectiveMaximum,
         steps = snapper.materialSteps,
+        stepSize = defaultValue.step?.toDouble(),
         modifier = modifier,
     )
 }
@@ -627,48 +781,89 @@ private fun TweakCompactSlider(
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
+    stepSize: Double?,
     modifier: Modifier = Modifier,
 ) {
     val colors = TweakOverlayColors.current
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = colors.foreground,
-        activeTrackColor = colors.foreground,
-        inactiveTrackColor = colors.outline,
-    )
     val interactionSource = remember { MutableInteractionSource() }
+    val density = LocalDensity.current.density
+    var trackWidthPx by remember { mutableIntStateOf(0) }
+    val fineStep = fineSliderScrubStep(valueRange, stepSize, trackWidthPx / density)
 
     Slider(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TweakOverlayLayout.fieldRowHeight)
+            .padding(horizontal = ControlHorizontalPadding),
         valueRange = valueRange,
         steps = steps,
-        colors = sliderColors,
         interactionSource = interactionSource,
         thumb = {
-            SliderDefaults.Thumb(
-                interactionSource = interactionSource,
-                colors = sliderColors,
-                thumbSize = DpSize(12.dp, 12.dp),
+            // Material reserves half the thumb width at each end for the rounded caps.
+            Spacer(
+                Modifier.size(SliderTrackHeight)
+                    .scrubByStep(fineStep, value, valueRange, interactionSource, onValueChange)
+                    .indication(interactionSource, ripple(bounded = false, radius = 16.dp)),
             )
         },
         track = { state ->
-            SliderDefaults.Track(
-                sliderState = state,
-                modifier = Modifier.height(2.dp),
-                colors = sliderColors,
-                drawStopIndicator = null,
-                drawTick = { _, _ -> },
-                thumbTrackGapSize = 0.dp,
-                trackInsideCornerSize = 0.dp,
-            )
+            Canvas(Modifier.fillMaxWidth().height(SliderTrackHeight).onSizeChanged { trackWidthPx = it.width }) {
+                val startX = if (layoutDirection == LayoutDirection.Rtl) size.width else 0f
+                val start = Offset(startX, center.y)
+                val end = Offset(size.width - startX, center.y)
+                val selected = lerp(start, end, state.coercedValueAsFraction)
+                drawLine(colors.outline, start, end, size.height, StrokeCap.Round)
+                drawLine(colors.foreground, start, selected, size.height, StrokeCap.Round)
+                // A zero-length line has no end cap when the slider is at its minimum.
+                drawCircle(colors.foreground, size.height / 2, selected)
+                drawCircle(colors.surface, 2.5.dp.toPx(), selected)
+            }
         },
+    )
+}
+
+internal fun fineSliderScrubStep(
+    range: ClosedFloatingPointRange<Float>,
+    step: Double?,
+    trackWidthDp: Float,
+): Double? {
+    if (step == null || step <= 0.0 || trackWidthDp <= 0f) return null
+    val intervals = round((range.endInclusive.toDouble() - range.start.toDouble()) / step)
+    return step.takeIf { intervals > trackWidthDp }
+}
+
+@Composable
+private fun Modifier.scrubByStep(
+    step: Double?,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    interactionSource: MutableInteractionSource,
+    onValueChange: (Float) -> Unit,
+): Modifier {
+    if (step == null) return this
+    val density = LocalDensity.current.density
+    var unsnapped by remember { mutableDoubleStateOf(value.toDouble()) }
+    val drag = rememberDraggableState { deltaPx ->
+        // Keep fractional steps between pointer events. The caller snaps the published value.
+        unsnapped = (unsnapped + deltaPx / density * step)
+            .coerceIn(range.start.toDouble(), range.endInclusive.toDouble())
+        onValueChange(unsnapped.toFloat())
+    }
+    return draggable(
+        state = drag,
+        orientation = Orientation.Horizontal,
+        reverseDirection = LocalLayoutDirection.current == LayoutDirection.Rtl,
+        interactionSource = interactionSource,
+        onDragStarted = { unsnapped = value.toDouble() },
     )
 }
 
 @Composable
 private fun TweakTextEditor(
     tweak: SnapOTweakEntry,
+    modifier: Modifier,
 ) {
     val colors = TweakOverlayColors.current
     val value = tweak.value.value as SnapOTweakValue.Text
@@ -678,26 +873,17 @@ private fun TweakTextEditor(
         onValueChange = { updated ->
             SnapOTweaks.update(tweak.name, value.copy(value = updated))
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 7.dp)
+        modifier = modifier
+            .heightIn(min = TweakOverlayLayout.fieldRowHeight)
+            .semantics { contentDescription = "Edit ${tweak.name}" }
+            .wrapContentHeight()
             .background(colors.field, RoundedCornerShape(5.dp))
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         cursorBrush = SolidColor(colors.foreground),
         textStyle = TextStyle(
             color = colors.foreground,
             fontSize = 13.sp,
         ),
         singleLine = true,
-    )
-}
-
-@Composable
-private fun TweakFieldText(value: String) {
-    val colors = TweakOverlayColors.current
-    Text(
-        text = value,
-        color = colors.foreground,
-        fontSize = 13.sp,
     )
 }

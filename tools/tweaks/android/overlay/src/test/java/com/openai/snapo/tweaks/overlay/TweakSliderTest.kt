@@ -3,10 +3,22 @@ package com.openai.snapo.tweaks.overlay
 import androidx.compose.ui.text.input.KeyboardType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TweakSliderTest {
+
+    @Test
+    fun `fine scrubbing starts above one selectable interval per dp`() {
+        val range = 0f..500f
+        assertNull(fineSliderScrubStep(range, step = 25.0, trackWidthDp = 120f))
+        assertNull(fineSliderScrubStep(range, step = 1.0, trackWidthDp = 500f))
+        assertEquals(1.0, fineSliderScrubStep(range, step = 1.0, trackWidthDp = 499f))
+        assertEquals(0.001, fineSliderScrubStep(0f..1f, step = 0.001, trackWidthDp = 120f))
+        assertNull(fineSliderScrubStep(0f..1f, step = null, trackWidthDp = 120f))
+        assertNull(fineSliderScrubStep(range, step = 1.0, trackWidthDp = 0f))
+    }
 
     @Test
     fun `integer slider exposes only values aligned with its minimum and step`() {

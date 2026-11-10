@@ -28,5 +28,8 @@ dependencies {
     implementation(libs.androidx.compose.material.ripple)
     implementation(libs.androidx.core.ktx)
 
+    debugImplementation(libs.androidx.compose.ui.tooling.preview)
+    debugRuntimeOnly(libs.androidx.compose.ui.tooling)
+
     testImplementation(libs.junit4)
 }

@@ -1,6 +1,9 @@
 package com.openai.snapo.tweaks.overlay
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -11,8 +14,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 @Immutable
 internal data class TweakOverlayColors(
@@ -47,6 +54,12 @@ internal data class TweakOverlayColors(
             @Composable get() = if (isSystemInDarkTheme()) Dark else Light
     }
 }
+
+// Keep the fill inside the outline so its color cannot bleed through the rounded outer edge.
+internal fun Modifier.roundedOutline(color: Color, radius: Dp, width: Dp = 1.dp): Modifier =
+    background(color, RoundedCornerShape(radius))
+        .padding(width)
+        .clip(RoundedCornerShape(radius - width))
 
 internal fun tweakOverlayColorScheme(darkTheme: Boolean): ColorScheme {
     val colors = if (darkTheme) TweakOverlayColors.Dark else TweakOverlayColors.Light
