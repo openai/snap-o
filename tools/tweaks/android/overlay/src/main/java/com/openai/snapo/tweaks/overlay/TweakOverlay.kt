@@ -1,7 +1,5 @@
 package com.openai.snapo.tweaks.overlay
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -300,9 +298,6 @@ private fun TweakEditorOverlayActions(
     onClose: () -> Unit,
     onDrag: (Float) -> Unit,
 ) {
-    if (LocalOnBackPressedDispatcherOwner.current != null) {
-        BackHandler(onBack = onClose)
-    }
     val hasChanges by remember(tweak) {
         derivedStateOf(structuralEqualityPolicy()) { tweak.isChanged }
     }

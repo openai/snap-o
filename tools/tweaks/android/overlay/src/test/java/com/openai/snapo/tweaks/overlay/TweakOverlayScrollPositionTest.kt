@@ -1,7 +1,5 @@
 package com.openai.snapo.tweaks.overlay
 
-import androidx.activity.ComponentActivity
-import androidx.activity.addCallback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -10,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -33,7 +31,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "w400dp-h700dp")
 class TweakOverlayScrollPositionTest {
     @get:Rule
-    val compose = createAndroidComposeRule<ComponentActivity>()
+    val compose = createComposeRule()
     private val colorName = "Accent color"
     private val controls = List(30) { if (it == 15) colorName else "Control $it" }
     private var activeControls by mutableStateOf(controls)
@@ -74,31 +72,13 @@ class TweakOverlayScrollPositionTest {
     }
 
     @Test
-    fun `closing the color editor returns the swatch to its saved height`() {
-        val top = labelTop(colorName)
-        openColorEditor()
+    fun `tapping the color editor checkmark restores the swatch position`() {
+        val swatch = compose.onNodeWithContentDescription("Choose color for $colorName.", substring = true)
+        val top = swatch.fetchSemanticsNode().boundsInRoot.top
+        swatch.performClick()
         compose.onNodeWithContentDescription("Done editing $colorName").assertIsDisplayed().performClick()
 
-        assertEquals(top, labelTop(colorName), 0f)
-    }
-
-    @Test
-    fun `Android back returns from the color editor before the host handles back`() {
-        var hostBackCount = 0
-        val dispatcher = compose.activity.onBackPressedDispatcher
-        compose.runOnIdle {
-            dispatcher.addCallback(compose.activity) { hostBackCount++ }
-        }
-        val top = labelTop(colorName)
-        openColorEditor()
-        compose.runOnIdle { dispatcher.onBackPressed() }
-
-        assertEquals(top, labelTop(colorName), 0f)
-        compose.runOnIdle {
-            assertEquals(0, hostBackCount)
-            dispatcher.onBackPressed()
-            assertEquals(1, hostBackCount)
-        }
+        assertEquals(top, swatch.fetchSemanticsNode().boundsInRoot.top, 0f)
     }
 
     @Test
@@ -143,7 +123,5 @@ class TweakOverlayScrollPositionTest {
 
     private fun open() = compose.onNodeWithContentDescription("Open tweaks").performClick()
     private fun close() = compose.onNodeWithContentDescription("Minimize tweaks").performClick()
-    private fun openColorEditor() =
-        compose.onNodeWithContentDescription("Choose color for $colorName.", substring = true).performClick()
     private fun labelTop(name: String) = compose.onNodeWithText(name).fetchSemanticsNode().boundsInRoot.top
 }
