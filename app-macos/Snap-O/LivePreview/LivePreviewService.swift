@@ -35,6 +35,12 @@ private final class PreviewUse {
     windowVisibility == true
   }
 
+  // AppKit can cover or remount a visible preview while moving it between Spaces.
+  var keepsVideoVisibleDuringFullScreenChange = false
+  var isVideoVisible: Bool {
+    keepsVideoVisibleDuringFullScreenChange || isVisible
+  }
+
   var isPaneVisible = true
   var wantsClipboard = true
   var viewID: UUID?
@@ -220,7 +226,7 @@ final class LivePreviewService {
   private func updateVideoActivity(_ entry: PreviewConnectionEntry) {
     let active = entry.users.contains { id in
       guard let user = users[id], !user.isClosed else { return false }
-      return (user.windowVisibility ?? true) && user.isPaneVisible
+      return (user.windowVisibility == nil || user.isVideoVisible) && user.isPaneVisible
     }
     entry.owner?.video.setActive(active)
   }
@@ -448,6 +454,10 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     user.isVisible
   }
 
+  var isVideoVisible: Bool {
+    user.isVideoVisible
+  }
+
   var hasFailed: Bool {
     error != nil
   }
@@ -460,17 +470,27 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     !isClosed && user.viewID == viewID
   }
 
+  func beginFullScreenChange() {
+    if user.windowVisibility != false { user.keepsVideoVisibleDuringFullScreenChange = true }
+  }
+
+  func finishFullScreenChange(windowIsVisible: Bool) {
+    guard user.keepsVideoVisibleDuringFullScreenChange else { return }
+    user.keepsVideoVisibleDuringFullScreenChange = false
+    setVisible(windowIsVisible)
+  }
+
   func updatePresentation(viewID: UUID, visible: Bool, focused: Bool, syncClipboard: Bool) {
     guard user.viewID == viewID, !isClosed else { return }
     setClipboardEnabled(syncClipboard)
-    setVisible(visible)
+    service.setVisible(visible, user: user)
     setFocused(visible && focused)
   }
 
   func unmount(_ viewID: UUID) {
     guard user.viewID == viewID else { return }
     user.viewID = nil
-    setVisible(false)
+    service.setVisible(false, user: user)
     user.fileDrop?.cancel()
     user.emulatorControls?.disappear()
   }
@@ -500,6 +520,7 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
   }
 
   func setVisible(_ visible: Bool) {
+    if !visible { user.keepsVideoVisibleDuringFullScreenChange = false }
     service.setVisible(visible, user: user)
   }
 

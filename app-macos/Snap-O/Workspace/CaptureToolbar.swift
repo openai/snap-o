@@ -29,13 +29,8 @@ struct CaptureToolbar: View {
 
   @Bindable var controller: CapturePaneSession
   @Bindable var workspace: WorkspaceLayoutController
-  let presentedLayout: WorkspaceLayout
+  let presentation: WorkspacePanePresentation
   let toolModel: ToolHostModel?
-  let capturePaneWidth: CGFloat
-  let toolPaneWidth: CGFloat
-  let capturePaneVisibleWidth: CGFloat
-  let toolPaneVisibleWidth: CGFloat
-  let transitioningPane: WorkspaceLayoutTransition.Pane?
   let titlebarHeight: CGFloat
 
   @Environment(\.openWindow)
@@ -47,22 +42,22 @@ struct CaptureToolbar: View {
       Color.clear
         .contentShape(Rectangle())
 
-      if presentedLayout.showsCapture {
+      if presentation.layout.showsCapture {
         captureToolbarPane
-          .frame(width: capturePaneWidth, height: toolbarHeight)
-          .frame(width: capturePaneVisibleWidth, height: toolbarHeight, alignment: .leading)
+          .frame(width: presentation.captureWidth, height: toolbarHeight)
+          .frame(width: presentation.captureVisibleWidth, height: toolbarHeight, alignment: .leading)
           .clipped()
           .frame(maxWidth: .infinity, alignment: .leading)
-          .zIndex(paneZIndex(.capture))
+          .zIndex(presentation.zIndex(for: .capture))
       }
 
-      if presentedLayout.showsTool {
+      if presentation.layout.showsTool {
         toolToolbarPane
-          .frame(width: toolPaneWidth, height: toolbarHeight)
-          .frame(width: toolPaneVisibleWidth, height: toolbarHeight, alignment: .trailing)
+          .frame(width: presentation.toolWidth, height: toolbarHeight)
+          .frame(width: presentation.toolVisibleWidth, height: toolbarHeight, alignment: .trailing)
           .clipped()
           .frame(maxWidth: .infinity, alignment: .trailing)
-          .zIndex(paneZIndex(.tool))
+          .zIndex(presentation.zIndex(for: .tool))
       }
     }
     .simultaneousGesture(WindowDragGesture())
@@ -77,13 +72,13 @@ struct CaptureToolbar: View {
   }
 
   private var captureVisibility: CGFloat {
-    guard capturePaneWidth > 0 else { return 0 }
-    return min(max(capturePaneVisibleWidth / capturePaneWidth, 0), 1)
+    guard presentation.captureWidth > 0 else { return 0 }
+    return min(max(presentation.captureVisibleWidth / presentation.captureWidth, 0), 1)
   }
 
   private var toolVisibility: CGFloat {
-    guard toolPaneWidth > 0 else { return 0 }
-    return min(max(toolPaneVisibleWidth / toolPaneWidth, 0), 1)
+    guard presentation.toolWidth > 0 else { return 0 }
+    return min(max(presentation.toolVisibleWidth / presentation.toolWidth, 0), 1)
   }
 
   private var captureToolbarControls: some View {
@@ -117,7 +112,7 @@ struct CaptureToolbar: View {
       .frame(height: Self.height)
       .offset(y: titlebarHeight / 2)
 
-      if presentedLayout == .both {
+      if presentation.layout == .both {
         HStack {
           captureToggle()
             .opacity(toolVisibility)
@@ -130,7 +125,7 @@ struct CaptureToolbar: View {
         .offset(y: titlebarHeight / 2)
       }
 
-      if presentedLayout.showsCapture {
+      if presentation.layout.showsCapture {
         HStack(spacing: 0) {
           Spacer()
           historyButton()
@@ -214,11 +209,6 @@ struct CaptureToolbar: View {
         height: SnapOToolbarStyle.singleControlSize
       )
       .frame(width: width, alignment: .trailing)
-  }
-
-  private func paneZIndex(_ pane: WorkspaceLayoutTransition.Pane) -> Double {
-    guard let transitioningPane else { return 0 }
-    return transitioningPane == pane ? 0 : 1
   }
 
   @ViewBuilder

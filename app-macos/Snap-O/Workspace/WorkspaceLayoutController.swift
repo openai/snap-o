@@ -6,6 +6,8 @@ enum WorkspaceLayout: String {
   case tool = "inspector"
   case both
 
+  static let minimumPreferredCaptureWidth: CGFloat = 260
+
   var showsCapture: Bool {
     self != .tool
   }
@@ -55,7 +57,7 @@ struct WorkspaceLayoutSnapshot: Codable, Hashable {
       showsCapture: hasStoredVisibility ? defaults.bool(forKey: WorkspacePreferences.showsCapture) : true,
       showsTool: hasStoredVisibility ? defaults.bool(forKey: WorkspacePreferences.showsTool) : false,
       capturePaneWidth: storedWidth > 0
-        ? max(260, storedWidth)
+        ? max(WorkspaceLayout.minimumPreferredCaptureWidth, storedWidth)
         : WorkspaceLayoutController.defaultCapturePaneWidth
     )
   }
@@ -105,7 +107,7 @@ final class WorkspaceLayoutController {
     let snapshot = snapshot ?? .persisted(defaults: defaults)
     showsCapture = snapshot.showsCapture || !snapshot.showsTool
     showsTool = snapshot.showsTool
-    capturePaneWidth = max(260, snapshot.capturePaneWidth)
+    capturePaneWidth = max(WorkspaceLayout.minimumPreferredCaptureWidth, snapshot.capturePaneWidth)
   }
 
   var snapshot: WorkspaceLayoutSnapshot {
@@ -117,7 +119,7 @@ final class WorkspaceLayoutController {
   }
 
   func resizeCapturePane(to width: CGFloat) {
-    capturePaneWidth = max(260, width)
+    capturePaneWidth = max(WorkspaceLayout.minimumPreferredCaptureWidth, width)
   }
 
   func persistCapturePaneWidth() {

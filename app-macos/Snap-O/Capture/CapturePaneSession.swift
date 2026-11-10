@@ -34,7 +34,7 @@ final class CapturePaneSession {
   private(set) var isClosing = false
   let hint = PreviewHint()
 
-  private var displayedPreview: LivePreviewAttachment?
+  private(set) var displayedPreview: LivePreviewAttachment?
   private var lastDisplay: DisplayInfo?
   private var hasStarted = false
   private var needsInitialCapture = true
