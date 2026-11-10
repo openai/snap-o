@@ -27,6 +27,7 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -187,7 +188,7 @@ private fun Modifier.overlayButtonOffset(
 }
 
 @Composable
-private fun ExpandedTweakOverlay(
+internal fun ExpandedTweakOverlay(
     tweaks: List<SnapOTweakEntry>,
     height: Dp,
     onDrag: (Float) -> Unit,
@@ -221,19 +222,19 @@ private fun ExpandedTweakOverlay(
                 HorizontalDivider(color = colors.outline)
 
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = TweakOverlayLayout.listBottomInset),
+                    contentPadding = TweakOverlayLayout.listContentPadding,
                     verticalArrangement = Arrangement.spacedBy(TweakOverlayLayout.fieldRowSpacing),
                 ) {
                     itemsIndexed(tweaks, key = { _, tweak -> tweak.name }) { index, tweak ->
                         val section = tweak.name.substringBefore('/', missingDelimiterValue = "")
-                        val previousSection = if (index == 0) {
-                            null
-                        } else {
-                            tweaks[index - 1].name.substringBefore('/', missingDelimiterValue = "")
-                        }
+                        val previousSection = tweaks.getOrNull(index - 1)
+                            ?.name?.substringBefore('/', missingDelimiterValue = "")
 
                         if (section.isNotEmpty() && section != previousSection) {
-                            TweakOverlaySection(section)
+                            TweakOverlaySection(section, firstInList = index == 0)
                         }
 
                         TweakOverlayControl(
@@ -429,17 +430,16 @@ private fun MinimizedTweakOverlay(
 @Composable
 private fun TweakOverlaySection(
     name: String,
+    firstInList: Boolean,
 ) {
     val colors = TweakOverlayColors.current
     Text(
         text = name,
         modifier = Modifier.padding(
             start = TweakOverlayLayout.contentHorizontalPadding + 6.dp,
-            top = 9.dp,
-            bottom = 2.dp,
+            top = if (firstInList) 0.dp else 16.dp,
         ),
         color = colors.secondary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        style = MaterialTheme.typography.labelSmall,
     )
 }

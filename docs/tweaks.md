@@ -666,6 +666,8 @@ The panel and its color and curve pickers follow the system’s light or dark ap
 
 The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
 
+Tap a slider’s value to enter an exact number, or tap its track to jump to a value. On ranges with closely spaced steps, drag the dot for finer adjustments.
+
 **Visibility follows registered tweaks.** The button appears only when the real overlay is installed, the Tweaks runtime is enabled, `SnapOTweakOverlaySettings.isEnabled` is `true` and at least one tweak has an active owner. The setting defaults to off and survives app restarts. As screens and sections appear or disappear, the panel updates automatically. The no-op overlay never appears, and its setting remains disabled. No manually supplied values, update callback, or build-specific root layout is required.
 {.notice}
 

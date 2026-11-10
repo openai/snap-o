@@ -306,7 +306,7 @@ internal fun TweakBezierField(tweak: SnapOTweakEntry, onClick: () -> Unit) {
     val curve = (tweak.value.value as SnapOTweakValue.Curve).value
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(width = 48.dp, height = TweakOverlayLayout.fieldRowHeight)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = "Edit curve for ${tweak.name}" },
         contentAlignment = Alignment.CenterEnd,
@@ -318,13 +318,11 @@ internal fun TweakBezierField(tweak: SnapOTweakEntry, onClick: () -> Unit) {
 @Composable
 private fun BezierPreview(curve: BezierCurve, modifier: Modifier = Modifier) {
     val colors = TweakOverlayColors.current
-    val shape = RoundedCornerShape(4.dp)
     Canvas(
         modifier
-            .clip(shape)
-            .border(1.dp, colors.outline, shape)
+            .roundedOutline(colors.outline, radius = 4.dp)
             .background(colors.surface)
-            .padding(3.dp),
+            .padding(2.dp),
     ) { drawBezier(curve, colors, handles = false) }
 }
 
