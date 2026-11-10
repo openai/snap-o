@@ -76,10 +76,13 @@ fun SnapOTweakOverlay(modifier: Modifier = Modifier) {
     if (!SnapOTweakOverlaySettings.isEnabled) return
 
     val tweaks = rememberActiveOverlayTweaks()
+    // All controls can unregister between screens while the overlay is collapsed.
+    val scrollPosition = remember { TweakOverlayScrollPosition() }
     if (tweaks.isNotEmpty()) {
         TweakOverlayTheme {
             TweakOverlayLayer(
                 tweaks = tweaks,
+                scrollPosition = scrollPosition,
                 modifier = modifier.fillMaxSize(),
             )
         }
@@ -89,6 +92,7 @@ fun SnapOTweakOverlay(modifier: Modifier = Modifier) {
 @Composable
 private fun TweakOverlayLayer(
     tweaks: List<SnapOTweakEntry>,
+    scrollPosition: TweakOverlayScrollPosition,
     modifier: Modifier = Modifier,
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(false) }
@@ -123,6 +127,7 @@ private fun TweakOverlayLayer(
                     }
                     .padding(horizontal = OverlayHorizontalMargin)
                     .width(OverlayMaximumWidth),
+                scrollPosition = scrollPosition,
             )
         } else {
             MinimizedTweakOverlay(
@@ -194,6 +199,7 @@ internal fun ExpandedTweakOverlay(
     onDrag: (Float) -> Unit,
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
+    scrollPosition: TweakOverlayScrollPosition = remember { TweakOverlayScrollPosition() },
 ) {
     val colors = TweakOverlayColors.current
     var selectedEditorTweakName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -222,6 +228,7 @@ internal fun ExpandedTweakOverlay(
                 HorizontalDivider(color = colors.outline)
 
                 LazyColumn(
+                    state = scrollPosition.rememberListState(tweaks),
                     modifier = Modifier
                         .weight(1f)
                         .padding(bottom = TweakOverlayLayout.listBottomInset),
