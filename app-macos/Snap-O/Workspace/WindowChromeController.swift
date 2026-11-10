@@ -22,6 +22,14 @@ enum WindowChromeMetrics {
   static var totalToolbarHeight: CGFloat {
     titlebarHeight + CaptureToolbar.height
   }
+
+  static func sizeIncludingToolbar(_ workspaceSize: CGSize) -> CGSize {
+    CGSize(width: workspaceSize.width, height: workspaceSize.height + totalToolbarHeight)
+  }
+
+  static func workspaceSize(in frame: CGRect) -> CGSize {
+    CGSize(width: frame.width, height: max(frame.height - totalToolbarHeight, 0))
+  }
 }
 
 /// Makes the AppKit window chrome transparent while retaining the real grouped

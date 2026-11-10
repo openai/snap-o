@@ -13,13 +13,8 @@ struct LiveCaptureView: View {
   private var loadingMessage
   let fileStore: FileStore
   private let device: Device
-  private var deviceID: String {
-    device.id
-  }
-
   private let attachment: LivePreviewAttachment?
   @State private var viewID = UUID()
-  @State private var readyRendererID: UUID?
 
   init(device: Device, attachment: LivePreviewAttachment?, fileStore: FileStore) {
     self.device = device
@@ -27,17 +22,14 @@ struct LiveCaptureView: View {
     self.fileStore = fileStore
   }
 
-  private var renderer: LivePreviewRenderer? {
-    attachment?.renderer(for: device, viewID: viewID)
-  }
-
   private var focused: Bool {
     appearsActive && scenePhase == .active
   }
 
   private func updatePresentation(visible: Bool? = nil) {
-    attachment?.updatePresentation(
-      viewID: viewID, visible: visible ?? (attachment?.isWindowVisible == true),
+    guard let attachment else { return }
+    attachment.updatePresentation(
+      viewID: viewID, visible: visible ?? attachment.isWindowVisible,
       focused: focused, syncClipboard: settings.syncClipboard
     )
   }
@@ -98,27 +90,27 @@ struct LiveCaptureView: View {
   private var previewContent: some View {
     ZStack {
       Color.clear
-      if let renderer {
+      if let attachment, let renderer = attachment.renderer(for: device, viewID: viewID) {
         LivePreviewRendererView(
           renderer: renderer,
           fileStore: fileStore,
-          isVisible: attachment?.isWindowVisible == true,
-          thumbnail: attachment?.thumbnail,
+          isVisible: attachment.isVideoVisible,
+          thumbnail: attachment.thumbnail,
           keyboard: settings.keyboardInput ? attachment : nil
-        ) { attachment?.isMounted(viewID) == true }
-        if attachment?.isWindowVisible == true, readyRendererID != renderer.session.id {
-          WaitingForDeviceView(deviceMessage: loadingMessage(deviceID))
+        ) { attachment.isMounted(viewID) }
+        if attachment.isVideoVisible, attachment.preview?.videoState != .streaming {
+          WaitingForDeviceView(deviceMessage: loadingMessage(device.id))
         }
-      } else if attachment?.hasFailed == true {
+      } else if let attachment, let error = attachment.error {
         VStack(spacing: 8) {
-          Text(attachment?.error ?? "Live preview unavailable")
+          Text(error)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
-          Button("Connect") { attachment?.retryVideo() }
+          Button("Connect") { attachment.retryVideo() }
         }
         .padding(16)
-      } else if attachment?.isClosed == false, attachment?.isWindowVisible == true {
-        WaitingForDeviceView(deviceMessage: loadingMessage(deviceID))
+      } else if let attachment, !attachment.isClosed, attachment.isVideoVisible {
+        WaitingForDeviceView(deviceMessage: loadingMessage(device.id))
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -130,14 +122,6 @@ struct LiveCaptureView: View {
     }
     .onChange(of: settings.syncClipboard) { updatePresentation() }
     .onChange(of: focused) { updatePresentation() }
-    .task(id: renderer?.session.id) {
-      guard let renderer else { return }
-      do {
-        _ = try await renderer.session.waitUntilReady()
-        try Task.checkCancellation()
-        readyRendererID = renderer.session.id
-      } catch {}
-    }
     .onAppear {
       attachment?.mount(viewID)
       updatePresentation()

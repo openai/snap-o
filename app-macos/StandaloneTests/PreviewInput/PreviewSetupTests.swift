@@ -9,6 +9,37 @@ import Testing
 @MainActor
 @Suite(.dependency(\.continuousClock, TestClock()))
 struct PreviewSetupTests {
+  @Test(arguments: [true, false])
+  func fullScreenHandoffKeepsTheStreamUntilVisibilitySettles(windowIsVisible: Bool) async throws {
+    let fixture = try SharedPreviewTestSupport.Fixture()
+    let attachment = fixture.service.attach(to: fixture.target("test-phone"))
+    let originalView = UUID()
+    attachment.mount(originalView)
+    try await fixture.focus(attachment)
+    let session = try #require(fixture.owners.first?.video.session)
+    let source = try #require(fixture.sources.first)
+
+    attachment.beginFullScreenChange()
+    attachment.updatePresentation(viewID: originalView, visible: false, focused: false, syncClipboard: true)
+    attachment.unmount(originalView)
+    let replacement = UUID()
+    attachment.mount(replacement)
+    attachment.updatePresentation(viewID: replacement, visible: false, focused: true, syncClipboard: true)
+    #expect(!attachment.isWindowVisible && !attachment.acceptsInput)
+    #expect(attachment.isVideoVisible && attachment.preview?.videoState == .streaming)
+    #expect(fixture.owners.first?.video.session === session && source.stops == 0)
+
+    attachment.finishFullScreenChange(windowIsVisible: windowIsVisible)
+    #expect(attachment.isVideoVisible == windowIsVisible)
+    if windowIsVisible {
+      #expect(fixture.owners.first?.video.session === session && source.stops == 0)
+      attachment.updatePresentation(viewID: replacement, visible: false, focused: false, syncClipboard: true)
+    }
+    #expect(attachment.preview?.videoState == .idle && source.stops == 1)
+    #expect(fixture.sources.count == 1)
+    await fixture.close()
+  }
+
   @Test
   func emulatorFramesStartBeforeBootAndGainDensityLater() async throws {
     @Dependency(\.continuousClock, as: TestClock<Duration>.self)

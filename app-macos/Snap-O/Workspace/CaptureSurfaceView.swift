@@ -20,12 +20,10 @@ struct CaptureSurfaceView<Content: View>: View {
     GeometryReader { geometry in
       let paneAspectRatio = geometry.size.width / max(geometry.size.height, 1)
 
-      ZStack {
-        Color.clear
-        // Keep the media view mounted when the tool changes the sizing policy.
-        content()
-          .aspectRatio(aspectRatio ?? paneAspectRatio, contentMode: .fit)
-      }
+      // Keep the preview mounted when its display size becomes available.
+      content()
+        .aspectRatio(aspectRatio ?? paneAspectRatio, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 }

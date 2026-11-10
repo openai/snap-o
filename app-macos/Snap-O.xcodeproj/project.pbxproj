@@ -48,6 +48,9 @@
 		554E6726FC6571D816DD3236 /* Snap-OIntegrationTests/AsyncTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CA15A95C91F51C1D92668B /* Snap-OIntegrationTests/AsyncTestSupport.swift */; };
 		58D6D325C2019F536A44556E /* Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9295A399E14AC0E9EA19B00B /* Snap-O/LivePreview/Input/LivePreviewKeyboardEvent.swift */; };
 		598CC459B716F4A3BE0F9142 /* Snap-O/Workspace/WorkspaceLayoutController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03507255994DAC409A14B8C0 /* Snap-O/Workspace/WorkspaceLayoutController.swift */; };
+		C26A097635B342C6AE8C1660 /* Snap-O/Workspace/WorkspaceLayoutChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26A097635B342C6AE8C1661 /* Snap-O/Workspace/WorkspaceLayoutChange.swift */; };
+		C26A097635B342C6AE8C1662 /* Snap-O/Workspace/WorkspaceLayoutTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26A097635B342C6AE8C1663 /* Snap-O/Workspace/WorkspaceLayoutTransition.swift */; };
+		C26A097635B342C6AE8C1664 /* Snap-O/Workspace/WorkspaceWindowGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26A097635B342C6AE8C1665 /* Snap-O/Workspace/WorkspaceWindowGeometry.swift */; };
 		612506E60F96840E7805E8E9 /* Snap-O/Device/ADB/DevicePointerTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD5C05EA109633C368B4D0E /* Snap-O/Device/ADB/DevicePointerTransport.swift */; };
 		61A1E058AEF82285B17A010A /* Snap-OIntegrationTests/TextPasteboardDouble.swift in Sources */ = {isa = PBXBuildFile; fileRef = E572AD89F92266E45C594033 /* Snap-OIntegrationTests/TextPasteboardDouble.swift */; };
 		62775FAE1FD4BBF08EF8E317 /* Snap-O/Capture/Export/CaptureCropExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E419B61303D8685E99BDA10 /* Snap-O/Capture/Export/CaptureCropExporter.swift */; };
@@ -167,6 +170,9 @@
 		02951C0032B4F22CCB6D60B4 /* Snap-O/Device/ADB/DeviceKeyboardTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/DeviceKeyboardTransport.swift"; sourceTree = SOURCE_ROOT; };
 		032CA1020789BE3DBF10FDD1 /* Snap-O/Device/ADB/DeviceFileCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/DeviceFileCommand.swift"; sourceTree = SOURCE_ROOT; };
 		03507255994DAC409A14B8C0 /* Snap-O/Workspace/WorkspaceLayoutController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Workspace/WorkspaceLayoutController.swift"; sourceTree = SOURCE_ROOT; };
+		C26A097635B342C6AE8C1661 /* Snap-O/Workspace/WorkspaceLayoutChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Workspace/WorkspaceLayoutChange.swift"; sourceTree = SOURCE_ROOT; };
+		C26A097635B342C6AE8C1663 /* Snap-O/Workspace/WorkspaceLayoutTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Workspace/WorkspaceLayoutTransition.swift"; sourceTree = SOURCE_ROOT; };
+		C26A097635B342C6AE8C1665 /* Snap-O/Workspace/WorkspaceWindowGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Workspace/WorkspaceWindowGeometry.swift"; sourceTree = SOURCE_ROOT; };
 		057D46E4E681173FC70A43EC /* Snap-O/Device/ADB/ADBSocketConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/ADBSocketConnection.swift"; sourceTree = SOURCE_ROOT; };
 		09573B564252B9340904B8B3 /* Snap-O/LivePreview/PreviewHint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/LivePreview/PreviewHint.swift"; sourceTree = SOURCE_ROOT; };
 		0E8CC1FCAEFD145BB0D51BEA /* Snap-O/Capture/Review/CaptureReviewPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Review/CaptureReviewPlayback.swift"; sourceTree = SOURCE_ROOT; };
@@ -492,6 +498,9 @@
 				97CCE671C650700B969755CD /* Snap-O/Capture/Review/CaptureReviewEscapeAction.swift */,
 				A9790185B1E1B29271ACBC6C /* Snap-O/UI/PlaybackVisibility.swift */,
 				03507255994DAC409A14B8C0 /* Snap-O/Workspace/WorkspaceLayoutController.swift */,
+				C26A097635B342C6AE8C1661 /* Snap-O/Workspace/WorkspaceLayoutChange.swift */,
+				C26A097635B342C6AE8C1663 /* Snap-O/Workspace/WorkspaceLayoutTransition.swift */,
+				C26A097635B342C6AE8C1665 /* Snap-O/Workspace/WorkspaceWindowGeometry.swift */,
 				C2CA15A95C91F51C1D92668B /* Snap-OIntegrationTests/AsyncTestSupport.swift */,
 			);
 			name = "Unit test sources";
@@ -837,6 +846,9 @@
 				152C433C1DF2DACEDD9D2D7B /* Snap-O/Capture/Review/CaptureReviewEscapeAction.swift in Sources */,
 				02288FF1C74A76762433FA67 /* Snap-O/UI/PlaybackVisibility.swift in Sources */,
 				598CC459B716F4A3BE0F9142 /* Snap-O/Workspace/WorkspaceLayoutController.swift in Sources */,
+				C26A097635B342C6AE8C1660 /* Snap-O/Workspace/WorkspaceLayoutChange.swift in Sources */,
+				C26A097635B342C6AE8C1662 /* Snap-O/Workspace/WorkspaceLayoutTransition.swift in Sources */,
+				C26A097635B342C6AE8C1664 /* Snap-O/Workspace/WorkspaceWindowGeometry.swift in Sources */,
 				554E6726FC6571D816DD3236 /* Snap-OIntegrationTests/AsyncTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

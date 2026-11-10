@@ -6,15 +6,6 @@ private struct CaptureWorkspaceMetrics: Equatable {
   let previewHeight: CGFloat
 }
 
-private struct WorkspacePanePresentation {
-  let layout: WorkspaceLayout
-  let captureWidth: CGFloat
-  let toolWidth: CGFloat
-  let captureVisibleWidth: CGFloat
-  let toolVisibleWidth: CGFloat
-  let transitioningPane: WorkspaceLayoutTransition.Pane?
-}
-
 private struct CaptureWorkspaceMetricsKey: PreferenceKey {
   static let defaultValue: CaptureWorkspaceMetrics? = nil
 
@@ -108,6 +99,13 @@ struct CaptureWindow: View {
           case .layoutDidApply(let layout):
             presentedLayout = layout
             layoutTransition = nil
+          }
+        } fullScreenChanged: { event in
+          switch event {
+          case .willChange:
+            controller.displayedPreview?.beginFullScreenChange()
+          case .didChange(let windowIsVisible):
+            controller.displayedPreview?.finishFullScreenChange(windowIsVisible: windowIsVisible)
           }
         }
         .frame(width: 0, height: 0)
@@ -207,151 +205,51 @@ struct CaptureWindow: View {
   private func workspaceContent(controller: CapturePaneSession) -> some View {
     GeometryReader { geometry in
       let titlebarHeight = WindowChromeMetrics.titlebarHeight
-      let displayedLayout = layoutTransition == nil ? presentedLayout : .both
-      let captureWidth = displayedLayout.showsCapture
-        ? capturePaneWidth(
-          totalWidth: geometry.size.width,
-          layout: displayedLayout,
-          aspectRatio: controller.displayInfoForSizing?.aspectRatio
-        )
-        : 0
-      let toolWidth = displayedLayout.showsTool
-        ? toolPaneWidth(
-          totalWidth: geometry.size.width,
-          captureWidth: captureWidth,
-          layout: displayedLayout
-        )
-        : 0
-      let captureVisibleWidth = visibleCapturePaneWidth(
-        totalWidth: geometry.size.width,
-        captureWidth: captureWidth
-      )
-      let toolVisibleWidth = visibleToolPaneWidth(
-        totalWidth: geometry.size.width,
-        toolWidth: toolWidth
-      )
-      let dividerX = workspaceDividerX(
-        totalWidth: geometry.size.width,
-        captureWidth: captureWidth,
-        toolWidth: toolWidth,
-        layout: displayedLayout
-      )
-      let panePresentation = WorkspacePanePresentation(
-        layout: displayedLayout,
-        captureWidth: captureWidth,
-        toolWidth: toolWidth,
-        captureVisibleWidth: captureVisibleWidth,
-        toolVisibleWidth: toolVisibleWidth,
-        transitioningPane: layoutTransition?.pane
+      let aspectRatio = controller.displayInfoForSizing?.aspectRatio
+      let presentation = WorkspacePanePresentation(
+        layout: presentedLayout, windowWidth: geometry.size.width, preferredCaptureWidth: workspace.capturePaneWidth,
+        captureAspectRatio: aspectRatio, transition: layoutTransition
       )
 
       VStack(spacing: 0) {
         CaptureToolbar(
           controller: controller,
           workspace: workspace,
-          presentedLayout: displayedLayout,
+          presentation: presentation,
           toolModel: toolSession.model,
-          capturePaneWidth: captureWidth,
-          toolPaneWidth: toolWidth,
-          capturePaneVisibleWidth: captureVisibleWidth,
-          toolPaneVisibleWidth: toolVisibleWidth,
-          transitioningPane: layoutTransition?.pane,
           titlebarHeight: titlebarHeight
         )
 
         captureWorkspace(
           controller: controller,
-          presentation: panePresentation
+          presentation: presentation
         )
       }
       .background(toolSidebarBackground, ignoresSafeAreaEdges: [])
       .overlayPreferenceValue(CaptureWorkspaceMetricsKey.self) { metrics in
-        if displayedLayout == .both,
-           layoutTransition == nil,
+        if presentation.layout == .both,
+           presentation.transitioningPane == nil,
            let metrics {
           workspaceSplitter(
             totalWidth: geometry.size.width,
             previewHeight: metrics.previewHeight,
-            aspectRatio: controller.displayInfoForSizing?.aspectRatio
+            aspectRatio: aspectRatio
           )
           .frame(width: 1, height: metrics.previewHeight)
-          .offset(x: captureWidth - 0.5)
+          .offset(x: presentation.captureWidth - 0.5)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
       }
       .background(
         WindowChromeController(
-          title: navigationTitle(for: displayedLayout),
-          dividerX: dividerX,
-          captureTitle: capturePaneTitle(for: displayedLayout)
+          title: navigationTitle(for: presentation.layout),
+          dividerX: presentation.dividerX,
+          captureTitle: capturePaneTitle(for: presentation.layout)
         )
         .frame(width: 0, height: 0)
       )
       .ignoresSafeArea(.container, edges: .top)
     }
-  }
-
-  private func capturePaneWidth(
-    totalWidth: CGFloat,
-    layout: WorkspaceLayout,
-    aspectRatio: CGFloat?
-  ) -> CGFloat {
-    if let layoutTransition {
-      return layoutTransition.capturePaneWidth(windowWidth: totalWidth)
-    }
-    return layout.showsTool
-      ? constrainedCaptureWidth(totalWidth: totalWidth, aspectRatio: aspectRatio)
-      : totalWidth
-  }
-
-  private func toolPaneWidth(
-    totalWidth: CGFloat,
-    captureWidth: CGFloat,
-    layout: WorkspaceLayout
-  ) -> CGFloat {
-    if let layoutTransition {
-      return layoutTransition.toolPaneWidth(windowWidth: totalWidth)
-    }
-    return layout.showsCapture
-      ? max(totalWidth - captureWidth - 1, 0)
-      : totalWidth
-  }
-
-  private func workspaceDividerX(
-    totalWidth: CGFloat,
-    captureWidth: CGFloat,
-    toolWidth: CGFloat,
-    layout: WorkspaceLayout
-  ) -> CGFloat? {
-    guard layout == .both else { return nil }
-    if layoutTransition?.pane == .capture {
-      return totalWidth - toolWidth
-    }
-    return captureWidth
-  }
-
-  private func visibleCapturePaneWidth(
-    totalWidth: CGFloat,
-    captureWidth: CGFloat
-  ) -> CGFloat {
-    guard let layoutTransition, layoutTransition.pane == .capture else {
-      return captureWidth
-    }
-    let progress = layoutTransition.progress(windowWidth: totalWidth)
-    let visibility = layoutTransition.toLayout.showsCapture ? progress : 1 - progress
-    return captureWidth * visibility
-  }
-
-  private func visibleToolPaneWidth(
-    totalWidth: CGFloat,
-    toolWidth: CGFloat
-  ) -> CGFloat {
-    guard let layoutTransition, layoutTransition.pane == .tool else {
-      return toolWidth
-    }
-    let progress = layoutTransition.progress(windowWidth: totalWidth)
-    let visibility = layoutTransition.toLayout.showsTool ? progress : 1 - progress
-    return toolWidth * visibility
   }
 
   private func captureWorkspace(
@@ -363,7 +261,7 @@ struct CaptureWindow: View {
 
       ZStack(alignment: .topLeading) {
         if presentation.layout.showsCapture {
-          capturePane(controller: controller, layout: presentation.layout)
+          capturePane(controller: controller)
             .frame(width: presentation.captureWidth, height: previewHeight)
             .frame(
               width: presentation.captureVisibleWidth,
@@ -372,7 +270,7 @@ struct CaptureWindow: View {
             )
             .clipped()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .zIndex(presentation.transitioningPane == .tool ? 1 : 0)
+            .zIndex(presentation.zIndex(for: .capture))
         }
 
         if presentation.layout.showsTool {
@@ -446,7 +344,7 @@ struct CaptureWindow: View {
           )
           .clipped()
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-          .zIndex(presentation.transitioningPane == .capture ? 1 : 0)
+          .zIndex(presentation.zIndex(for: .tool))
         }
 
         if presentation.layout == .both, presentation.transitioningPane != .capture {
@@ -468,15 +366,12 @@ struct CaptureWindow: View {
     }
   }
 
-  private func capturePane(
-    controller: CapturePaneSession,
-    layout: WorkspaceLayout
-  ) -> some View {
+  private func capturePane(controller: CapturePaneSession) -> some View {
     Group {
       if let review = controller.review {
         CaptureReviewView(review: review) { controller.returnToLive(from: review) }
       } else {
-        CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
+        CaptureSurfaceView(aspectRatio: controller.displayInfoForSizing?.aspectRatio) {
           captureContent(controller: controller)
         }
       }
@@ -590,10 +485,6 @@ struct CaptureWindow: View {
       .overlay(Color.black.opacity(0.06).allowsHitTesting(false))
   }
 
-  private var captureLetterboxBackground: Color {
-    Color.clear
-  }
-
   private var toolSidebarBackground: Color {
     if colorScheme == .dark {
       Color(red: 42.0 / 255.0, green: 42.0 / 255.0, blue: 42.0 / 255.0)
@@ -615,7 +506,7 @@ struct CaptureWindow: View {
 
   private func captureContent(controller: CapturePaneSession) -> some View {
     ZStack {
-      captureLetterboxBackground
+      Color.clear
 
       if controller.currentPreview != nil {
         LivePreviewPresentationView(controller: controller)
@@ -652,7 +543,7 @@ struct CaptureWindow: View {
             }
             let origin = splitDragOrigin ?? workspace.capturePaneWidth
             workspace.resizeCapturePane(
-              to: constrainedCaptureWidth(
+              to: WorkspaceLayout.constrainedCapturePaneWidth(
                 origin + translation,
                 totalWidth: totalWidth,
                 aspectRatio: aspectRatio
@@ -666,7 +557,7 @@ struct CaptureWindow: View {
           doubleClicked: {
             guard let aspectRatio, aspectRatio > 0 else { return }
             workspace.resizeCapturePane(
-              to: constrainedCaptureWidth(
+              to: WorkspaceLayout.constrainedCapturePaneWidth(
                 previewHeight * aspectRatio,
                 totalWidth: totalWidth,
                 aspectRatio: aspectRatio
@@ -677,30 +568,5 @@ struct CaptureWindow: View {
         )
         .frame(width: 9)
       }
-  }
-
-  private func constrainedCaptureWidth(
-    totalWidth: CGFloat,
-    aspectRatio: CGFloat?
-  ) -> CGFloat {
-    constrainedCaptureWidth(
-      workspace.capturePaneWidth,
-      totalWidth: totalWidth,
-      aspectRatio: aspectRatio
-    )
-  }
-
-  private func constrainedCaptureWidth(
-    _ width: CGFloat,
-    totalWidth: CGFloat,
-    aspectRatio: CGFloat?
-  ) -> CGFloat {
-    let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
-      aspectRatio: aspectRatio
-    )
-    return min(
-      max(width, minimumWidth),
-      max(totalWidth - 720, minimumWidth)
-    )
   }
 }

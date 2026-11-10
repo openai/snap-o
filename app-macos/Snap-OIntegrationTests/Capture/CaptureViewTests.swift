@@ -10,7 +10,7 @@ import Testing
 @MainActor
 struct CaptureViewTests {
   @Test
-  func sizingPreservesMountedContent() {
+  func sizingPreservesMountedContent() throws {
     var mounted: [NSView] = []
     func surface(_ ratio: CGFloat?) -> some View {
       CaptureSurfaceView(aspectRatio: ratio) {
@@ -26,17 +26,82 @@ struct CaptureViewTests {
     )
     window.contentView = view
     defer { window.contentView = nil }
-    for (ratio, size): (CGFloat?, CGSize) in [
-      (nil, CGSize(width: 240, height: 120)),
-      (0.5, CGSize(width: 60, height: 120)),
-      (4, CGSize(width: 240, height: 60)),
-      (nil, CGSize(width: 240, height: 120))
+    for (ratio, frame): (CGFloat?, CGRect) in [
+      (nil, CGRect(x: 0, y: 0, width: 240, height: 120)),
+      (0.5, CGRect(x: 90, y: 0, width: 60, height: 120)),
+      (4, CGRect(x: 0, y: 30, width: 240, height: 60)),
+      (nil, CGRect(x: 0, y: 0, width: 240, height: 120))
     ] {
       view.rootView = surface(ratio)
       view.layoutSubtreeIfNeeded()
-      #expect(mounted.first?.frame.size == size)
+      let preview = try #require(mounted.first)
+      #expect(preview.convert(preview.bounds, to: view) == frame)
       #expect(mounted.count == 1, "Sizing changes must preserve the mounted media view")
     }
+  }
+
+  @Test
+  func fullScreenAnimationKeepsTheMountedPreviewInProportion() async throws {
+    let screen = try #require(NSScreen.main)
+    let width = min(300, (screen.frame.height / 3).rounded(.down))
+    let window = NSWindow(
+      contentRect: CGRect(x: screen.frame.midX - width / 2, y: screen.frame.midY - width, width: width, height: width * 2),
+      styleMask: [.borderless, .resizable], backing: .buffered, defer: false
+    )
+    var mounted: [NSView] = []
+    let host = NSHostingView(rootView: CaptureSurfaceView(aspectRatio: 0.5) {
+      SurfaceProbe { mounted.append($0) }
+    })
+    window.contentView = host
+    defer { window.contentView = nil }
+    let suite = "CaptureViewTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let sizing = WindowSizingController.Coordinator(defaults: defaults)
+    sizing.attach(to: window)
+    host.layoutSubtreeIfNeeded()
+    let media = try #require(mounted.first)
+    let windowedFrame = window.frame
+
+    func checkAnimation(to destination: CGRect, start: () -> Void) async throws {
+      let initialSize = window.frame.size
+      let arrived = TestSignal()
+      let revision = arrived.revision
+      var sawIntermediateSize = false
+      let observation = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: nil) { _ in
+        MainActor.assumeIsolated {
+          host.layoutSubtreeIfNeeded()
+          let preview = media.convert(media.bounds, to: host)
+          #expect(abs(preview.width - preview.height / 2) <= 1)
+          #expect(abs(preview.midX - host.bounds.midX) <= 1)
+          #expect(abs(preview.midY - host.bounds.midY) <= 1)
+          if window.frame.size == destination.size {
+            arrived.signal()
+          } else if window.frame.size != initialSize {
+            sawIntermediateSize = true
+          }
+        }
+      }
+      defer { NotificationCenter.default.removeObserver(observation) }
+      start()
+      try await arrived.wait(after: revision)
+      if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { #expect(sawIntermediateSize) }
+      #expect(mounted.count == 1)
+    }
+
+    #expect(sizing.customWindowsToEnterFullScreen(for: window)?.first === window)
+    sizing.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: window))
+    try await checkAnimation(to: screen.frame) {
+      sizing.window(window, startCustomAnimationToEnterFullScreenOn: screen, withDuration: 0.5)
+    }
+    sizing.windowDidEnterFullScreen(Notification(name: NSWindow.didEnterFullScreenNotification, object: window))
+    #expect(sizing.customWindowsToExitFullScreen(for: window)?.first === window)
+    sizing.windowWillExitFullScreen(Notification(name: NSWindow.willExitFullScreenNotification, object: window))
+    try await checkAnimation(to: windowedFrame) {
+      sizing.window(window, startCustomAnimationToExitFullScreenWithDuration: 0.5)
+    }
+    sizing.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: window))
+    #expect(sizing.customWindowsToExitFullScreen(for: window) == nil)
   }
 
   @Test

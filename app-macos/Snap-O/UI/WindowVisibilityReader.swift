@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+extension NSWindow {
+  var isVisibleForPlayback: Bool {
+    isVisible && !isMiniaturized && occlusionState.contains(.visible)
+  }
+}
+
 struct WindowVisibilityReader: NSViewRepresentable {
   let visibilityDidChange: (Bool) -> Void
 
@@ -66,7 +72,7 @@ final class WindowVisibilityView: NSView {
     // AppKit can notify while SwiftUI is replacing the view. Read the settled window state.
     pendingReport = Task { @MainActor [weak self] in
       guard !Task.isCancelled, let self, let window = observedWindow, self.window === window else { return }
-      let visible = window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible)
+      let visible = window.isVisibleForPlayback
       guard visible != lastVisibility else { return }
       lastVisibility = visible
       visibilityDidChange(visible)
