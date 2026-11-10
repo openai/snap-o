@@ -149,6 +149,8 @@ Starting another capture, pressing `⇧⌘L` to return to Live Preview, closing 
 
 Drag a screenshot or recording into any app that accepts images or video. During review, hold Command and drag inside a crop to share the cropped copy; an uncropped capture can be dragged normally. Sharing a copy does not add the capture to history. Click the checkmark if you also want to keep it there.
 
+Snap-O moves its window behind other apps during the drag so you can reach the drop target. It restores the previous window order when you drop the file or cancel.
+
 You can also drag saved captures from Capture History. Their originals remain in history. Use `⌘C` to copy a screenshot to the clipboard.
 
 Choose **Save As…** (`⌘S`) to export the selected capture with its current crop and trim. This saves a file without adding it to Capture History. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when you discard the review or delete the history entry.
