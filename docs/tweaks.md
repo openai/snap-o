@@ -46,7 +46,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "14.3.0"
+snapo = "14.3.1"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -74,12 +74,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:14.3.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:14.3.0")
+    debugImplementation("com.openai.snapo:tweaks:14.3.1")
+    releaseImplementation("com.openai.snapo:tweaks-noop:14.3.1")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:14.3.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:14.3.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:14.3.1")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:14.3.1")
 }
 ```
 
@@ -117,10 +117,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:14.3.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:14.3.0")
+    debugImplementation("com.openai.snapo:tweaks-core:14.3.1")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:14.3.1")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:14.3.0")
+    implementation("com.openai.snapo:tweaks-views:14.3.1")
 }
 ```
 
@@ -665,6 +665,8 @@ fun ProfileScreen() {
 The panel and its color and curve pickers follow the system’s light or dark appearance, independently of the app’s theme.
 
 The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
+
+The list restores your scroll position when you reopen the panel or return from the color picker.
 
 Tap a slider’s value to enter an exact number, or tap its track to jump to a value. On ranges with closely spaced steps, drag the dot for finer adjustments.
 

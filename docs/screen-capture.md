@@ -26,6 +26,8 @@ Hover over the device count to choose a preview. The picker shows a live thumbna
 
 You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
+Double-click any edge of the Snap-O window on the desktop to fit it to the available space. In full screen and Split View, the device image stays centered in its pane and keeps its aspect ratio.
+
 You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.
 
 Hold Option and drag to use two touch points for pinch or rotation gestures. Hold Option-Shift while dragging to move both points together. The touch markers show where the gesture will act.
