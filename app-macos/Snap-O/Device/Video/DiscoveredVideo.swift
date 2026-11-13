@@ -31,17 +31,17 @@ final class DiscoveredVideo: Sendable {
     guard !target.isLocalEmulator, target.isValid else { return nil }
     self.target = target
     let exec = client.bound(to: target)
-    let boot = Task.detached(priority: .userInitiated) {
+    let boot = Task(priority: .userInitiated) { @concurrent in
       try await exec.waitUntilBooted(target)
     }
     self.boot = boot
-    let wake = Task.detached(priority: .userInitiated) {
+    let wake = Task(priority: .userInitiated) { @concurrent in
       try await boot.value
       try Task.checkCancellation()
       _ = try? await exec.withTimeout(.seconds(1)).keyEvent(deviceID: target.serial, keyCode: "KEYCODE_WAKEUP")
     }
     self.wake = wake
-    stream = Task.detached(priority: .userInitiated) {
+    stream = Task(priority: .userInitiated) { @concurrent in
       try await boot.value
       try Task.checkCancellation()
       let helper = try DeviceHelper(DeviceHelper.bundledBytes())

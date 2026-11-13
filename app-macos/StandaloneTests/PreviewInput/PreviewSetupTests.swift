@@ -95,7 +95,10 @@ struct PreviewSetupTests {
     let discovered = try #require(DiscoveredVideo(target: fixture.target, client: ADBClient(setup: fixture.probe)))
     let attachment = fixture.service.attach(to: fixture.target, discovered: discovered)
     try await waitForState { fixture.probe.bootQueries == 1 && attachment.preview != nil }
+    await #expect(throws: SuspensionError.self) { try await clock.checkSuspension() }
     await fixture.close()
+    await clock.advance(by: .seconds(1))
+    #expect(fixture.probe.bootQueries == 1)
     #expect(fixture.source.starts == 0)
     #expect(!DeviceVideoHub.shared.prepared.contains(fixture.target))
     try await clock.checkSuspension()

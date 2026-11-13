@@ -122,7 +122,7 @@ final class AppRuntime {
     let initialMode = settings.startupCaptureMode
     let initialID = settings.lastViewedDeviceID
     // Start device capture while SwiftUI is busy building the first window.
-    discoveryTask = Task.detached(priority: .userInitiated) { [weak self] in
+    discoveryTask = Task(priority: .userInitiated) { @concurrent [weak self] in
       await tracker.startTracking()
       var firstInventory = true
       for await devices in await tracker.previewDeviceStream() {
