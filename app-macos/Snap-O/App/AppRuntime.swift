@@ -1,5 +1,4 @@
 import Foundation
-import Observation
 
 /// Starts shared services and waits for them to stop when the app quits.
 @MainActor
@@ -9,7 +8,8 @@ final class AppRuntime {
   let adbServers: ADBServers
   private let deviceTracker: any DeviceTracking
   let fileStore: FileStore
-  private let captureServices: CaptureServices
+  private let livePreview: LivePreviewService
+  private let startupDiscovery: StartupCaptureDiscovery
   let workspaces: CaptureWorkspaces
   let captureHistory: CaptureHistory
 
@@ -31,9 +31,7 @@ final class AppRuntime {
     Cleanup.allCases.filter { pendingCleanup.contains($0) }.map(\.rawValue)
   }
 
-  private var startupTask: Task<Void, Never>?
-  private var startupDevices: [Device] = []
-  private var discoveryTask: Task<Void, Never>?
+  private var hasStarted = false
   private var shutdownTask: Task<Void, Never>?
 
   init() {
@@ -84,6 +82,7 @@ final class AppRuntime {
     self.fileStore = fileStore
     self.captureHistory = captureHistory
     self.captureCoordinator = captureCoordinator
+    self.livePreview = livePreview
     let makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController? = {
       EmulatorControlsController.live(target: $0)
     }
@@ -104,7 +103,7 @@ final class AppRuntime {
       },
       makeEmulatorControls: makeEmulatorControls
     )
-    self.captureServices = captureServices
+    startupDiscovery = StartupCaptureDiscovery(tracker: deviceTracker, manager: deviceManager, preparation: captureServices.startup)
     workspaces = CaptureWorkspaces(
       captureServices: captureServices, deviceManager: deviceManager, fileStore: fileStore, adbService: adbService,
       history: captureHistory
@@ -112,66 +111,14 @@ final class AppRuntime {
   }
 
   func start() {
-    guard startupTask == nil, shutdownTask == nil else { return }
+    guard !hasStarted, shutdownTask == nil else { return }
+    hasStarted = true
 
     Perf.step(.appFirstSnapshot, "services start")
-    let manager = deviceManager
-    let startup = captureServices.startup
-    let tracker = deviceTracker
-    let settings = AppSettings.shared
-    let initialMode = settings.startupCaptureMode
-    let initialID = settings.lastViewedDeviceID
-    // Start device capture while SwiftUI is busy building the first window.
-    discoveryTask = Task(priority: .userInitiated) { @concurrent [weak self] in
-      await tracker.startTracking()
-      var firstInventory = true
-      for await devices in await tracker.previewDeviceStream() {
-        guard !Task.isCancelled else { return }
-        let selected = Self.preferredDevice(in: devices, id: initialID)
-        let discovered = firstInventory && initialMode == .livePreview ? selected?.connection.flatMap(DiscoveredVideo.init) : nil
-        firstInventory = false
-        let used = await self?.prepareDiscovery(devices, video: discovered)
-        if used != true { await discovered?.close() }
-        guard used != nil else { return }
-      }
-    }
-    startupTask = Task.immediate { [weak self] in
-      #if PERF_TRACING
-      Perf.startupEvent("runtime startup task entered")
-      #endif
-      let updates = Observations {
-        (settings.startupCaptureMode, settings.lastViewedDeviceID, manager.inventory.ready, manager.isShuttingDown)
-      }
-      for await (_, _, _, isShuttingDown) in updates {
-        guard !Task.isCancelled, !isShuttingDown, startup.isAvailable else { return }
-        self?.prepareStartup()
-      }
-    }
+    startupDiscovery.start()
     adbServers.start()
     deviceManager.start()
     captureHistory.start()
-  }
-
-  private nonisolated static func preferredDevice(in devices: [Device], id: String?) -> Device? {
-    devices.first { $0.id == id } ?? devices.first
-  }
-
-  private func prepareDiscovery(_ devices: [Device], video: DiscoveredVideo?) -> Bool? {
-    guard !Task.isCancelled, !deviceManager.isShuttingDown, captureServices.startup.isAvailable else { return nil }
-    startupDevices = devices
-    return prepareStartup(video: video)
-  }
-
-  @discardableResult
-  private func prepareStartup(video: DiscoveredVideo? = nil) -> Bool {
-    let settings = AppSettings.shared
-    let preferred = Self.preferredDevice(in: startupDevices, id: settings.lastViewedDeviceID)
-    let device: Device? = switch settings.startupCaptureMode {
-    case .livePreview: preferred
-    case .screenshot: deviceManager.inventory.ready?.first { $0.id == preferred?.id && $0.connection == preferred?.connection }
-    }
-    let discovered = settings.startupCaptureMode == .livePreview && video?.target == device?.connection ? video : nil
-    return captureServices.startup.prepare(mode: settings.startupCaptureMode, device: device, discovered: discovered)
   }
 
   func shutdown() async {
@@ -186,24 +133,17 @@ final class AppRuntime {
     fileStore.beginShutdown()
     let workspaceCleanup = workspaces.beginShutdown()
     let deviceCleanup = deviceManager.shutdown()
-    let activeStartupTask = startupTask
-    activeStartupTask?.cancel()
-    startupTask = nil
-    let activeDiscovery = discoveryTask
-    activeDiscovery?.cancel()
-    discoveryTask = nil
+    let startupCleanup = startupDiscovery.beginShutdown()
     let deviceTracker = deviceTracker
     let captureCoordinator = captureCoordinator
-    let captureServices = captureServices
+    let livePreview = livePreview
     let captureHistory = captureHistory
     let fileStore = fileStore
     let task = Task {
       Perf.start(.appShutdown, name: "App Quit → Cleanup")
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
-          await activeStartupTask?.value
-          await activeDiscovery?.value
-          await captureServices.startup.discard()
+          await startupCleanup.value
           await self.finishCleanup(.startup)
           Perf.step(.appShutdown, "startup preparation discarded")
         }
@@ -217,7 +157,7 @@ final class AppRuntime {
           await self.finishCleanup(.deviceManager)
         }
         group.addTask {
-          await captureServices.livePreview.shutdown()
+          await livePreview.shutdown()
           await self.finishCleanup(.livePreview)
           Perf.step(.appShutdown, "live preview stopped")
         }

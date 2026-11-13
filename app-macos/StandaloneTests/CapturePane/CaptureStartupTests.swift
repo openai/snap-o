@@ -65,6 +65,27 @@ extension CapturePaneTests {
     await fixture.close()
   }
 
+  @Test
+  func emptyStartupInventoryPreservesPreferredPreview() async throws {
+    let fixture = Fixture()
+    AppSettings.shared.lastViewedDeviceID = "B"
+    let connected = fixture.devices.inventory
+    fixture.devices.inventory = DeviceInventory(connected: [], ready: [])
+    let pane = fixture.pane()
+    let readEmptyInventory = TestValue(false)
+    fixture.devices.onInventoryRead = { readEmptyInventory.value = true }
+    await pane.start()
+    try await waitForState { readEmptyInventory.value }
+    fixture.devices.onInventoryRead = nil
+    #expect(pane.selectedPreviewDeviceID == "B")
+    fixture.devices.inventory = connected
+    try await waitForState { pane.displayedPreview != nil }
+    #expect(pane.currentPreview?.device.id == "B")
+    #expect(fixture.previews.attachments.map(\.target.serial) == ["B"])
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test(arguments: [false, true])
   func recordingRequiresReadyDevice(readinessKnown: Bool) async {
     let fixture = Fixture()

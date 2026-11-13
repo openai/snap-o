@@ -59,9 +59,11 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     guard !hasStopped, !captureRequested else { return }
     self.deliver = deliver
     captureRequested = true
+    // A late pause acknowledgment starts a fresh deadline for the next frame.
+    guard !waitingForPause else { return }
     armTimeout("Device video did not start")
     prepare()
-    if isReady, !waitingForPause { send(5) }
+    if isReady { send(5) }
   }
 
   func pause() {
@@ -71,12 +73,18 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     receivedKeyFrame = false
     keyFrameRequested = false
     hasIndependentFrames = false
-    timeout?.cancel()
-    if isReady, !waitingForPause {
-      waitingForPause = true
-      armTimeout("Device video did not pause")
-      send(4)
+    guard !waitingForPause else { return }
+    if isReady {
+      requestPause()
+    } else {
+      timeout?.cancel()
     }
+  }
+
+  private func requestPause() {
+    waitingForPause = true
+    armTimeout("Device video did not pause")
+    send(4)
   }
 
   private func armTimeout(_ message: String) {
@@ -85,6 +93,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     timeout = Task { [weak self, clock] in
       guard !Task.isCancelled else { return }
       do { try await clock.sleep(until: deadline) } catch { return }
+      guard !Task.isCancelled else { return }
       self?.receive(.stopped(ADBError.requestTimedOut(message)))
     }
   }
@@ -183,9 +192,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     guard !hasStopped else { return }
     isReady = true
     if alreadyCapturing, !captureRequested {
-      waitingForPause = true
-      armTimeout("Device video did not pause")
-      send(4)
+      requestPause()
     } else if captureRequested, !alreadyCapturing {
       send(5)
     }
@@ -195,6 +202,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     guard waitingForPause, !hasStopped else { return }
     waitingForPause = false
     if captureRequested {
+      armTimeout("Device video did not start")
       send(5)
     } else { timeout?.cancel() }
   }

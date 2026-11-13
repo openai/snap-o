@@ -204,8 +204,9 @@ final class CapturePaneSession {
   }
 
   private func update() {
-    if needsInitialCapture, review == nil, let connected = devices.inventory.connected {
-      selectedPreviewDeviceID = connected.first { $0.id == selectedPreviewDeviceID }?.id ?? connected.first?.id
+    if needsInitialCapture, review == nil, let connected = devices.inventory.connected, let first = connected.first,
+       !connected.contains(where: { $0.id == selectedPreviewDeviceID }) {
+      selectedPreviewDeviceID = first.id
     }
     if let recording, recording.isComplete { showReview(recording) }
     if needsInitialCapture, deviceOpenRequest == nil {
