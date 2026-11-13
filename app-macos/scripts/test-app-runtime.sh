@@ -7,9 +7,9 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
 . "$APP_DIR/scripts/test-swift-packages.sh"
 
-# Run the real app shutdown order and touch leases against gated service doubles.
+# Run startup discovery, app shutdown, and touch leases against gated service doubles.
 swiftc_with_test_dependencies -swift-version 6 -parse-as-library \
-  Snap-O/App/AppRuntime.swift Snap-O/App/AppTermination.swift \
+  Snap-O/App/AppRuntime.swift Snap-O/App/AppTermination.swift Snap-O/App/StartupCaptureDiscovery.swift \
   Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Device.swift Snap-O/Device/ADBServerState.swift Snap-O/Device/DeviceTracking.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Capture/CaptureServices.swift Snap-O/Device/ShowTouchesOverride.swift \
   Snap-O/Utilities/Logging.swift Snap-O/Utilities/Perf.swift \
   Snap-OIntegrationTests/AsyncTestSupport.swift StandaloneTests/Support/TestGate.swift \

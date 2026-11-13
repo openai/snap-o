@@ -16,6 +16,9 @@ struct VideoStreamTests {
       try await discoveryStreamsBeforeWindowAttachment()
       try await hiddenDiscoveryResumesOnTheSameHelper()
       await pausedHelperDiscardsOldFramesAndSharesRecordings()
+      for acknowledged in [false, true] {
+        try await pauseDeadlineSurvivesVisibilityChanges(acknowledged: acknowledged)
+      }
       await consumersReleaseIndependently()
       await restartWaitsForFinalConsumerCleanup()
       await oldSubscriptionCannotRemoveReplacement()
@@ -269,6 +272,51 @@ struct VideoStreamTests {
     await next.waitUntilStopped()
     await assertOpened(1, probe: probe)
     precondition(socket.isClosed)
+  }
+
+  static func pauseDeadlineSurvivesVisibilityChanges(acknowledged: Bool) async throws {
+    let clock = TestClock()
+    try await withDependencies { $0.continuousClock = clock } operation: {
+      let target = target()
+      let socket = ADBSocketConnection()
+      let probe = prepare(target, socket)
+      let hub = DeviceVideoHub()
+      hub.preparePreview(for: target)
+      let preview = PreviewVideo {
+        LivePreviewSession(deviceID: target.serial, densityScale: nil, source: DeviceVideoSource(target: target, hub: hub))
+      } canReconnect: { true }
+      preview.start()
+      await waitForActorTestState { socket.activity == [5] }
+      socket.append(rgbaFrame())
+      await waitForObservedTestState { preview.phase == .streaming }
+
+      preview.setActive(false, delayPause: true)
+      await clock.advance(by: .seconds(3))
+      await waitForActorTestState { socket.activity == [5, 4] }
+      await clock.advance(by: .seconds(2))
+      preview.setActive(true, delayPause: true)
+      await waitForObservedTestState { preview.session != nil && preview.phase == .starting }
+      if !acknowledged {
+        preview.setActive(false, delayPause: true)
+        await waitForObservedTestState { preview.session == nil && preview.phase == .idle }
+      }
+
+      await clock.advance(by: .seconds(5))
+      precondition(!socket.isClosed && socket.activity == [5, 4])
+      if acknowledged {
+        socket.append(Data([5]))
+        await waitForActorTestState { socket.activity == [5, 4, 5] }
+        await clock.advance(by: .seconds(7))
+        precondition(!socket.isClosed, "The new stream gets its full deadline after the pause acknowledgment")
+      }
+      await clock.advance(by: .seconds(1))
+      await waitForActorTestState { socket.isClosed }
+
+      await preview.close()
+      await hub.releasePreview(for: target)
+      await assertOpened(1, probe: probe)
+      try await clock.checkSuspension()
+    }
   }
 
   static func consumersReleaseIndependently() async {

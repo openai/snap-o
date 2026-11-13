@@ -15,7 +15,9 @@ struct AppRuntimeTests {
         $0.continuousClock = TestClock()
       } operation: {
         try await AppTerminationTests.run()
-        await startupUsesCurrentSettingsAndDevices()
+        for reportsEmptyInventory in [false, true] {
+          await startupUsesCurrentSettingsAndDevices(reportsEmptyInventory: reportsEmptyInventory)
+        }
         await managerShutdownStopsStartupPreparation()
         for held in consumers.union([.reservations]) {
           await shutdownPreservesTargets(until: held)
@@ -28,7 +30,7 @@ struct AppRuntimeTests {
     print("App runtime startup and shutdown tests passed")
   }
 
-  private static func startupUsesCurrentSettingsAndDevices() async {
+  private static func startupUsesCurrentSettingsAndDevices(reportsEmptyInventory: Bool) async {
     let probe = ShutdownProbe()
     RuntimeTestEnvironment.probe = probe
     let settings = AppSettings.shared
@@ -37,9 +39,15 @@ struct AppRuntimeTests {
     settings.lastViewedDeviceID = nil
     let runtime = AppRuntime()
     let first = device("first")
-    let preferred = device("preferred")
+    let preferred = device("preferred", server: reportsEmptyInventory ? RemoteServer() : nil)
     settings.lastViewedDeviceID = preferred.id
     runtime.start()
+    if reportsEmptyInventory {
+      await waitForObservedTestState { !probe.startupRequests.value.isEmpty }
+      let beforeEmptyInventory = probe.startupRequests.value.count
+      runtime.adbService.discovered.continuation.yield([])
+      await waitForObservedTestState { probe.startupRequests.value.count > beforeEmptyInventory }
+    }
     runtime.adbService.discovered.continuation.yield([first, preferred])
     await waitForObservedTestState { probe.startupRequests.value.last?.device == preferred }
     precondition(runtime.deviceManager.inventory.connected == nil, "Preview must start before the device manager publishes its inventory")
@@ -69,6 +77,7 @@ struct AppRuntimeTests {
     runtime.deviceManager.inventory.ready = []
     await waitForObservedTestState { probe.startupRequests.value.last?.device == nil }
     await runtime.shutdown()
+    precondition(probe.startupRequests.value.compactMap(\.discoveredTarget) == [preferred.connection])
     let stoppedCount = probe.startupRequests.value.count
     runtime.start()
     precondition(probe.startupRequests.value.count == stoppedCount, "Shutdown must prevent another startup")
@@ -92,11 +101,24 @@ struct AppRuntimeTests {
     AppSettings.shared.showTouchesDuringCapture = false
   }
 
-  private static func device(_ id: String) -> Device {
+  private static func device(_ id: String, server: (any DeviceServerConnection)? = nil) -> Device {
     Device(
       id: id, model: "Test", androidVersion: "16", vendorModel: nil,
-      manufacturer: nil, avdName: nil, connection: DeviceTarget(serial: id, transportID: "1")
+      manufacturer: nil, avdName: nil, connection: DeviceTarget(serial: id, transportID: "1", server: server)
     )
+  }
+
+  private final class RemoteServer: DeviceServerConnection {
+    let id = UUID()
+    let serverID = ADBServerID.remote(UUID())
+    func makeOperationConnection() throws -> any ADBConnection {
+      throw CancellationError()
+    }
+
+    func register(_ target: DeviceTarget) {}
+    func verifyConnection(selecting: () throws -> Void) throws {
+      try selecting()
+    }
   }
 
   private static func prepare(_ probe: ShutdownProbe, runtime: AppRuntime) async {

@@ -5,7 +5,16 @@ import Observation
 @Observable
 @MainActor
 final class DeviceManager {
-  var inventory = DeviceInventory()
+  private var storedInventory = DeviceInventory()
+  @ObservationIgnored var onInventoryRead: (() -> Void)?
+  var inventory: DeviceInventory {
+    get {
+      onInventoryRead?()
+      return storedInventory
+    }
+    set { storedInventory = newValue }
+  }
+
   var adbServerState = ADBServerState.online
   var resolveRequest: (@MainActor (DeviceOpenRequest, (String) -> Void) async throws -> String)?
   var screenshotTargets: [DeviceTarget] = []
