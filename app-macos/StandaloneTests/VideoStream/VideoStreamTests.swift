@@ -13,6 +13,7 @@ struct VideoStreamTests {
       $0.continuousClock = TestClock()
     } operation: {
       await requestsKeyFrameOnlyForJoinedConsumers()
+      try await discoveryStreamsBeforeWindowAttachment()
       await pausedHelperDiscardsOldFramesAndSharesRecordings()
       await consumersReleaseIndependently()
       await restartWaitsForFinalConsumerCleanup()
@@ -158,6 +159,47 @@ struct VideoStreamTests {
     second.stop()
     await second.waitUntilStopped()
     precondition(socket.isClosed)
+  }
+
+  static func discoveryStreamsBeforeWindowAttachment() async throws {
+    let target = target()
+    let socket = ADBSocketConnection()
+    let probe = prepare(target, socket)
+    let discovered = try #require(DiscoveredVideo(target: target))
+    _ = try await discovered.stream.value
+    precondition(socket.activity == [5], "Discovery must start capture before a window attaches")
+    socket.append(rgbaFrame())
+    let hub = DeviceVideoHub()
+    hub.preparePreview(for: target, discovered: discovered)
+    let source = DeviceVideoSource(target: target, hub: hub)
+    let frames = TestValue(0)
+    source.start { if case .sample = $0 { frames.value += 1 } }
+    await waitForObservedTestState { frames.value == 1 }
+    precondition(socket.activity == [5], "The window must reuse the running stream")
+    let recording = DeviceVideoSource(target: target, hub: hub)
+    recording.start { _ in }
+    source.stop()
+    await source.waitUntilStopped()
+    let redundantSocket = ADBSocketConnection()
+    _ = prepare(target, redundantSocket)
+    let redundant = try #require(DiscoveredVideo(target: target))
+    _ = try await redundant.stream.value
+    hub.preparePreview(for: target, discovered: redundant)
+    await waitForActorTestState { redundantSocket.isClosed }
+    await hub.releasePreview(for: target)
+    await hub.releasePreview(for: target)
+    precondition(!socket.isClosed, "Recording must keep the discovered stream after the preview closes")
+    recording.stop()
+    await recording.waitUntilStopped()
+    await assertOpened(1, probe: probe)
+    precondition(socket.isClosed)
+
+    let unused = ADBSocketConnection()
+    _ = prepare(target, unused)
+    let abandoned = try #require(DiscoveredVideo(target: target))
+    _ = try await abandoned.stream.value
+    await abandoned.close()
+    precondition(unused.isClosed, "Abandoning a discovered stream must stop device capture")
   }
 
   static func pausedHelperDiscardsOldFramesAndSharesRecordings() async {

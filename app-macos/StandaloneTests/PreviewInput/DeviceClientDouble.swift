@@ -137,7 +137,7 @@ enum EmulatorRotationClient {
 final class DeviceVideoHub {
   static let shared = DeviceVideoHub()
   private(set) var prepared: Set<DeviceTarget> = []
-  func preparePreview(for target: DeviceTarget) {
+  func preparePreview(for target: DeviceTarget, discovered: DiscoveredVideo? = nil) {
     prepared.insert(target)
   }
 

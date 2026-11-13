@@ -38,11 +38,12 @@ struct AppRuntimeTests {
     let runtime = AppRuntime()
     let first = device("first")
     let preferred = device("preferred")
-    runtime.deviceManager.inventory.connected = [first, preferred]
     settings.lastViewedDeviceID = preferred.id
     runtime.start()
+    runtime.adbService.discovered.continuation.yield([first, preferred])
     await waitForObservedTestState { probe.startupRequests.value.last?.device == preferred }
-    precondition(runtime.deviceManager.inventory.ready == nil, "Preview preparation must precede Android readiness")
+    precondition(runtime.deviceManager.inventory.connected == nil, "Preview must start before the device manager publishes its inventory")
+    precondition(probe.startupRequests.value.contains { $0.discoveredTarget == preferred.connection })
     let count = probe.startupRequests.value.count
     runtime.start()
     precondition(probe.startupRequests.value.count == count)
@@ -62,6 +63,7 @@ struct AppRuntimeTests {
     await waitForObservedTestState { probe.startupRequests.value.last?.device == first }
 
     let replacement = device(first.id)
+    runtime.adbService.discovered.continuation.yield([replacement])
     runtime.deviceManager.inventory = DeviceInventory(connected: [replacement], ready: [replacement])
     await waitForObservedTestState { probe.startupRequests.value.last?.device == replacement }
     runtime.deviceManager.inventory.ready = []
@@ -83,7 +85,7 @@ struct AppRuntimeTests {
     await waitForObservedTestState { !probe.startupRequests.value.isEmpty }
     await runtime.deviceManager.shutdown().value
     let count = probe.startupRequests.value.count
-    runtime.deviceManager.inventory.connected = [device("late")]
+    runtime.adbService.discovered.continuation.yield([device("late")])
     AppSettings.shared.showTouchesDuringCapture.toggle()
     await runtime.shutdown()
     precondition(probe.startupRequests.value.count == count, "Manager shutdown must stop preparation without cancelling its observer")

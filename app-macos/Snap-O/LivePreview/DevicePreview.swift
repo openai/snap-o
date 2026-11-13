@@ -90,26 +90,36 @@ final class DevicePreview: PreviewStatus {
     self.releaseVideoHelper = releaseVideoHelper
   }
 
-  convenience init(target: DeviceTarget, adb: ADBService, settings: AppSettings) {
+  convenience init(target: DeviceTarget, adb: ADBService, settings: AppSettings, discovered: DiscoveredVideo? = nil) {
     @Dependency(\.continuousClock)
     var clock
     var ownsVideoHelper = false
-    let boot = Task {
-      let exec = await adb.exec().bound(to: target)
-      var delay = Duration.seconds(1)
-      while true {
+    let boot: Task<Void, Error> = if let discovered {
+      Task.immediate(priority: .userInitiated) {
+        do {
+          try await withTaskCancellationHandler {
+            try await discovered.wake.value
+          } onCancel: { discovered.cancel() }
+          try Task.checkCancellation()
+          guard target.isValid else { throw CancellationError() }
+          DeviceVideoHub.shared.preparePreview(for: target, discovered: discovered)
+          ownsVideoHelper = true
+        } catch {
+          await discovered.close()
+          throw error
+        }
+      }
+    } else {
+      Task.immediate(priority: .userInitiated) {
+        let exec = await adb.exec().bound(to: target)
+        try await exec.waitUntilBooted(target)
         try Task.checkCancellation()
-        _ = try target.requireTransport(for: target.serial)
-        if await (try? exec.isBootComplete(deviceID: target.serial)) == true { break }
-        try await clock.sleep(for: delay)
-        delay = min(delay * 2, .seconds(10))
+        if !target.isLocalEmulator {
+          DeviceVideoHub.shared.preparePreview(for: target)
+          ownsVideoHelper = true
+        }
+        _ = try? await exec.withTimeout(.seconds(1)).keyEvent(deviceID: target.serial, keyCode: "KEYCODE_WAKEUP")
       }
-      try Task.checkCancellation()
-      if !target.isLocalEmulator {
-        DeviceVideoHub.shared.preparePreview(for: target)
-        ownsVideoHelper = true
-      }
-      _ = try? await exec.withTimeout(.seconds(1)).keyEvent(deviceID: target.serial, keyCode: "KEYCODE_WAKEUP")
     }
     let preparation = Task<Preparation, Never> {
       do { try await boot.value } catch { return Preparation(touches: nil, density: nil) }

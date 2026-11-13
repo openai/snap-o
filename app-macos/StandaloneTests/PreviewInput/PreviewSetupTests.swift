@@ -87,6 +87,21 @@ struct PreviewSetupTests {
   }
 
   @Test
+  func closingDiscoveredPreviewCancelsBootPolling() async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let fixture = try Fixture(serial: "phone")
+    fixture.probe.bootReady = false
+    let discovered = try #require(DiscoveredVideo(target: fixture.target, client: ADBClient(setup: fixture.probe)))
+    let attachment = fixture.service.attach(to: fixture.target, discovered: discovered)
+    try await waitForState { fixture.probe.bootQueries == 1 && attachment.preview != nil }
+    await fixture.close()
+    #expect(fixture.source.starts == 0)
+    #expect(!DeviceVideoHub.shared.prepared.contains(fixture.target))
+    try await clock.checkSuspension()
+  }
+
+  @Test
   func closeDuringWakeJoinsTheRequestWithoutStartingVideo() async throws {
     let fixture = try Fixture(serial: "phone")
     let gate = TestGate()

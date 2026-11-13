@@ -22,6 +22,7 @@ final class ShutdownProbe {
   struct StartupRequest {
     let mode: StartupCaptureMode
     let device: Device?
+    let discoveredTarget: DeviceTarget?
   }
 
   func finish(_ owner: Owner) async {
@@ -45,6 +46,7 @@ enum RuntimeTestEnvironment {
 
 @MainActor
 final class ADBService: DeviceTracking {
+  let discovered = AsyncStream<[Device]>.makeStream(bufferingPolicy: .bufferingNewest(1))
   init(trackers: [(ADBServerID, any DeviceTracking)] = []) {}
   func startTracking() {}
   func stopTracking() async {
@@ -53,7 +55,7 @@ final class ADBService: DeviceTracking {
 
   func retryADBServer() {}
   func previewDeviceStream() -> AsyncStream<[Device]> {
-    AsyncStream { $0.finish() }
+    discovered.stream
   }
 
   func deviceStream() -> AsyncStream<[Device]> {
@@ -235,6 +237,16 @@ final class LivePreviewService {
 
 enum StartupCaptureMode { case livePreview, screenshot }
 
+final class DiscoveredVideo: Sendable {
+  let target: DeviceTarget
+  init?(target: DeviceTarget) {
+    guard !target.isLocalEmulator, target.isValid else { return nil }
+    self.target = target
+  }
+
+  func close() async {}
+}
+
 @MainActor
 @Observable
 final class AppSettings {
@@ -253,8 +265,10 @@ final class StartupCapturePreparation {
     livePreview: LivePreviewService,
     makeEmulatorControls: @escaping @MainActor (DeviceTarget) -> EmulatorControlsController?
   ) {}
-  func prepare(mode: StartupCaptureMode, device: Device?) {
-    probe.startupRequests.value.append(.init(mode: mode, device: device))
+  @discardableResult
+  func prepare(mode: StartupCaptureMode, device: Device?, discovered: DiscoveredVideo? = nil) -> Bool {
+    probe.startupRequests.value.append(.init(mode: mode, device: device, discoveredTarget: discovered?.target))
+    return discovered != nil
   }
 
   func discard() async {
