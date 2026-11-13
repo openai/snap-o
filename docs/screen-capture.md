@@ -26,6 +26,10 @@ Hover over the device count to choose a preview. The picker shows a live thumbna
 
 You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
+When Snap-O opens in Live Preview mode, it starts connecting as soon as it finds the selected phone. If macOS is sharing the Snap-O window, the preview stays live when another window covers it.
+
+An unshared preview pauses after its window has been fully covered for about three seconds. When you return, Snap-O blurs the last frame, if one is available, until a fresh frame arrives.
+
 Double-click any edge of the Snap-O window on the desktop to fit it to the available space. In full screen and Split View, the device image stays centered in its pane and keeps its aspect ratio.
 
 You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.
