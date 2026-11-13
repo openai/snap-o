@@ -22,6 +22,17 @@ Screen capture needs no library in your Android app. Network and Tweaks each req
 
 For capture controls and keyboard shortcuts, see the [Screen capture guide](docs/screen-capture.md).
 
+### Connect wirelessly
+
+On Android 11 or later, connect the phone and Mac to the same Wi-Fi network and enable **Developer options → Wireless debugging** on the phone.
+
+1. In Snap-O, choose **Device → Connect Android Wirelessly…**.
+2. On the phone, tap **Pair device with pairing code**. Enter that dialog's address, port, and six-digit code in Snap-O, then click **Pair**. Skip this step if the Mac is already paired.
+3. Return to the phone's main **Wireless debugging** screen. If the phone has not appeared automatically, enter that screen's address and port in Snap-O and click **Connect**. The connection port differs from the pairing port.
+4. Select the phone in **Device Manager** to open Live Preview. The existing capture and input controls work over the authorized ADB connection.
+
+Pairing grants this Mac debugging access to the phone. Revoke it from **Paired devices** on the phone when no longer needed. Network changes, sleep, and device settings can interrupt wireless debugging; reconnect with the current address if necessary. Wireless debugging does not bypass the phone's lock screen.
+
 ## Screen capture
 
 Save screenshots and recordings to Capture History to keep them across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Each window captures its selected device. Existing groups of captures remain available in history.
