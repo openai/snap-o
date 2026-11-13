@@ -121,19 +121,22 @@ enum EmulatorGRPCEndpoint {
 }
 
 enum StartupCaptureMode { case screenshot, livePreview }
+enum DiscoveredVideo {}
 
 @MainActor
 final class EmulatorControlsController {}
 
 @MainActor
 final class LivePreviewAttachment {
+  let adoptedDiscoveredVideo = false
   func close() async {}
 }
 
 @MainActor
 final class LivePreviewService {
   func attach(
-    to device: Device, makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController?
+    to device: Device, discovered: DiscoveredVideo? = nil,
+    makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController?
   ) -> LivePreviewAttachment? {
     preconditionFailure("Screenshot startup tests must not start live preview")
   }
