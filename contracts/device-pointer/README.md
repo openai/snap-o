@@ -5,7 +5,7 @@ ADB shell v2. It does not change existing keyboard, clipboard, video, Network,
 or Tweaks protocol versions. No frontend or Python CLI uses this transport.
 Both peers ship together; older helpers lack this entry point and fail startup.
 
-The helper runs as shell, removes its temporary JAR after loading, and writes a
+After the launcher reports its [build ID](../../device-helper/README.md), the pointer helper writes a
 four-byte unsigned big-endian version (`1`) when ready. The client rejects other
 versions. Subsequent stdout, EOF, or shell exit closes the client connection.
 

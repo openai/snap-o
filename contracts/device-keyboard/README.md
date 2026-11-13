@@ -4,9 +4,10 @@ This internal protocol connects Live Preview to the bundled device helper's `key
 Both parts ship together. Clipboard mode remains at version 1 with its existing framing.
 Network, Tweaks, Android libraries, frontends, and Python CLIs are unchanged.
 
-The transport and temporary-file lifetime match the [clipboard helper](../device-clipboard/README.md).
+Keyboard and clipboard use the same [transport and cached JAR](../device-clipboard/README.md).
 Text travels only in the ADB stream, never in shell arguments, files, or diagnostics.
-The helper begins with a four-byte unsigned big-endian version (`2`). The client rejects other versions.
+After the common build-ID handshake, keyboard mode writes a four-byte unsigned big-endian version (`2`).
+The client rejects other versions.
 
 Every request starts with a four-byte unsigned big-endian command. Text fields contain a four-byte
 UTF-8 byte count followed by valid UTF-8, limited to 1,048,576 bytes.

@@ -2,6 +2,7 @@
 """Build the Android device helper bundled with Snap-O."""
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -28,6 +29,13 @@ def main():
         dex = temporary / "dex"
         dex.mkdir()
         sources = sorted((root / "src").rglob("*.java"))
+        fingerprint = hashlib.sha256(Path(__file__).read_bytes())
+        for source in sources:
+            fingerprint.update(source.relative_to(root).as_posix().encode() + b"\0" + source.read_bytes())
+        build_id = fingerprint.hexdigest()[:16]
+        build_source = temporary / "Build.java"
+        build_source.write_text(f'package com.openai.snapo; final class Build {{ static final String ID = "{build_id}"; }}\n')
+        sources.append(build_source)
         subprocess.run([str(java), "--release", "8", "-g:none", "-classpath", str(android), "-d", str(classes), *map(str, sources)], check=True)
         subprocess.run([str(d8), "--release", "--min-api", "24", "--lib", str(android), "--output", str(dex), *map(str, sorted(classes.rglob("*.class")))], check=True)
         output = temporary / "snapo-device-helper.jar"
@@ -36,6 +44,7 @@ def main():
             entry.compress_type = zipfile.ZIP_STORED
             entry.external_attr = 0o644 << 16
             archive.writestr(entry, (dex / "classes.dex").read_bytes())
+            archive.comment = ("SNHB" + build_id).encode("ascii")
         destination = root / "snapo-device-helper.jar"
         if args.check:
             if not destination.is_file() or destination.read_bytes() != output.read_bytes():

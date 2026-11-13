@@ -56,6 +56,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private var trackingArea: NSTrackingArea?
   private let displayLayer = AVSampleBufferDisplayLayer()
   private var endedLivePreviewTrace = false
+  private var lastFrames = PreviewFrameSnapshot()
 
   private var pointerState = PointerState()
   private var multitouch: LivePreviewMultitouch?
@@ -234,14 +235,14 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private func attachSession() {
     guard let renderer else { return }
     let session = renderer.session
-    #if PERF_TRACING
-    Perf.startupEvent("renderer attach", deviceID: renderer.deviceID)
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(logDisplayReadiness),
+      selector: #selector(displayReadinessChanged),
       name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange,
       object: displayLayer
     )
+    #if PERF_TRACING
+    Perf.startupEvent("renderer attach", deviceID: renderer.deviceID)
     #endif
     endedLivePreviewTrace = false
     session.addRenderer(id: rendererID) { [weak self] sample in
@@ -249,29 +250,29 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     }
   }
 
-  #if PERF_TRACING
   @objc
-  private nonisolated func logDisplayReadiness() {
+  private nonisolated func displayReadinessChanged() {
     Task { @MainActor [weak self] in
-      guard let self, displayLayer.isReadyForDisplay, let renderer else { return }
+      guard let self, endedLivePreviewTrace, displayLayer.isReadyForDisplay, let renderer else { return }
+      thumbnail?.didDisplayFrame(in: renderer.session.id)
+      #if PERF_TRACING
       Perf.startupEvent("layer ready for display", deviceID: renderer.deviceID)
+      #endif
     }
   }
-  #endif
 
   private func detachThumbnail() {
     guard thumbnail?.videoRenderer === displayLayer.sampleBufferRenderer else { return }
-    thumbnail?.cacheLiveFrame()
+    thumbnail?.cacheLastFrames(lastFrames)
     thumbnail?.videoRenderer = nil
+    lastFrames = PreviewFrameSnapshot()
   }
 
   private func detachSession() {
     releaseInputFocus()
-    #if PERF_TRACING
     NotificationCenter.default.removeObserver(
       self, name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange, object: displayLayer
     )
-    #endif
     detachThumbnail()
     frameDragOrigin = nil
     isDraggingFrame = false
@@ -283,9 +284,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   private func enqueue(_ sample: CMSampleBuffer) {
     guard let frame = frameBuffer.copyForDisplay(sample) else { return }
+    if thumbnail != nil { lastFrames.append(frame) }
     frameOutput.enqueue(frame)
     if !endedLivePreviewTrace {
       endedLivePreviewTrace = true
+      if displayLayer.isReadyForDisplay { displayReadinessChanged() }
       #if PERF_TRACING
       Perf.startupEvent("renderer first enqueue", deviceID: renderer?.deviceID)
       #endif

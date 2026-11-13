@@ -225,6 +225,12 @@ print_protocol_declaration() {
 }
 
 print_android_protocol_declarations() {
+  if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/Helper.java" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device helper startup identity' \
+      '"SNHB"' 'device-helper/src/com/openai/snapo/Helper.java'
+    print_protocol_declaration "$1" 'Device helper bundled identity' \
+      '"SNHB"' 'device-helper/build.py'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:contracts/device-keyboard/README.md" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device keyboard command definitions' \
       '^\| [0-9]+ \|' 'contracts/device-keyboard/README.md'
@@ -287,6 +293,11 @@ print_android_protocol_declarations() {
 }
 
 print_client_protocol_declarations() {
+  if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/Helper.java" 2>/dev/null ||
+    git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/DeviceHelper.swift" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device helper client startup identity' \
+      '"SNHB"' 'app-macos/Snap-O/Device/DeviceHelper.swift'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/video/Main.java" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/Video/DeviceVideoPacket.swift" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device video client versioned magic' \

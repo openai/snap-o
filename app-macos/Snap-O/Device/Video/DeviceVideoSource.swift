@@ -13,6 +13,7 @@ final class DeviceVideoHub {
 
   private let makeSource: (DeviceTarget) -> any LivePreviewFrameSource
   private var sessions: [DeviceTarget: DeviceVideoStream] = [:]
+  private var previewOwners: [DeviceTarget: Int] = [:]
 
   init(makeSource: @escaping (DeviceTarget) -> any LivePreviewFrameSource = { target in
     if target.isLocalEmulator {
@@ -24,9 +25,25 @@ final class DeviceVideoHub {
     self.makeSource = makeSource
   }
 
-  fileprivate func subscription(target: DeviceTarget) -> Subscription {
+  /// A selected physical preview owns the helper even when it has no frame subscribers.
+  func preparePreview(for target: DeviceTarget) {
+    guard !target.isLocalEmulator else { return }
+    previewOwners[target, default: 0] += 1
+    stream(for: target).prepare()
+  }
+
+  func releasePreview(for target: DeviceTarget) async {
+    guard let owners = previewOwners[target] else { return }
+    if owners > 1 { previewOwners[target] = owners - 1
+      return
+    }
+    previewOwners.removeValue(forKey: target)
+    if let stream = sessions[target], stream.isEmpty { await close(stream, for: target).value }
+  }
+
+  private func stream(for target: DeviceTarget) -> DeviceVideoStream {
     let stream: DeviceVideoStream
-    if let existing = sessions[target], !existing.hasStopped {
+    if let existing = sessions[target], existing.isAvailable {
       stream = existing
     } else {
       let previous = sessions[target]
@@ -34,18 +51,27 @@ final class DeviceVideoHub {
       stream = DeviceVideoStream(source: makeSource(target), previous: previous, scalesFrames: target.isLocalEmulator)
       sessions[target] = stream
     }
-    return Subscription(target: target, stream: stream, id: UUID())
+    return stream
+  }
+
+  fileprivate func subscription(target: DeviceTarget) -> Subscription {
+    Subscription(target: target, stream: stream(for: target), id: UUID())
   }
 
   fileprivate func unsubscribe(_ subscription: Subscription) -> Task<Void, Never>? {
     let stream = subscription.stream
     stream.unsubscribe(subscription.id)
     guard stream.isEmpty else { return nil }
+    if previewOwners[subscription.target] != nil, stream.pause() { return nil }
+    return close(stream, for: subscription.target)
+  }
+
+  private func close(_ stream: DeviceVideoStream, for target: DeviceTarget) -> Task<Void, Never> {
     stream.stop()
     return Task {
       await stream.waitUntilStopped()
-      if sessions[subscription.target] === stream {
-        sessions.removeValue(forKey: subscription.target)
+      if sessions[target] === stream {
+        sessions.removeValue(forKey: target)
       }
     }
   }
@@ -128,11 +154,30 @@ private final class DeviceVideoStream {
     source.hasIndependentFrames
   }
 
+  var isAvailable: Bool {
+    !hasStopped && (source as? DeviceVideoConnection)?.hasStopped != true
+  }
+
   init(source: any LivePreviewFrameSource, previous: DeviceVideoStream?, scalesFrames: Bool) {
     self.source = source
     self.scalesFrames = scalesFrames
     self.previous = previous
     if scalesFrames { source.setFrameSize(.inactive) }
+  }
+
+  func prepare() {
+    // A replacement stream joins the preceding transport before opening its own.
+    if previous == nil { (source as? DeviceVideoConnection)?.prepare() }
+  }
+
+  func pause() -> Bool {
+    guard isAvailable, let connection = source as? DeviceVideoConnection else { return false }
+    connection.pause()
+    hasStarted = false
+    density = nil
+    formatEvent = nil
+    latestIndependentFrame = nil
+    return true
   }
 
   func subscribe(
@@ -157,7 +202,8 @@ private final class DeviceVideoStream {
         self.previous = nil
         startup = Task {
           await previous.waitUntilStopped()
-          guard !hasStopped else { return }
+          startup = nil
+          guard !hasStopped, !isEmpty else { return }
           start()
         }
       } else {

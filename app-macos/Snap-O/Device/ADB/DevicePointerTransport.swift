@@ -15,40 +15,28 @@ struct DevicePointerTransport: LivePreviewPointerTransport {
   static func connect(
     target: DeviceTarget,
     adb: ADBClient = ADBClient(),
-    helper: @Sendable () throws -> Data = DeviceClipboardProtocol.bundledHelper
+    helper: @Sendable () throws -> Data = DeviceHelper.bundledBytes
   ) async throws -> Self {
-    let command = try DevicePointerProtocol.launchCommand(helper: helper())
-    let connection = try await adb.bound(to: target).makeConnection()
+    let deviceHelper = try DeviceHelper(helper())
+    let session = try await deviceHelper.connect(.pointer, serial: target.serial, adb: adb.bound(to: target))
+    let connection = session.connection
     let queue = DispatchQueue(label: "snapo.pointer.commands")
-    do {
-      let stream = try await perform(connection: connection, queue: queue) {
-        try connection.withRequestTimeout(.seconds(8)) {
-          try connection.sendTransport(to: target.serial)
-          _ = try connection.sendHostCommand("shell,v2,raw:" + command, expectsResponse: false)
-          var stream = ADBShellV2Stream()
-          let version = try stream.readExactly(4, read: connection.readChunk).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
-          guard version == DevicePointerProtocol.version else {
-            throw ADBError.protocolFailure("Unsupported pointer helper version")
-          }
-          return stream
-        }
-      }
-      let reader = Task {
-        await withCheckedContinuation { continuation in
-          DispatchQueue.global(qos: .userInitiated).async {
-            var stream = stream
-            // After readiness, any output or exit means the helper stopped accepting input.
-            _ = try? stream.readExactly(1, read: connection.readChunk)
-            connection.close()
-            continuation.resume()
-          }
-        }
-      }
-      return Self(connection: connection, queue: queue, reader: reader)
-    } catch {
+    guard session.header.reduce(UInt32(0), { ($0 << 8) | UInt32($1) }) == DevicePointerProtocol.version else {
       connection.close()
-      throw error
+      throw ADBError.protocolFailure("Unsupported pointer helper version")
     }
+    let reader = Task {
+      await withCheckedContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          var stream = session.stream
+          // After readiness, any output or exit means the helper stopped accepting input.
+          _ = try? stream.readExactly(1, read: connection.readChunk)
+          connection.close()
+          continuation.resume()
+        }
+      }
+    }
+    return Self(connection: connection, queue: queue, reader: reader)
   }
 
   func send(_ frame: Data) async throws {

@@ -7,7 +7,8 @@ and Python CLIs are unchanged and do not consume this protocol.
 The transport is a raw, bidirectional ADB `exec` stream. Diagnostics go to stderr, which the
 launch command discards. No clipboard contents belong in logs, launch arguments, or temporary files.
 
-The helper first writes a four-byte unsigned big-endian version number (`1`). The client rejects
+After the launcher reports its [build ID](../../device-helper/README.md), clipboard mode
+writes a four-byte unsigned big-endian version number (`1`). The client rejects
 other versions before enabling sync. Every subsequent message in either direction contains:
 
 | Field | Encoding |
@@ -26,8 +27,7 @@ Waydroid's host clipboard bridge can discard this extra when returning the clip 
 so new host writes may still show the preview there.
 
 Malformed lengths, invalid UTF-8, and incomplete messages terminate the session. EOF terminates
-the helper. It removes its temporary JAR and directory immediately after loading, with a launch-script
-cleanup trap for failed starts. The desktop cancels pending
+the helper. Its cached JAR remains available after disconnect. The desktop cancels pending
 socket operations when sync stops and reconnects after transport failure.
 
 The desktop preserves existing Mac clipboard items at startup, including unsupported content.

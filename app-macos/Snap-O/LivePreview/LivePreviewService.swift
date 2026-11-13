@@ -223,18 +223,18 @@ final class LivePreviewService {
     await closing.value
   }
 
-  private func updateVideoActivity(_ entry: PreviewConnectionEntry) {
+  private func updateVideoActivity(_ entry: PreviewConnectionEntry, delayPause: Bool = false) {
     let active = entry.users.contains { id in
       guard let user = users[id], !user.isClosed else { return false }
       return (user.windowVisibility == nil || user.isVideoVisible) && user.isPaneVisible
     }
-    entry.owner?.video.setActive(active)
+    entry.owner?.video.setActive(active, delayPause: delayPause)
   }
 
-  fileprivate func setVisible(_ visible: Bool, user: PreviewUse) {
+  fileprivate func setVisible(_ visible: Bool, user: PreviewUse, delayPause: Bool = false) {
     guard !user.isClosed else { return }
     user.windowVisibility = visible
-    updateVideoActivity(user.entry)
+    updateVideoActivity(user.entry, delayPause: delayPause && user.isPaneVisible)
     if !visible, desiredID == user.id || activeID == user.id { requestFocus(nil) }
   }
 
@@ -483,7 +483,7 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
   func updatePresentation(viewID: UUID, visible: Bool, focused: Bool, syncClipboard: Bool) {
     guard user.viewID == viewID, !isClosed else { return }
     setClipboardEnabled(syncClipboard)
-    service.setVisible(visible, user: user)
+    service.setVisible(visible, user: user, delayPause: true)
     setFocused(visible && focused)
   }
 

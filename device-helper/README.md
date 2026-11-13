@@ -5,11 +5,17 @@ It runs through `app_process` as the ADB shell. No APK, root access, or app depe
 Emulators continue using their existing gRPC clipboard service.
 Keyboard input uses the helper on both emulators and physical devices.
 
-Each session creates a private temporary directory under `/data/local/tmp`, writes a read-only JAR,
-and starts it over a bidirectional ADB connection: shell v2 for video and pointer input, `exec` for clipboard and keyboard.
-The helper removes its JAR and directory
-after Android loads it; the launch script also cleans up failed starts. Closing the connection
-ends the helper. There is no network listener or persistent service.
+Snap-O caches the read-only JAR under `/data/local/tmp/snapo-device-helper/<sha256>.jar`.
+Video, pointer, keyboard, and clipboard sessions share it across reconnects and app launches.
+On a cache hit, Snap-O launches the JAR directly. The launcher writes `SNHB` followed by
+its 16-character build ID before starting the requested mode. Snap-O reads the expected ID
+from the bundled JAR's ZIP comment. A missing startup identity or a different build triggers one reinstall.
+On a miss, the launch script sends `ff` on stdout and reads the bundled JAR's byte count from stdin.
+It checks the new file using SHA-256, or SHA-1 on Android 7, and renames it atomically.
+The digest in the filename lets different Snap-O versions run at the same time.
+
+Video and pointer input use ADB shell v2. Clipboard and keyboard use ADB `exec`.
+Closing the connection ends the running helper. The cached JAR stays on the device.
 
 In clipboard mode, the helper only reads and writes plain text. It registers an Android clipboard listener and sends
 changes to the Mac. Host writes suppress their corresponding notification. The desktop shares
@@ -102,7 +108,9 @@ The Mac enables a two-frame acknowledgment window for RGBA. When transport slows
 the helper waits before capturing the latest image instead of queuing stale frames.
 Frame rate can fall on high-latency links; recordings retain the captured timestamps.
 Each consumer owns a subscription. Closing a preview does not stop its recording.
-The final subscription closes the ADB connection and ends the helper.
+When the last subscriber pauses, a selected preview keeps the helper connected. It releases the
+display mirror, encoder or image reader, and waits for the Mac. Resuming starts a fresh capture
+in the same process. Closing the last preview and recording ends the helper.
 Emulators retain gRPC preview and Android file recording. Bug-report recordings retain
 Android's overlay writer and temporarily stop preview.
 

@@ -1,4 +1,7 @@
 import AppKit
+import Clocks
+import Dependencies
+import DependenciesTestSupport
 import Testing
 
 @MainActor
@@ -42,6 +45,43 @@ struct WindowVisibilityTests {
     #expect(changes == [true, false])
     view.stopObserving()
     window.close()
+  }
+
+  @Test(.dependency(\.continuousClock, TestClock()))
+  func sharePlayChangesReachACoveredPreview() async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let window = makeWindow()
+    window.testOcclusion = []
+    let changes = AsyncStream<Bool>.makeStream()
+    let view = WindowVisibilityView(forLivePreview: true) { changes.continuation.yield($0) }
+    window.contentView?.addSubview(view)
+    defer { view.stopObserving()
+      changes.continuation.finish()
+      window.close()
+    }
+    var reports = changes.stream.makeAsyncIterator()
+    await view.pendingReport?.value
+    #expect(await reports.next(isolation: MainActor.shared) == false)
+
+    // SharePlay can start or stop without changing focus or occlusion.
+    window.testSharing = true
+    await clock.advance(by: .seconds(1))
+    #expect(await reports.next(isolation: MainActor.shared) == true)
+    #expect(!window.isVisibleForPlayback)
+    window.testSharing = false
+    await clock.advance(by: .seconds(1))
+    #expect(await reports.next(isolation: MainActor.shared) == false)
+
+    window.testSharing = true
+    window.testMiniaturized = true
+    NotificationCenter.default.post(name: NSWindow.didMiniaturizeNotification, object: window)
+    await view.pendingReport?.value
+    #expect(!window.isVisibleForLivePreview)
+    try await clock.checkSuspension()
+    window.testMiniaturized = false
+    window.testVisible = false
+    #expect(!window.isVisibleForLivePreview)
   }
 
   @Test
@@ -134,15 +174,22 @@ struct WindowVisibilityTests {
 @MainActor
 private final class VisibilityTestWindow: NSWindow {
   var testOcclusion: NSWindow.OcclusionState = .visible
+  var testSharing = false
+  var testMiniaturized = false
+  var testVisible = true
+  override var hasActiveWindowSharingSession: Bool {
+    testSharing
+  }
+
   override var occlusionState: NSWindow.OcclusionState {
     testOcclusion
   }
 
   override var isVisible: Bool {
-    true
+    testVisible
   }
 
   override var isMiniaturized: Bool {
-    false
+    testMiniaturized
   }
 }

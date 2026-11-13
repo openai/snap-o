@@ -8,6 +8,7 @@ enum DeviceVideoPacket {
   case frame(flags: UInt32, timestamp: Int64, data: Data)
   case rgba(width: Int, height: Int, timestamp: Int64, pixels: Data)
   case failure(DeviceVideoFailure)
+  case paused
 
   static let magic: UInt32 = 0x534E_5631
 
@@ -66,6 +67,7 @@ enum DeviceVideoPacket {
       guard compressed.count == count else { throw ADBError.protocolFailure("Truncated RGBA video packet") }
       let pixels = try inflateRGBA(compressed, byteCount: width * height * 4)
       return .rgba(width: width, height: height, timestamp: Int64(timestamp), pixels: pixels)
+    case 5: return .paused
     default:
       throw ADBError.protocolFailure("Unknown video packet")
     }

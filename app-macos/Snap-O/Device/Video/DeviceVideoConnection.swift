@@ -2,15 +2,19 @@
 import Dependencies
 import Foundation
 
-/// Owns one device capture session and its socket.
+/// Keeps the device helper connected while capture is paused.
 @MainActor
 final class DeviceVideoConnection: LivePreviewFrameSource {
   private(set) var hasIndependentFrames = false
   private let target: DeviceTarget
   private let clock: AnyClock<Duration>
-  private var hasStopped = false
+  private(set) var hasStopped = false
   private var connection: (any ADBConnection)?
   private var isReady = false
+  private var captureRequested = false
+  private var waitingForPause = false
+  private var receivedKeyFrame = false
+  private var keyFrameRequested = false
   private var task: Task<Void, Never>?
   private var timeout: Task<Void, Never>?
   private var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
@@ -27,6 +31,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     hasStopped = true
     task?.cancel()
     timeout?.cancel()
+    captureRequested = false
     connection?.close()
     connection = nil
     deliver = nil
@@ -41,40 +46,66 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
   }
 
   func requestKeyFrame() {
-    guard isReady, !hasStopped, let connection else { return }
-    commands.async { try? connection.writeFully(ADBShellV2Stream.standardInput(Data([1]))) }
+    // The encoder supplies the first keyframe itself. One later request serves all joiners.
+    guard receivedKeyFrame, !keyFrameRequested, captureRequested else { return }
+    keyFrameRequested = true
+    send(1)
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-    guard task == nil, !hasStopped else { return }
+    guard !hasStopped, !captureRequested else { return }
     self.deliver = deliver
-    let target = target
-    let deviceID = target.serial
-    let clock = clock
-    let commands = commands
-    timeout = Task { [weak self] in
-      guard !Task.isCancelled else { return }
-      do { try await clock.sleep(for: .seconds(8)) } catch { return }
-      self?.receive(.stopped(ADBError.requestTimedOut("Device video did not start")))
-      self?.stop()
+    captureRequested = true
+    armTimeout("Device video did not start")
+    prepare()
+    if isReady, !waitingForPause { send(5) }
+  }
+
+  func pause() {
+    guard !hasStopped, captureRequested else { return }
+    captureRequested = false
+    deliver = nil
+    receivedKeyFrame = false
+    keyFrameRequested = false
+    hasIndependentFrames = false
+    timeout?.cancel()
+    if isReady, !waitingForPause {
+      waitingForPause = true
+      armTimeout("Device video did not pause")
+      send(4)
     }
+  }
+
+  private func armTimeout(_ message: String) {
+    timeout?.cancel()
+    let deadline = clock.now.advanced(by: .seconds(8))
+    timeout = Task { [weak self, clock] in
+      guard !Task.isCancelled else { return }
+      do { try await clock.sleep(until: deadline) } catch { return }
+      self?.receive(.stopped(ADBError.requestTimedOut(message)))
+    }
+  }
+
+  private func send(_ command: UInt8) {
+    guard !hasStopped, let connection else { return }
+    commands.async {
+      do {
+        try connection.writeFully(ADBShellV2Stream.standardInput(Data([command])))
+      } catch { connection.close() }
+    }
+  }
+
+  func prepare() {
+    guard task == nil, !hasStopped else { return }
+    let target = target
+    let commands = commands
     task = Task.detached(priority: .userInitiated) { [weak self] in
       guard !Task.isCancelled else { return }
       var socket: (any ADBConnection)?
       do {
-        guard let url = Bundle.main.url(forResource: "snapo-device-helper", withExtension: "jar") else {
-          throw ADBError.protocolFailure("Missing device video helper")
-        }
-        let helper = try Data(contentsOf: url)
-        guard !helper.isEmpty, helper.count <= 128 * 1024 else { throw ADBError.protocolFailure("Invalid device helper") }
-        let command = """
-        directory=$(mktemp -d /data/local/tmp/snapo-video.XXXXXX) || exit 1
-        trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
-        (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
-          chmod 444 "$directory/helper.jar" || exit 1
-        CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" rgba-fallback rgba-flow-control 2>/dev/null
-        """
-        let connection = try await ADBClient().bound(to: target).makeConnection()
+        let helper = try DeviceHelper(DeviceHelper.bundledBytes())
+        let session = try await helper.connect(.video, serial: target.serial, adb: ADBClient().bound(to: target))
+        let connection = session.connection
         socket = connection
         let acknowledgeRGBAFrame = {
           try commands.sync {
@@ -85,12 +116,8 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
           return
         }
         try Task.checkCancellation()
-        var stream = ADBShellV2Stream()
-        try connection.withRequestTimeout(.seconds(8)) {
-          try connection.sendTransport(to: deviceID)
-          _ = try connection.sendHostCommand("shell,v2,raw:" + command, expectsResponse: false)
-          try DeviceVideoPacket.validateHeader(stream.readExactly(4, read: connection.readChunk))
-        }
+        var stream = session.stream
+        try DeviceVideoPacket.validateHeader(session.header)
         await self?.markReady()
         var builder = DeviceVideoSampleBuilder()
         let rgbaBuilder = EmulatorPreviewFrameBuilder()
@@ -101,11 +128,16 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
           switch packet {
           case .failure(let error):
             throw error
+          case .paused:
+            builder.reset()
+            displaySize = nil
+            rgbaSize = nil
+            await self?.didPause()
           case .display(let width, let height, let density, _):
             builder.reset()
             displaySize = (width, height)
             rgbaSize = nil
-            await self?.receive(.density(CGFloat(density) / 160))
+            await self?.beginDisplay(density: CGFloat(density) / 160)
           case .rgba(let width, let height, let timestamp, let pixels):
             guard displaySize?.width == width, displaySize?.height == height else {
               throw ADBError.protocolFailure("RGBA frame does not match the device display")
@@ -140,12 +172,26 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
 
   private func markReady() {
     guard !hasStopped else { return }
-    // New encoders start with a keyframe. Later subscribers request a fresh one.
     isReady = true
+    if captureRequested { send(5) }
+  }
+
+  private func didPause() {
+    guard waitingForPause, !hasStopped else { return }
+    waitingForPause = false
+    if captureRequested {
+      send(5)
+    } else { timeout?.cancel() }
+  }
+
+  private func beginDisplay(density: CGFloat) {
+    receivedKeyFrame = false
+    keyFrameRequested = false
+    receive(.density(density))
   }
 
   private func useIndependentFrames() {
-    hasIndependentFrames = true
+    if captureRequested, !waitingForPause { hasIndependentFrames = true }
   }
 
   private func install(_ connection: any ADBConnection) -> Bool {
@@ -156,9 +202,19 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
 
   private func receive(_ event: LivePreviewFrameEvent) {
     guard !hasStopped else { return }
-    if case .sample = event { timeout?.cancel() }
     let receiver = deliver
-    if case .stopped = event { stop() }
+    if case .stopped = event {
+      stop()
+    } else {
+      guard captureRequested, !waitingForPause else { return }
+      if case .sample(_, let keyFrame) = event {
+        timeout?.cancel()
+        if keyFrame {
+          receivedKeyFrame = true
+          keyFrameRequested = false
+        }
+      }
+    }
     receiver?(event)
   }
 }

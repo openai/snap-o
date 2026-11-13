@@ -13,6 +13,7 @@ struct VideoStreamTests {
       $0.continuousClock = TestClock()
     } operation: {
       await requestsKeyFrameOnlyForJoinedConsumers()
+      await pausedHelperDiscardsOldFramesAndSharesRecordings()
       await consumersReleaseIndependently()
       await restartWaitsForFinalConsumerCleanup()
       await oldSubscriptionCannotRemoveReplacement()
@@ -81,15 +82,7 @@ struct VideoStreamTests {
       }
     }
     await waitForReads(socket)
-    var packet = Data([1])
-    for value in [UInt32(2), 2, 160, 0] {
-      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
-    }
-    packet.append(4)
-    for value in [UInt32(2), 2, 0, 123, 15] {
-      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
-    }
-    packet.append(contentsOf: [120, 1, 251, 207, 192, 240, 255, 63, 18, 6, 0, 67, 204, 7, 249])
+    let packet = rgbaFrame()
     socket.append(packet)
     await waitForObservedTestState { received.value }
     precondition(first.hasIndependentFrames)
@@ -114,6 +107,19 @@ struct VideoStreamTests {
     precondition(socket.isClosed)
   }
 
+  static func rgbaFrame() -> Data {
+    var packet = Data([1])
+    for value in [UInt32(2), 2, 160, 0] {
+      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
+    }
+    packet.append(4)
+    for value in [UInt32(2), 2, 0, 123, 15] {
+      withUnsafeBytes(of: value.bigEndian) { packet.append(contentsOf: $0) }
+    }
+    packet.append(contentsOf: [120, 1, 251, 207, 192, 240, 255, 63, 18, 6, 0, 67, 204, 7, 249])
+    return packet
+  }
+
   static func assertOpened(_ expected: Int, probe: VideoConnectionProbe) async {
     let opened = await probe.opened
     precondition(opened == expected)
@@ -136,12 +142,60 @@ struct VideoStreamTests {
 
     let second = DeviceVideoSource(target: target, hub: hub)
     second.start { _ in }
+    second.requestKeyFrame()
+    socket.append(rgbaFrame())
+    await waitForActorTestState { socket.acknowledgmentCount == 1 }
+    precondition(socket.writeCount == 0, "Early joiners share the encoder's first keyframe")
+    let third = DeviceVideoSource(target: target, hub: hub)
+    third.start { _ in }
+    third.requestKeyFrame()
     await waitForActorTestState { socket.writeCount == 1 }
+    third.stop()
+    await third.waitUntilStopped()
     first.stop()
     await first.waitUntilStopped()
     precondition(!socket.isClosed)
     second.stop()
     await second.waitUntilStopped()
+    precondition(socket.isClosed)
+  }
+
+  static func pausedHelperDiscardsOldFramesAndSharesRecordings() async {
+    let target = target()
+    let socket = ADBSocketConnection()
+    let probe = prepare(target, socket)
+    let hub = DeviceVideoHub()
+    hub.preparePreview(for: target)
+    await waitForReads(socket)
+    precondition(socket.activity.isEmpty, "Prewarming must not start capture")
+    let first = DeviceVideoSource(target: target, hub: hub)
+    first.start { _ in }
+    await waitForActorTestState { socket.activity == [5] }
+    let recording = DeviceVideoSource(target: target, hub: hub, replaysLastFrame: false)
+    let recordingFrames = TestValue(0)
+    recording.start { if case .sample = $0 { recordingFrames.value += 1 } }
+    first.stop()
+    await first.waitUntilStopped()
+    socket.append(rgbaFrame())
+    await waitForObservedTestState { recordingFrames.value == 1 }
+    precondition(socket.activity == [5], "Hiding the preview must leave the recording running")
+    recording.stop()
+    await recording.waitUntilStopped()
+    await waitForActorTestState { socket.activity == [5, 4] }
+
+    let next = DeviceVideoSource(target: target, hub: hub)
+    let frames = TestValue(0)
+    next.start { if case .sample = $0 { frames.value += 1 } }
+    socket.append(rgbaFrame() + Data([5]))
+    await waitForActorTestState { socket.activity == [5, 4, 5] }
+    precondition(frames.value == 0, "Buffered frames before the pause acknowledgment belong to the old capture")
+    socket.append(rgbaFrame())
+    await waitForObservedTestState { frames.value == 1 }
+    await hub.releasePreview(for: target)
+    precondition(!socket.isClosed)
+    next.stop()
+    await next.waitUntilStopped()
+    await assertOpened(1, probe: probe)
     precondition(socket.isClosed)
   }
 

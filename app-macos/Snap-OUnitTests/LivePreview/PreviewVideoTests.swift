@@ -64,6 +64,39 @@ struct PreviewVideoTests {
   }
 
   @Test
+  func briefOcclusionKeepsTheStreamingSessionUntilThePauseDeadline() async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let source = Source()
+    let recovered = Source()
+    let video = PreviewVideo {
+      LivePreviewSession(deviceID: "test", densityScale: nil, source: source.starts == 0 ? source : recovered)
+    } canReconnect: { true }
+    video.start()
+    try await waitForState { source.starts == 1 }
+    try source.becomeReady()
+    try await waitForState { video.phase == .streaming }
+    let session = try #require(video.session)
+    video.setActive(false, delayPause: true)
+    await clock.advance(by: .seconds(2))
+    video.setActive(true)
+    await clock.advance(by: .seconds(5))
+    #expect(video.session === session && video.phase == .streaming)
+    #expect(source.stops == 0 && recovered.starts == 0)
+
+    video.setActive(false, delayPause: true)
+    await clock.advance(by: .seconds(2))
+    video.setActive(false, delayPause: true)
+    await clock.advance(by: .seconds(1))
+    try await waitForState { video.session == nil }
+    #expect(video.phase == .idle && source.stops == 1)
+    video.setActive(true)
+    try await waitForState { recovered.starts == 1 }
+    await video.close()
+    try await clock.checkSuspension()
+  }
+
+  @Test
   func quickUncoverWaitsForHiddenStreamCleanup() async throws {
     let cleanup = TestSuspension()
     let first = Source(cleanup: cleanup)
