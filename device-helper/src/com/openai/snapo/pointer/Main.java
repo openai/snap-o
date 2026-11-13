@@ -9,7 +9,6 @@ import android.view.MotionEvent;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
-import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -40,13 +39,9 @@ public final class Main {
         Main input = null;
         int status = 0;
         try {
-            if (args.length != 1) throw new IOException("Invalid arguments");
+            if (args.length != 0) throw new IOException("Invalid arguments");
             Looper.prepare();
             input = new Main();
-            File directory = new File(args[0]);
-            if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
-                throw new IOException("Cannot remove temporary helper");
-            }
             output.writeInt(VERSION);
             output.flush();
             input.read(new DataInputStream(System.in));

@@ -1,17 +1,23 @@
 import AppKit
+import Dependencies
 import SwiftUI
 
 extension NSWindow {
   var isVisibleForPlayback: Bool {
     isVisible && !isMiniaturized && occlusionState.contains(.visible)
   }
+
+  var isVisibleForLivePreview: Bool {
+    isVisible && !isMiniaturized && (occlusionState.contains(.visible) || hasActiveWindowSharingSession)
+  }
 }
 
 struct WindowVisibilityReader: NSViewRepresentable {
+  var forLivePreview = false
   let visibilityDidChange: (Bool) -> Void
 
   func makeNSView(context: Context) -> WindowVisibilityView {
-    WindowVisibilityView(visibilityDidChange: visibilityDidChange)
+    WindowVisibilityView(forLivePreview: forLivePreview, visibilityDidChange: visibilityDidChange)
   }
 
   func updateNSView(_ view: WindowVisibilityView, context: Context) {
@@ -26,12 +32,17 @@ struct WindowVisibilityReader: NSViewRepresentable {
 @MainActor
 final class WindowVisibilityView: NSView {
   var visibilityDidChange: (Bool) -> Void
+  private let forLivePreview: Bool
   private weak var observedWindow: NSWindow?
   private var observers: [NSObjectProtocol] = []
   private(set) var pendingReport: Task<Void, Never>?
+  private var sharingCheck: Task<Void, Never>?
+  @Dependency(\.continuousClock)
+  private var clock
   private var lastVisibility: Bool?
 
-  init(visibilityDidChange: @escaping (Bool) -> Void) {
+  init(forLivePreview: Bool = false, visibilityDidChange: @escaping (Bool) -> Void) {
+    self.forLivePreview = forLivePreview
     self.visibilityDidChange = visibilityDidChange
     super.init(frame: .zero)
   }
@@ -72,14 +83,38 @@ final class WindowVisibilityView: NSView {
     // AppKit can notify while SwiftUI is replacing the view. Read the settled window state.
     pendingReport = Task { @MainActor [weak self] in
       guard !Task.isCancelled, let self, let window = observedWindow, self.window === window else { return }
-      let visible = window.isVisibleForPlayback
-      guard visible != lastVisibility else { return }
-      lastVisibility = visible
-      visibilityDidChange(visible)
+      reportVisibility(of: window)
+    }
+  }
+
+  private func reportVisibility(of window: NSWindow) {
+    updateSharingCheck(for: window)
+    let visible = forLivePreview ? window.isVisibleForLivePreview : window.isVisibleForPlayback
+    guard visible != lastVisibility else { return }
+    lastVisibility = visible
+    visibilityDidChange(visible)
+  }
+
+  private func updateSharingCheck(for window: NSWindow) {
+    // AppKit exposes SharePlay state without a change notification. Only a covered window needs to check it.
+    guard forLivePreview, window.isVisible, !window.isMiniaturized, !window.occlusionState.contains(.visible) else {
+      sharingCheck?.cancel()
+      sharingCheck = nil
+      return
+    }
+    guard sharingCheck == nil else { return }
+    sharingCheck = Task { @MainActor [weak self, weak window, clock] in
+      while !Task.isCancelled {
+        do { try await clock.sleep(for: .seconds(1)) } catch { return }
+        guard !Task.isCancelled, let self, let window, observedWindow === window, self.window === window else { return }
+        reportVisibility(of: window)
+      }
     }
   }
 
   func stopObserving() {
+    sharingCheck?.cancel()
+    sharingCheck = nil
     pendingReport?.cancel()
     pendingReport = nil
     for observer in observers {

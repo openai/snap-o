@@ -17,15 +17,18 @@ final class PreviewVideo {
   private let canReconnect: @MainActor () -> Bool
   @ObservationIgnored private var work: Task<Void, Never>?
   @ObservationIgnored private var closing: Task<Void, Never>?
+  @ObservationIgnored private var pendingPause: Task<Void, Never>?
   @ObservationIgnored private var isClosed = false
   @ObservationIgnored private var isActive = true
-  @Dependency(\.continuousClock)
-  @ObservationIgnored private var clock
+  private let clock: AnyClock<Duration>
 
   init(
     makeSession: @escaping @MainActor () async throws -> LivePreviewSession,
     canReconnect: @escaping @MainActor () -> Bool
   ) {
+    @Dependency(\.continuousClock)
+    var clock
+    self.clock = AnyClock(clock)
     self.makeSession = makeSession
     self.canReconnect = canReconnect
   }
@@ -40,7 +43,20 @@ final class PreviewVideo {
     restart()
   }
 
-  func setActive(_ active: Bool) {
+  func setActive(_ active: Bool, delayPause: Bool = false) {
+    if !active, delayPause, !isClosed, isActive, phase == .streaming {
+      guard pendingPause == nil else { return }
+      // Reuse the encoder if the user quickly switches back to this window.
+      let deadline = clock.now.advanced(by: .seconds(3))
+      pendingPause = Task { [weak self, clock] in
+        do { try await clock.sleep(until: deadline) } catch { return }
+        guard !Task.isCancelled else { return }
+        self?.setActive(false)
+      }
+      return
+    }
+    pendingPause?.cancel()
+    pendingPause = nil
     guard !isClosed, isActive != active else { return }
     isActive = active
     if case .failed = phase { return }
@@ -73,6 +89,8 @@ final class PreviewVideo {
     }
     isClosed = true
     phase = .closed
+    pendingPause?.cancel()
+    pendingPause = nil
     work?.cancel()
     session?.cancel()
     let pending = work

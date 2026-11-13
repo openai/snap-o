@@ -44,7 +44,7 @@ struct ADBShellV2Stream {
     return result
   }
 
-  private static func readRaw(_ count: Int, read: (Int) throws -> Data?) throws -> Data {
+  static func readRaw(_ count: Int, read: (Int) throws -> Data?) throws -> Data {
     var bytes = Data()
     while bytes.count < count {
       guard let chunk = try read(count - bytes.count), !chunk.isEmpty else {

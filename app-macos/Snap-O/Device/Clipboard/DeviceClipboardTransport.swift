@@ -9,22 +9,21 @@ struct DeviceClipboardTransport: ClipboardTransport {
   static func connect(
     serial: String,
     adb: ADBClient = ADBClient(),
-    helper: @Sendable () throws -> Data = DeviceClipboardProtocol.bundledHelper,
+    helper: @Sendable () throws -> Data = DeviceHelper.bundledBytes,
     isolation: isolated (any Actor)? = #isolation,
     body: (Self) async throws -> Void
   ) async throws {
-    let command = try DeviceClipboardProtocol.launchCommand(helper: helper())
-    let connection = try await adb.makeConnection()
+    let deviceHelper = try DeviceHelper(helper())
+    let session = try await deviceHelper.connect(.clipboard, serial: serial, adb: adb)
+    let connection = session.connection
     defer { connection.close() }
+    guard session.header == Data([0, 0, 0, 1]) else {
+      throw ADBError.protocolFailure("Unsupported clipboard helper version")
+    }
     try await withTaskCancellationHandler {
       let initialText = try await perform(on: .global(qos: .userInitiated)) {
         try connection.withRequestTimeout(.seconds(8)) {
-          try connection.sendTransport(to: serial)
-          _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
-          guard try DeviceClipboardProtocol.readNumber(connection) == 1 else {
-            throw ADBError.protocolFailure("Unsupported clipboard helper version")
-          }
-          return try DeviceClipboardProtocol.readText(connection)
+          try DeviceClipboardProtocol.readText(connection)
         }
       }
       try Task.checkCancellation()

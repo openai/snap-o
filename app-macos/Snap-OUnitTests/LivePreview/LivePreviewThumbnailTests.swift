@@ -11,6 +11,7 @@ struct LivePreviewThumbnailTests {
     let png = Data([1])
     await thumbnail.refresh(pixelSize: CGSize(width: 96, height: 160)) { png }
     let cached = try #require(thumbnail.image)
+    #expect(thumbnail.lastPreviewFrame == nil, "A sidebar screenshot is not a frame from this preview")
 
     await thumbnail.refresh(pixelSize: CGSize(width: 96, height: 160)) {
       #expect(thumbnail.isLoading)
@@ -117,9 +118,33 @@ struct LivePreviewThumbnailTests {
     try await waitForState { pending.value != nil }
     try thumbnail.cacheLiveFrame(makePixelBuffer(width: 64, height: 32))
     let cached = try #require(thumbnail.image)
+    #expect(thumbnail.lastPreviewFrame === cached)
+    let oldSession = UUID()
+    let resumedSession = UUID()
+    thumbnail.didDisplayFrame(in: oldSession)
+    #expect(thumbnail.displayedSessionID != resumedSession)
+    thumbnail.didDisplayFrame(in: resumedSession)
+    #expect(thumbnail.displayedSessionID == resumedSession)
     try pending.value?.resume(returning: Data([1]))
     await refresh.value
     #expect(thumbnail.image === cached)
+  }
+
+  @Test(arguments: [0.0, 0.5, 1.0])
+  func reconnectIndicatorUsesTheBrightnessBehindTheAperture(center: CGFloat) throws {
+    let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+    let context = try #require(CGContext(
+      data: nil, width: 96, height: 160, bitsPerComponent: 8, bytesPerRow: 384,
+      space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    context.setFillColor(gray: center < 0.5 ? 1 : 0, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: 96, height: 160))
+    context.setFillColor(red: center, green: center, blue: center, alpha: 1)
+    context.fill(CGRect(x: 40, y: 72, width: 16, height: 16))
+    let image = try #require(context.makeImage())
+    let thumbnail = LivePreviewThumbnail(snapshotImage: { _, _ in nil }, frameImage: { _, _ in image })
+    try thumbnail.cacheLiveFrame(makePixelBuffer(width: 96, height: 160))
+    #expect(thumbnail.lastPreviewFrameHasLightCenter == (center >= 0.5))
   }
 
   @Test

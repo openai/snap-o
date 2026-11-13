@@ -3,21 +3,6 @@ import Foundation
 enum DevicePointerProtocol {
   static let version: UInt32 = 1
 
-  static func launchCommand(helper: Data) throws -> String {
-    guard !helper.isEmpty, helper.count <= 128 * 1024 else {
-      throw ADBError.protocolFailure("Invalid pointer helper")
-    }
-    // ADB sends SIGHUP on disconnect. Let stdin EOF run the helper's touch cancellation.
-    return """
-    directory=$(mktemp -d /data/local/tmp/snapo-pointer.XXXXXX) || exit 1
-    trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
-    (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
-      chmod 444 "$directory/helper.jar" || exit 1
-    trap '' HUP
-    CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.pointer.Main "$directory" 2>/dev/null
-    """
-  }
-
   static func frame(_ event: LivePreviewPointerEvent) throws -> Data {
     let size = event.displaySize
     guard size.width.isFinite, size.height.isFinite,

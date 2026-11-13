@@ -82,7 +82,7 @@ final class WindowFullScreenController {
     visibilityReport?.cancel()
     visibilityReport = Task { @MainActor [weak self, weak window] in
       guard !Task.isCancelled, let self, let window, self.window === window else { return }
-      let visible = window.isVisibleForPlayback
+      let visible = window.isVisibleForLivePreview
       // The destination can become key before WindowServer uncovers it.
       if !visible, window.isKeyWindow, window.isVisible, !window.isMiniaturized { return }
       awaitsVisibility = false

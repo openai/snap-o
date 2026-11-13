@@ -4,13 +4,14 @@ import Testing
 
 @MainActor
 struct WindowSizingTests {
-  @Test(arguments: [true, false])
-  func fullScreenWaitsForAnOrderedKeyWindowToBecomeVisible(uncovered: Bool) async throws {
+  @Test(arguments: [(false, false), (true, false), (false, true)])
+  func fullScreenWaitsForAnOrderedKeyWindowToBecomeVisible(uncovered: Bool, shared: Bool) async throws {
     let suite = "WindowSizingTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let sizing = WindowSizingController.Coordinator(defaults: defaults)
     let window = FullScreenVisibilityWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
+    window.reportedSharing = shared
     var completions: [Bool] = []
     sizing.fullScreen.onChange = { event in
       if case .didChange(let visible) = event { completions.append(visible) }
@@ -19,6 +20,10 @@ struct WindowSizingTests {
     sizing.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: window))
     sizing.windowDidEnterFullScreen(Notification(name: NSWindow.didEnterFullScreenNotification, object: window))
     await sizing.fullScreen.visibilityReport?.value
+    if shared {
+      #expect(completions == [true])
+      return
+    }
     #expect(completions.isEmpty)
 
     if uncovered {
@@ -61,7 +66,7 @@ struct WindowSizingTests {
     }
     await sizing.fullScreen.visibilityReport?.value
     #expect(began == 1)
-    #expect(completions == [window.isVisibleForPlayback])
+    #expect(completions == [window.isVisibleForLivePreview])
   }
 
   @Test(arguments: [WorkspaceWindowEdge.left, .right, .top, .bottom])
@@ -260,6 +265,11 @@ private final class WindowFrameDefaults: UserDefaults {
 private final class FullScreenVisibilityWindow: NSWindow {
   var reportedKey = true
   var reportedOcclusion: NSWindow.OcclusionState = []
+  var reportedSharing = false
+  override var hasActiveWindowSharingSession: Bool {
+    reportedSharing
+  }
+
   override var isVisible: Bool {
     true
   }

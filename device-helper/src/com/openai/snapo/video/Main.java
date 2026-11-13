@@ -14,7 +14,6 @@ import android.os.Looper;
 import android.view.Surface;
 
 import java.io.DataOutputStream;
-import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -31,6 +30,12 @@ public final class Main {
     private static final DataOutputStream output = new DataOutputStream(new FileOutputStream(FileDescriptor.out));
     private static Stage stage = Stage.SETUP;
     private static FrameWindow frameWindow;
+    private static final Object activity = new Object();
+    private static volatile boolean active;
+    private static boolean pauseRequested;
+    private static String formatCodec;
+    private static int formatWidth, formatHeight;
+    private static MediaFormat cachedFormat;
 
     private enum Stage {
         SETUP(1), DISPLAY(2), ENCODER(3), CAPABILITIES(4), CONFIGURATION(5),
@@ -48,18 +53,16 @@ public final class Main {
         try {
             output.writeInt(MAGIC);
             output.flush();
-            if (args.length < 1 || args.length > 3
-                    || (args.length >= 2 && !args[1].equals("rgba-fallback"))
-                    || (args.length == 3 && !args[2].equals("rgba-flow-control"))) {
+            if (args.length > 3 || (args.length >= 1 && !args[0].equals("rgba-fallback"))
+                    || (args.length >= 2 && !args[1].equals("rgba-flow-control"))
+                    || (args.length == 3 && !args[2].equals("standby"))) {
                 throw new IllegalArgumentException("Invalid video arguments");
             }
-            boolean allowFallback = args.length >= 2;
-            frameWindow = args.length == 3 ? new FrameWindow(2) : null;
+            boolean allowFallback = args.length >= 1;
+            frameWindow = args.length >= 2 ? new FrameWindow(2) : null;
+            boolean standby = args.length == 3;
+            active = !standby;
             boolean rgba = false;
-            File directory = new File(args[0]);
-            if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
-                throw new IOException("Cannot remove temporary helper");
-            }
             Looper.prepare();
             Thread controls = new Thread(() -> {
                 try {
@@ -68,7 +71,18 @@ public final class Main {
                         if (command == 1) keyFrameRequested.set(true);
                         else if (command == 2) System.exit(0);
                         else if (command == 3 && frameWindow != null) frameWindow.acknowledge();
-                        else System.exit(1);
+                        else if (command == 4 && standby) {
+                            synchronized (activity) {
+                                active = false;
+                                pauseRequested = true;
+                                activity.notifyAll();
+                            }
+                        } else if (command == 5 && standby) {
+                            synchronized (activity) {
+                                active = true;
+                                activity.notifyAll();
+                            }
+                        } else System.exit(1);
                     }
                     System.exit(0);
                 } catch (IOException error) {
@@ -81,6 +95,18 @@ public final class Main {
             Class<?> globalClass = Class.forName("android.hardware.display.DisplayManagerGlobal");
             Object global = globalClass.getMethod("getInstance").invoke(null);
             while (true) {
+                synchronized (activity) {
+                    while (!active) {
+                        if (pauseRequested) {
+                            // All capture resources are released before the Mac may resume.
+                            output.writeByte(5);
+                            output.flush();
+                            keyFrameRequested.set(false);
+                            pauseRequested = false;
+                        }
+                        activity.wait();
+                    }
+                }
                 if (rgba) {
                     captureRGBA(global);
                 } else {
@@ -171,7 +197,7 @@ public final class Main {
                 long nextDisplayCheck = 0;
                 long lastTimestamp = 0;
                 boolean hasFrame = false;
-                while (true) {
+                while (active) {
                     stage = Stage.CAPTURE;
                     long now = android.os.SystemClock.uptimeMillis();
                     if (now >= nextDisplayCheck) {
@@ -250,9 +276,20 @@ public final class Main {
         boolean started = false;
         try {
             stage = Stage.CAPABILITIES;
-            MediaFormat format = createFormat(encoder.getCodecInfo(), width, height);
+            String codec = encoder.getName();
+            if (cachedFormat == null || !codec.equals(formatCodec) || width != formatWidth || height != formatHeight) {
+                cachedFormat = createFormat(encoder.getCodecInfo(), width, height);
+                formatCodec = codec;
+                formatWidth = width;
+                formatHeight = height;
+            }
             stage = Stage.CONFIGURATION;
-            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            try {
+                encoder.configure(cachedFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            } catch (RuntimeException error) {
+                cachedFormat = null;
+                throw error;
+            }
             stage = Stage.INPUT_SURFACE;
             surface = encoder.createInputSurface();
             stage = Stage.MIRROR;
@@ -269,7 +306,7 @@ public final class Main {
             output.flush();
             MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
             long nextDisplayCheck = 0;
-            while (true) {
+            while (active) {
                 if (keyFrameRequested.getAndSet(false)) {
                     Bundle parameters = new Bundle();
                     parameters.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);

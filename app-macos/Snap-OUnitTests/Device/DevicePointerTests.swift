@@ -36,9 +36,9 @@ struct DevicePointerTests {
   }
 
   @Test func transportWritesWithoutWaitingForPerEventReplies() async throws {
-    let connection = ScriptedADBConnection(reads: [.data(Data([1, 4, 0, 0, 0, 0, 0, 0, 1])), .waitForClose])
+    let connection = ScriptedADBConnection(reads: [.data(TestDeviceHelper.shellHeader(1)), .waitForClose])
     let adb = ADBClient(discoveryTimeout: .seconds(2)) { connection }
-    let transport = try await DevicePointerTransport.connect(target: target, adb: adb, helper: { Data([1]) })
+    let transport = try await DevicePointerTransport.connect(target: target, adb: adb, helper: { TestDeviceHelper.jar })
     try await connection.waitUntilBlocked()
     let down = try DevicePointerProtocol.frame(event(.down))
     let up = try DevicePointerProtocol.frame(event(.up))
@@ -51,12 +51,12 @@ struct DevicePointerTests {
   }
 
   @Test func rejectsWrongHelperVersionAndClosesConnection() async {
-    let connection = ScriptedADBConnection(reads: [.data(Data([1, 4, 0, 0, 0, 0, 0, 0, 2]))])
+    let connection = ScriptedADBConnection(reads: [.data(TestDeviceHelper.shellHeader(2))])
     await #expect(throws: (any Error).self) {
       _ = try await DevicePointerTransport.connect(
         target: target,
         adb: ADBClient(discoveryTimeout: .seconds(2)) { connection },
-        helper: { Data([1]) }
+        helper: { TestDeviceHelper.jar }
       )
     }
     #expect(connection.isClosed)

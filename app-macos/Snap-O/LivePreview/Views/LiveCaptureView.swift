@@ -98,8 +98,8 @@ struct LiveCaptureView: View {
           thumbnail: attachment.thumbnail,
           keyboard: settings.keyboardInput ? attachment : nil
         ) { attachment.isMounted(viewID) }
-        if attachment.isVideoVisible, attachment.preview?.videoState != .streaming {
-          WaitingForDeviceView(deviceMessage: loadingMessage(device.id))
+        if attachment.isVideoVisible, attachment.thumbnail.displayedSessionID != renderer.session.id {
+          waitingView(for: attachment)
         }
       } else if let attachment, let error = attachment.error {
         VStack(spacing: 8) {
@@ -110,12 +110,12 @@ struct LiveCaptureView: View {
         }
         .padding(16)
       } else if let attachment, !attachment.isClosed, attachment.isVideoVisible {
-        WaitingForDeviceView(deviceMessage: loadingMessage(device.id))
+        waitingView(for: attachment)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background {
-      WindowVisibilityReader { visible in
+      WindowVisibilityReader(forLivePreview: true) { visible in
         updatePresentation(visible: visible)
       }
       .frame(width: 0, height: 0)
@@ -129,5 +129,45 @@ struct LiveCaptureView: View {
     .onDisappear {
       attachment?.unmount(viewID)
     }
+  }
+
+  @ViewBuilder
+  private func waitingView(for attachment: LivePreviewAttachment) -> some View {
+    if let frame = attachment.thumbnail.lastPreviewFrame {
+      ResumingPreviewView(frame: frame, hasLightCenter: attachment.thumbnail.lastPreviewFrameHasLightCenter)
+    } else {
+      WaitingForDeviceView(deviceMessage: loadingMessage(device.id))
+    }
+  }
+}
+
+struct ResumingPreviewView: View {
+  let frame: CGImage
+  let hasLightCenter: Bool
+  @Environment(\.accessibilityReduceMotion)
+  private var reduceMotion
+  @Environment(\.accessibilityReduceTransparency)
+  private var reduceTransparency
+  @Environment(\.colorSchemeContrast)
+  private var contrast
+
+  var body: some View {
+    ZStack {
+      Image(decorative: frame, scale: 1)
+        .resizable()
+        .aspectRatio(contentMode: .fit)
+        .blur(radius: 10, opaque: true)
+        .clipShape(Rectangle())
+      Image("Aperture")
+        .renderingMode(.template)
+        .resizable()
+        .foregroundStyle((hasLightCenter ? Color.black : .white).opacity(reduceTransparency || contrast == .increased ? 1 : 0.8))
+        .frame(width: 64, height: 64)
+        .infiniteRotate(duration: 2, animated: !reduceMotion)
+        .shadow(color: (hasLightCenter ? Color.white : .black).opacity(contrast == .increased ? 0.85 : 0.58), radius: 1.5, y: 0.5)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Resuming live preview")
+    .allowsHitTesting(false)
   }
 }

@@ -13,7 +13,6 @@ import android.os.UserHandle;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
@@ -33,16 +32,11 @@ public final class Main {
 
     public static void main(String[] args) {
         try {
-            if (args.length != 1 && (args.length != 2 || !args[1].equals("keyboard"))) {
-                throw new IllegalArgumentException("Expected temporary directory and optional keyboard mode");
-            }
-            // ART has loaded the DEX. ADB disconnect can kill the launch shell before its EXIT trap.
-            File directory = new File(args[0]);
-            if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
-                throw new IOException("Cannot remove temporary helper");
+            if (args.length > 1 || (args.length == 1 && !args[0].equals("keyboard"))) {
+                throw new IllegalArgumentException("Invalid clipboard arguments");
             }
             ClipboardManager clipboard = createClipboard();
-            if (args.length == 2) new Keyboard(clipboard).run();
+            if (args.length == 1) new Keyboard(clipboard).run();
             else new Main(clipboard).run();
         } catch (Exception error) {
             // Framework errors can contain clipboard contents. Keep diagnostics generic.

@@ -423,12 +423,27 @@ class ProtocolReportTests(unittest.TestCase):
     def test_reports_additive_device_video_packets_without_a_version_change(self):
         self.write("device-helper/src/com/openai/snapo/video/Main.java", "private static final int MAGIC = 0x534e5631;\n")
         self.write("app-macos/Snap-O/Device/Video/DeviceVideoPacket.swift", "static let magic: UInt32 = 0x534E5631\n")
-        self.write("contracts/device-video/README.md", "| `3`: failure | stage; retryable; codec error |\n")
+        self.write("contracts/device-video/README.md",
+                   "| `3`: failure | stage; retryable; codec error |\n| `5`: paused | no payload |\n")
         self.commit()
         report = self.report()
         self.assertIn("Device video packet definitions", report)
         self.assertIn("| `3`: failure | stage; retryable; codec error |", report)
+        self.assertIn("| `5`: paused | no payload |", report)
         self.assertNotIn("UNRESOLVED: Device video", report)
+
+    def test_reports_the_cached_device_helper_handshake(self):
+        self.write("device-helper/src/com/openai/snapo/Helper.java", 'output.writeBytes("SNHB" + Build.ID);\n')
+        self.write("device-helper/build.py", 'archive.comment = ("SNHB" + build_id).encode("ascii")\n')
+        self.commit()
+        report = self.report()
+        self.assertIn("UNRESOLVED: Device helper client startup identity", report)
+        self.write("app-macos/Snap-O/Device/DeviceHelper.swift", 'identity.starts(with: Data("SNHB".utf8))\n')
+        self.commit()
+        report = self.report()
+        for label in ("Device helper startup identity", "Device helper bundled identity", "Device helper client startup identity"):
+            self.assertIn(label, report)
+            self.assertNotIn("UNRESOLVED: " + label, report)
 
     def test_reports_device_keyboard_versions(self):
         self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 2;\n")

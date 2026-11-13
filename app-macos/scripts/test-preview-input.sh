@@ -21,7 +21,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/Device.swift Snap-O/Device/AndroidHostServiceProtocol.swift Snap-O/Models/Media.swift Snap-O/Device/ADB/ADBConnection.swift Snap-O/Device/ADB/ADBSocketConnection.swift \
   Snap-O/Device/ADB/ADBVirtualTouchscreen.swift Snap-O/Device/ADB/DeviceKeyboardTransport.swift \
   Snap-O/Device/Clipboard/ClipboardTransport.swift Snap-O/Device/Clipboard/ClipboardSyncState.swift \
-  Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/Device/Clipboard/DeviceClipboardProtocol.swift Snap-O/App/AppSettings.swift \
+  Snap-O/Device/DeviceHelper.swift Snap-O/Device/Clipboard/DeviceClipboardTransport.swift Snap-O/Device/Clipboard/DeviceClipboardProtocol.swift Snap-O/App/AppSettings.swift \
   Snap-O/Device/LivePreviewRotation.swift Snap-O/Utilities/Logging.swift \
   Snap-O/Device/Video/DeviceVideoPacket.swift \
   Snap-O/LivePreview/Input/LivePreviewPointerBackend.swift Snap-O/LivePreview/Input/LivePreviewPointerInjector.swift \

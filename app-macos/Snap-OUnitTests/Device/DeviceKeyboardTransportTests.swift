@@ -24,21 +24,22 @@ struct DeviceKeyboardTransportTests {
 
   @Test
   func rejectsOldHelperBeforeSendingInput() async throws {
-    let connection = ScriptedADBConnection(reads: [.data(Data([0, 0, 0, 1]))])
+    let connection = ScriptedADBConnection(reads: [.data(TestDeviceHelper.identity + Data([0, 0, 0, 1]))])
     let client = ADBClient(discoveryTimeout: .seconds(1)) { connection }
     await #expect(throws: ADBError.self) {
-      _ = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { Data([1]) }
+      _ = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { TestDeviceHelper.jar }
     }
     #expect(connection.isClosed && connection.written.isEmpty)
   }
 
   @Test(arguments: [false, true])
   func cancellationClosesHandshakeAndPendingInput(duringHandshake: Bool) async throws {
-    let connection = ScriptedADBConnection(reads: duringHandshake ? [.waitForClose] : [.data(Data([0, 0, 0, 2])), .waitForClose])
+    let header = TestDeviceHelper.identity + Data([0, 0, 0, 2])
+    let connection = ScriptedADBConnection(reads: duringHandshake ? [.waitForClose] : [.data(header), .waitForClose])
     defer { connection.close() }
     let client = ADBClient(discoveryTimeout: .seconds(1)) { connection }
     let task = Task {
-      let transport = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { Data([1]) }
+      let transport = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { TestDeviceHelper.jar }
       defer { transport.close() }
       _ = try await transport.send(.copy)
     }
@@ -53,12 +54,14 @@ struct DeviceKeyboardTransportTests {
   func readsCopyResponseAndRejectsUnsupportedTyping() async throws {
     let response = try Data([0, 0, 0, 1]) + DeviceClipboardProtocol.frame("selection 😀")
     let connection = ScriptedADBConnection(reads: [
-      .data(Data([0, 0, 0, 2])), .data(response), .data(Data([0, 0, 0, 2])), .data(Data([0, 0, 0, 0]))
+      .data(TestDeviceHelper.identity + Data([0, 0, 0, 2])), .data(response), .data(Data([0, 0, 0, 2])), .data(Data([0, 0, 0, 0]))
     ])
     defer { connection.close() }
     let client = ADBClient(discoveryTimeout: .seconds(1)) { connection }
-    let transport = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { Data([1]) }
-    #expect(connection.commands.last?.contains(" keyboard 2>/dev/null") == true)
+    let transport = try await DeviceKeyboardTransport.connect(serial: "phone", adb: client) { TestDeviceHelper.jar }
+    let launch = try #require(connection.commands.last)
+    #expect(launch.contains("exec 2>/dev/null"))
+    #expect(launch.hasSuffix("app_process / com.openai.snapo.Helper 0123456789abcdef clipboard keyboard"))
     #expect(try await transport.send(.copy) == .copied("selection 😀"))
     #expect(try await transport.send(.text("😀")) == .unsupportedText)
     #expect(try await transport.send(.text("a")) == .sent)

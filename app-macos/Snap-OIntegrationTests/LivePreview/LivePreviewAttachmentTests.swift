@@ -10,7 +10,7 @@ import Testing
 @Suite(.dependency(\.continuousClock, TestClock()))
 struct LivePreviewAttachmentTests {
   @Test
-  func hidingAndRemountingRestartsVideoOnTheSameOwner() async throws {
+  func briefHideAndRemountKeepsVideoOnTheSameOwner() async throws {
     let fixture = try SharedPreviewTestSupport.Fixture()
     let attachment = fixture.service.attach(to: fixture.target())
     let firstView = UUID()
@@ -18,12 +18,13 @@ struct LivePreviewAttachmentTests {
     attachment.updatePresentation(viewID: firstView, visible: true, focused: true, syncClipboard: false)
     try await fixture.ready(attachment)
     attachment.updatePresentation(viewID: firstView, visible: false, focused: false, syncClipboard: false)
+    #expect(!attachment.acceptsInput && !attachment.isVideoVisible)
     let nextView = UUID()
     attachment.mount(nextView)
     attachment.updatePresentation(viewID: nextView, visible: true, focused: true, syncClipboard: false)
     attachment.unmount(firstView)
     try await fixture.ready(attachment)
-    #expect(fixture.sources.count == 2 && fixture.sources[0].stops == 1)
+    #expect(fixture.sources.count == 1 && fixture.sources[0].stops == 0)
     #expect(fixture.owners.count == 1)
     #expect(attachment.isWindowVisible)
     attachment.unmount(nextView)

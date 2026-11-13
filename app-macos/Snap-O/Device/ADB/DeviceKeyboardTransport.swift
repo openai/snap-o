@@ -8,26 +8,15 @@ struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
   static func connect(
     serial: String,
     adb: ADBClient = ADBClient(),
-    helper: @Sendable () throws -> Data = DeviceClipboardProtocol.bundledHelper
+    helper: @Sendable () throws -> Data = DeviceHelper.bundledBytes
   ) async throws -> Self {
-    let command = try DeviceClipboardProtocol.launchCommand(helper: helper(), keyboard: true)
-    let connection = try await adb.makeConnection()
-    let transport = Self(connection: connection)
-    do {
-      try await transport.perform {
-        try connection.withRequestTimeout(.seconds(8)) {
-          try connection.sendTransport(to: serial)
-          _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
-          guard try DeviceClipboardProtocol.readNumber(connection) == version else {
-            throw ADBError.protocolFailure("Unsupported input helper version")
-          }
-        }
-      }
-      return transport
-    } catch {
-      connection.close()
-      throw error
+    let deviceHelper = try DeviceHelper(helper())
+    let session = try await deviceHelper.connect(.keyboard, serial: serial, adb: adb)
+    guard session.header.reduce(UInt32(0), { ($0 << 8) | UInt32($1) }) == version else {
+      session.connection.close()
+      throw ADBError.protocolFailure("Unsupported input helper version")
     }
+    return Self(connection: session.connection)
   }
 
   func close() {
