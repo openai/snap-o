@@ -14,6 +14,7 @@ struct VideoStreamTests {
     } operation: {
       await requestsKeyFrameOnlyForJoinedConsumers()
       try await discoveryStreamsBeforeWindowAttachment()
+      try await hiddenDiscoveryResumesOnTheSameHelper()
       await pausedHelperDiscardsOldFramesAndSharesRecordings()
       await consumersReleaseIndependently()
       await restartWaitsForFinalConsumerCleanup()
@@ -202,6 +203,34 @@ struct VideoStreamTests {
     precondition(unused.isClosed, "Abandoning a discovered stream must stop device capture")
   }
 
+  static func hiddenDiscoveryResumesOnTheSameHelper() async throws {
+    let target = target()
+    let socket = ADBSocketConnection()
+    let gate = TestGate()
+    let probe = prepare(target, socket, startup: gate)
+    let discovered = try #require(DiscoveredVideo(target: target))
+    let hub = DeviceVideoHub()
+    hub.preparePreview(for: target, discovered: discovered)
+    await gate.waitUntilEntered()
+    hub.pauseUnclaimedPreview(for: target)
+    await gate.open()
+    await waitForActorTestState { socket.activity == [5, 4] }
+
+    let source = DeviceVideoSource(target: target, hub: hub)
+    let frames = TestValue(0)
+    source.start { if case .sample = $0 { frames.value += 1 } }
+    socket.append(rgbaFrame() + Data([5]))
+    await waitForActorTestState { socket.activity == [5, 4, 5] }
+    precondition(frames.value == 0, "Frames from before the pause must not appear after reopening")
+    socket.append(rgbaFrame())
+    await waitForObservedTestState { frames.value == 1 }
+    await hub.releasePreview(for: target)
+    source.stop()
+    await source.waitUntilStopped()
+    await assertOpened(1, probe: probe)
+    precondition(socket.isClosed)
+  }
+
   static func pausedHelperDiscardsOldFramesAndSharesRecordings() async {
     let target = target()
     let socket = ADBSocketConnection()
@@ -218,6 +247,7 @@ struct VideoStreamTests {
     recording.start { if case .sample = $0 { recordingFrames.value += 1 } }
     first.stop()
     await first.waitUntilStopped()
+    hub.pauseUnclaimedPreview(for: target)
     socket.append(rgbaFrame())
     await waitForObservedTestState { recordingFrames.value == 1 }
     precondition(socket.activity == [5], "Hiding the preview must leave the recording running")

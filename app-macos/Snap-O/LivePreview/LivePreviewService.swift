@@ -230,7 +230,7 @@ final class LivePreviewService {
       guard let user = users[id], !user.isClosed else { return false }
       return (user.windowVisibility == nil || user.isVideoVisible) && user.isPaneVisible
     }
-    entry.owner?.video.setActive(active, delayPause: delayPause)
+    entry.owner?.setVideoActive(active, delayPause: delayPause)
   }
 
   fileprivate func setVisible(_ visible: Bool, user: PreviewUse, delayPause: Bool = false) {

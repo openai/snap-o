@@ -94,23 +94,20 @@ final class DevicePreview: PreviewStatus {
     @Dependency(\.continuousClock)
     var clock
     var ownsVideoHelper = false
-    let boot: Task<Void, Error> = if let discovered {
-      Task.immediate(priority: .userInitiated) {
-        do {
-          try await withTaskCancellationHandler {
-            try await discovered.wake.value
-          } onCancel: { discovered.cancel() }
-          try Task.checkCancellation()
-          guard target.isValid else { throw CancellationError() }
-          DeviceVideoHub.shared.preparePreview(for: target, discovered: discovered)
-          ownsVideoHelper = true
-        } catch {
-          await discovered.close()
-          throw error
-        }
+    let boot: Task<Void, Error>
+    if let discovered {
+      // Visibility can change while Android is still waking.
+      DeviceVideoHub.shared.preparePreview(for: target, discovered: discovered)
+      ownsVideoHelper = true
+      boot = Task.immediate(priority: .userInitiated) {
+        try await withTaskCancellationHandler {
+          try await discovered.wake.value
+        } onCancel: { discovered.cancel() }
+        try Task.checkCancellation()
+        guard target.isValid else { throw CancellationError() }
       }
     } else {
-      Task.immediate(priority: .userInitiated) {
+      boot = Task.immediate(priority: .userInitiated) {
         let exec = await adb.exec().bound(to: target)
         try await exec.waitUntilBooted(target)
         try Task.checkCancellation()
@@ -169,6 +166,11 @@ final class DevicePreview: PreviewStatus {
         await touches.setEnabled(enabled, using: adb)
       }
     }
+  }
+
+  func setVideoActive(_ active: Bool, delayPause: Bool) {
+    video.setActive(active, delayPause: delayPause)
+    if !active { DeviceVideoHub.shared.pauseUnclaimedPreview(for: target) }
   }
 
   func setClipboardEnabled(_ enabled: Bool) {

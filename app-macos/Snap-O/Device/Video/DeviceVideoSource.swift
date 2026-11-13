@@ -32,6 +32,10 @@ final class DeviceVideoHub {
     stream(for: target).prepare(discovered: discovered)
   }
 
+  func pauseUnclaimedPreview(for target: DeviceTarget) {
+    sessions[target]?.pauseUnclaimedPreview()
+  }
+
   func releasePreview(for target: DeviceTarget) async {
     guard let owners = previewOwners[target] else { return }
     if owners > 1 { previewOwners[target] = owners - 1
@@ -183,6 +187,13 @@ private final class DeviceVideoStream {
       return
     }
     if previous == nil { (source as? DeviceVideoConnection)?.prepare() }
+  }
+
+  func pauseUnclaimedPreview() {
+    guard isEmpty, let discovered, let connection = source as? DeviceVideoConnection else { return }
+    self.discovered = nil
+    // With no subscriber, the connection pauses the encoder as soon as the helper is ready.
+    connection.prepare(discovered: discovered)
   }
 
   func pause() -> Bool {
