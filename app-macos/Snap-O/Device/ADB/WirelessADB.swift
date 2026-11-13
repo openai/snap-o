@@ -1,6 +1,6 @@
 import Foundation
 
-struct WirelessADBEndpoint: Equatable, Sendable {
+struct WirelessADBEndpoint: Equatable {
   let address: String
 
   init(_ value: String) throws {
