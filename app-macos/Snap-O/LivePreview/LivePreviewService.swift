@@ -62,7 +62,7 @@ private final class PreviewUse {
 final class LivePreviewService {
   private let coordinator: CaptureCoordinator
   private let adb: ADBService
-  private let makePreview: (DeviceTarget) -> DevicePreview
+  private let makePreview: (DeviceTarget, DiscoveredVideo?) -> DevicePreview
   private let makeFileDrop: (Device) -> DeviceFileDrop
   @ObservationIgnored private var entries: [DeviceTarget: PreviewConnectionEntry] = [:]
   @ObservationIgnored private var users: [UUID: PreviewUse] = [:]
@@ -82,7 +82,7 @@ final class LivePreviewService {
   init(
     coordinator: CaptureCoordinator, adb: ADBService,
     makeFileDrop: @escaping (Device) -> DeviceFileDrop = { DeviceFileDrop(device: $0) },
-    makePreview: @escaping (DeviceTarget) -> DevicePreview
+    makePreview: @escaping (DeviceTarget, DiscoveredVideo?) -> DevicePreview
   ) {
     self.coordinator = coordinator
     self.adb = adb
@@ -91,15 +91,15 @@ final class LivePreviewService {
   }
 
   convenience init(coordinator: CaptureCoordinator, adb: ADBService, settings: AppSettings) {
-    self.init(coordinator: coordinator, adb: adb) { DevicePreview(target: $0, adb: adb, settings: settings) }
+    self.init(coordinator: coordinator, adb: adb) { DevicePreview(target: $0, adb: adb, settings: settings, discovered: $1) }
   }
 
   func attach(
-    to device: Device,
+    to device: Device, discovered: DiscoveredVideo? = nil,
     makeEmulatorControls: @MainActor (DeviceTarget) -> EmulatorControlsController? = { _ in nil }
   ) -> LivePreviewAttachment? {
     guard let target = try? device.requireConnection() else { return nil }
-    let attachment = attach(to: target)
+    let attachment = attach(to: target, discovered: discovered)
     guard !attachment.isClosed else { return attachment }
     attachment.user.fileDrop = makeFileDrop(device)
     if target.isLocalEmulator {
@@ -108,7 +108,7 @@ final class LivePreviewService {
     return attachment
   }
 
-  func attach(to target: DeviceTarget) -> LivePreviewAttachment {
+  func attach(to target: DeviceTarget, discovered: DiscoveredVideo? = nil) -> LivePreviewAttachment {
     let entry: PreviewConnectionEntry
     var needsStartup = false
     let previous = entries[target]?.closing
@@ -135,29 +135,31 @@ final class LivePreviewService {
           }
         }
       }
-      start(entry, after: previous)
+      start(entry, after: previous, discovered: discovered)
     }
     updateVideoActivity(entry)
-    return LivePreviewAttachment(service: self, user: user)
+    return LivePreviewAttachment(service: self, user: user, adoptedDiscoveredVideo: needsStartup && discovered != nil)
   }
 
-  private func start(_ entry: PreviewConnectionEntry, after previous: Task<Void, Never>?) {
+  private func start(_ entry: PreviewConnectionEntry, after previous: Task<Void, Never>?, discovered: DiscoveredVideo? = nil) {
     entry.error = nil
-    entry.startup = Task(priority: .userInitiated) {
+    entry.startup = Task.immediate(priority: .userInitiated) {
       await previous?.value
       guard !isShuttingDown, entry.target.isValid, !entry.users.isEmpty else {
         entry.error = "The device connection is no longer available."
+        await discovered?.close()
         return
       }
       do {
         entry.lease = try coordinator.acquire(target: entry.target, for: .livePreview)
-        let owner = makePreview(entry.target)
+        let owner = makePreview(entry.target, discovered)
         entry.owner = owner
         updateVideoActivity(entry)
         owner.start()
         if let desiredID, entry.users.contains(desiredID) { requestFocus(desiredID) }
       } catch {
         entry.error = error.localizedDescription
+        await discovered?.close()
       }
     }
   }
@@ -228,7 +230,7 @@ final class LivePreviewService {
       guard let user = users[id], !user.isClosed else { return false }
       return (user.windowVisibility == nil || user.isVideoVisible) && user.isPaneVisible
     }
-    entry.owner?.video.setActive(active, delayPause: delayPause)
+    entry.owner?.setVideoActive(active, delayPause: delayPause)
   }
 
   fileprivate func setVisible(_ visible: Bool, user: PreviewUse, delayPause: Bool = false) {
@@ -412,6 +414,7 @@ final class LivePreviewService {
 final class LivePreviewAttachment: LivePreviewKeyboardHandling {
   private let service: LivePreviewService
   fileprivate let user: PreviewUse
+  let adoptedDiscoveredVideo: Bool
   var id: UUID {
     user.id
   }
@@ -504,7 +507,8 @@ final class LivePreviewAttachment: LivePreviewKeyboardHandling {
     user.entry.owner?.video.restart()
   }
 
-  fileprivate init(service: LivePreviewService, user: PreviewUse) {
+  fileprivate init(service: LivePreviewService, user: PreviewUse, adoptedDiscoveredVideo: Bool = false) {
+    self.adoptedDiscoveredVideo = adoptedDiscoveredVideo
     self.service = service
     self.user = user
   }

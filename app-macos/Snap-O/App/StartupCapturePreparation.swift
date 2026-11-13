@@ -31,19 +31,21 @@ final class StartupCapturePreparation {
     self.makeEmulatorControls = makeEmulatorControls
   }
 
-  func prepare(mode: StartupCaptureMode, device: Device?) {
-    guard isAvailable else { return }
+  /// Returns whether the preview took ownership of the supplied device stream.
+  @discardableResult
+  func prepare(mode: StartupCaptureMode, device: Device?, discovered: DiscoveredVideo? = nil) -> Bool {
+    guard isAvailable else { return false }
     guard let device else {
       discardCurrentPreparation()
-      return
+      return false
     }
     switch (mode, preparation) {
     case (.screenshot, .screenshots(let prepared, _, _))
       where prepared.id == device.id && prepared.connection == device.connection:
-      return
+      return false
     case (.livePreview, .livePreview(let prepared, _))
       where prepared.id == device.id && prepared.connection == device.connection:
-      return
+      return false
     default:
       break
     }
@@ -57,7 +59,7 @@ final class StartupCapturePreparation {
       preparation = .screenshots(device: device, capture: capture, startedAt: clock.now)
     case .livePreview:
       Perf.step(.appFirstSnapshot, "preload live preview")
-      if let attachment = livePreview.attach(to: device, makeEmulatorControls: makeEmulatorControls) {
+      if let attachment = livePreview.attach(to: device, discovered: discovered, makeEmulatorControls: makeEmulatorControls) {
         preparation = .livePreview(device: device, attachment: attachment)
         expirationTask = Task { [clock] in
           do { try await clock.sleep(for: .seconds(5)) } catch { return }
@@ -65,8 +67,10 @@ final class StartupCapturePreparation {
           expirationTask = nil
           await discard()
         }
+        return attachment.adoptedDiscoveredVideo
       }
     }
+    return false
   }
 
   func claimScreenshots(for device: Device) -> ScreenshotCapture? {

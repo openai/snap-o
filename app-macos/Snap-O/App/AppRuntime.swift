@@ -32,6 +32,8 @@ final class AppRuntime {
   }
 
   private var startupTask: Task<Void, Never>?
+  private var startupDevices: [Device] = []
+  private var discoveryTask: Task<Void, Never>?
   private var shutdownTask: Task<Void, Never>?
 
   init() {
@@ -113,34 +115,63 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
-    adbServers.start()
-    deviceManager.start()
     let manager = deviceManager
+    let startup = captureServices.startup
+    let tracker = deviceTracker
+    let settings = AppSettings.shared
+    let initialMode = settings.startupCaptureMode
+    let initialID = settings.lastViewedDeviceID
+    // Start device capture while SwiftUI is busy building the first window.
+    discoveryTask = Task(priority: .userInitiated) { @concurrent [weak self] in
+      await tracker.startTracking()
+      var firstInventory = true
+      for await devices in await tracker.previewDeviceStream() {
+        guard !Task.isCancelled else { return }
+        let selected = Self.preferredDevice(in: devices, id: initialID)
+        let discovered = firstInventory && initialMode == .livePreview ? selected?.connection.flatMap(DiscoveredVideo.init) : nil
+        firstInventory = false
+        let used = await self?.prepareDiscovery(devices, video: discovered)
+        if used != true { await discovered?.close() }
+        guard used != nil else { return }
+      }
+    }
     startupTask = Task.immediate { [weak self] in
       #if PERF_TRACING
       Perf.startupEvent("runtime startup task entered")
       #endif
-      let settings = AppSettings.shared
       let updates = Observations {
-        (
-          settings.startupCaptureMode, settings.lastViewedDeviceID,
-          manager.inventory, manager.isShuttingDown
-        )
+        (settings.startupCaptureMode, settings.lastViewedDeviceID, manager.inventory.ready, manager.isShuttingDown)
       }
-      for await (mode, preferredID, inventory, isShuttingDown) in updates {
-        guard !Task.isCancelled, !isShuttingDown, let self, captureServices.startup.isAvailable else { return }
-        let connected = inventory.connected ?? []
-        let preferred = connected.first { $0.id == preferredID } ?? connected.first
-        let device: Device? = switch mode {
-        case .livePreview:
-          preferred
-        case .screenshot:
-          inventory.ready?.first { $0.id == preferred?.id && $0.connection == preferred?.connection }
-        }
-        captureServices.startup.prepare(mode: mode, device: device)
+      for await (_, _, _, isShuttingDown) in updates {
+        guard !Task.isCancelled, !isShuttingDown, startup.isAvailable else { return }
+        self?.prepareStartup()
       }
     }
+    adbServers.start()
+    deviceManager.start()
     captureHistory.start()
+  }
+
+  private nonisolated static func preferredDevice(in devices: [Device], id: String?) -> Device? {
+    devices.first { $0.id == id } ?? devices.first
+  }
+
+  private func prepareDiscovery(_ devices: [Device], video: DiscoveredVideo?) -> Bool? {
+    guard !Task.isCancelled, !deviceManager.isShuttingDown, captureServices.startup.isAvailable else { return nil }
+    startupDevices = devices
+    return prepareStartup(video: video)
+  }
+
+  @discardableResult
+  private func prepareStartup(video: DiscoveredVideo? = nil) -> Bool {
+    let settings = AppSettings.shared
+    let preferred = Self.preferredDevice(in: startupDevices, id: settings.lastViewedDeviceID)
+    let device: Device? = switch settings.startupCaptureMode {
+    case .livePreview: preferred
+    case .screenshot: deviceManager.inventory.ready?.first { $0.id == preferred?.id && $0.connection == preferred?.connection }
+    }
+    let discovered = settings.startupCaptureMode == .livePreview && video?.target == device?.connection ? video : nil
+    return captureServices.startup.prepare(mode: settings.startupCaptureMode, device: device, discovered: discovered)
   }
 
   func shutdown() async {
@@ -158,6 +189,9 @@ final class AppRuntime {
     let activeStartupTask = startupTask
     activeStartupTask?.cancel()
     startupTask = nil
+    let activeDiscovery = discoveryTask
+    activeDiscovery?.cancel()
+    discoveryTask = nil
     let deviceTracker = deviceTracker
     let captureCoordinator = captureCoordinator
     let captureServices = captureServices
@@ -168,6 +202,7 @@ final class AppRuntime {
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
           await activeStartupTask?.value
+          await activeDiscovery?.value
           await captureServices.startup.discard()
           await self.finishCleanup(.startup)
           Perf.step(.appShutdown, "startup preparation discarded")

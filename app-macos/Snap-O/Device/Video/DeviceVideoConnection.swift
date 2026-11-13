@@ -16,6 +16,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
   private var receivedKeyFrame = false
   private var keyFrameRequested = false
   private var task: Task<Void, Never>?
+  private var discovered: DiscoveredVideo?
   private var timeout: Task<Void, Never>?
   private var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
   private let commands = DispatchQueue(label: "snapo.video.commands")
@@ -29,6 +30,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
 
   func stop() {
     hasStopped = true
+    discovered?.cancel()
     task?.cancel()
     timeout?.cancel()
     captureRequested = false
@@ -39,6 +41,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
 
   func waitUntilStopped() async {
     await task?.value
+    await discovered?.close()
     await timeout?.value
     await withCheckedContinuation { continuation in
       commands.async { continuation.resume() }
@@ -95,16 +98,22 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     }
   }
 
-  func prepare() {
+  func prepare(discovered: DiscoveredVideo? = nil) {
     guard task == nil, !hasStopped else { return }
+    self.discovered = discovered
     let target = target
     let commands = commands
     task = Task.detached(priority: .userInitiated) { [weak self] in
       guard !Task.isCancelled else { return }
       var socket: (any ADBConnection)?
       do {
-        let helper = try DeviceHelper(DeviceHelper.bundledBytes())
-        let session = try await helper.connect(.video, serial: target.serial, adb: ADBClient().bound(to: target))
+        let session: DeviceHelper.Session
+        if let discovered {
+          session = try await discovered.stream.value
+        } else {
+          let helper = try DeviceHelper(DeviceHelper.bundledBytes())
+          session = try await helper.connect(.video, serial: target.serial, adb: ADBClient().bound(to: target))
+        }
         let connection = session.connection
         socket = connection
         let acknowledgeRGBAFrame = {
@@ -118,7 +127,7 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
         try Task.checkCancellation()
         var stream = session.stream
         try DeviceVideoPacket.validateHeader(session.header)
-        await self?.markReady()
+        await self?.markReady(alreadyCapturing: discovered != nil)
         var builder = DeviceVideoSampleBuilder()
         let rgbaBuilder = EmulatorPreviewFrameBuilder()
         var displaySize: (width: Int, height: Int)?
@@ -170,10 +179,16 @@ final class DeviceVideoConnection: LivePreviewFrameSource {
     }
   }
 
-  private func markReady() {
+  private func markReady(alreadyCapturing: Bool) {
     guard !hasStopped else { return }
     isReady = true
-    if captureRequested { send(5) }
+    if alreadyCapturing, !captureRequested {
+      waitingForPause = true
+      armTimeout("Device video did not pause")
+      send(4)
+    } else if captureRequested, !alreadyCapturing {
+      send(5)
+    }
   }
 
   private func didPause() {

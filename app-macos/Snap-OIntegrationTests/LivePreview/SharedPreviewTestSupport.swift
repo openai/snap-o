@@ -34,7 +34,7 @@ enum SharedPreviewTestSupport {
     @ObservationIgnored lazy var service = LivePreviewService(
       coordinator: coordinator, adb: adb,
       makeFileDrop: { [unowned self] in makeFileDrop($0) },
-      makePreview: { [unowned self] in makeOwner($0) }
+      makePreview: { [unowned self] target, _ in makeOwner(target) }
     )
 
     init(adb: ADBService = ADBService()) throws {

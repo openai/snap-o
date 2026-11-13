@@ -90,26 +90,33 @@ final class DevicePreview: PreviewStatus {
     self.releaseVideoHelper = releaseVideoHelper
   }
 
-  convenience init(target: DeviceTarget, adb: ADBService, settings: AppSettings) {
+  convenience init(target: DeviceTarget, adb: ADBService, settings: AppSettings, discovered: DiscoveredVideo? = nil) {
     @Dependency(\.continuousClock)
     var clock
     var ownsVideoHelper = false
-    let boot = Task {
-      let exec = await adb.exec().bound(to: target)
-      var delay = Duration.seconds(1)
-      while true {
+    let boot: Task<Void, Error>
+    if let discovered {
+      // Visibility can change while Android is still waking.
+      DeviceVideoHub.shared.preparePreview(for: target, discovered: discovered)
+      ownsVideoHelper = true
+      boot = Task.immediate(priority: .userInitiated) {
+        try await withTaskCancellationHandler {
+          try await discovered.wake.value
+        } onCancel: { discovered.cancel() }
         try Task.checkCancellation()
-        _ = try target.requireTransport(for: target.serial)
-        if await (try? exec.isBootComplete(deviceID: target.serial)) == true { break }
-        try await clock.sleep(for: delay)
-        delay = min(delay * 2, .seconds(10))
+        guard target.isValid else { throw CancellationError() }
       }
-      try Task.checkCancellation()
-      if !target.isLocalEmulator {
-        DeviceVideoHub.shared.preparePreview(for: target)
-        ownsVideoHelper = true
+    } else {
+      boot = Task.immediate(priority: .userInitiated) {
+        let exec = await adb.exec().bound(to: target)
+        try await exec.waitUntilBooted(target)
+        try Task.checkCancellation()
+        if !target.isLocalEmulator {
+          DeviceVideoHub.shared.preparePreview(for: target)
+          ownsVideoHelper = true
+        }
+        _ = try? await exec.withTimeout(.seconds(1)).keyEvent(deviceID: target.serial, keyCode: "KEYCODE_WAKEUP")
       }
-      _ = try? await exec.withTimeout(.seconds(1)).keyEvent(deviceID: target.serial, keyCode: "KEYCODE_WAKEUP")
     }
     let preparation = Task<Preparation, Never> {
       do { try await boot.value } catch { return Preparation(touches: nil, density: nil) }
@@ -159,6 +166,11 @@ final class DevicePreview: PreviewStatus {
         await touches.setEnabled(enabled, using: adb)
       }
     }
+  }
+
+  func setVideoActive(_ active: Bool, delayPause: Bool) {
+    video.setActive(active, delayPause: delayPause)
+    if !active { DeviceVideoHub.shared.pauseUnclaimedPreview(for: target) }
   }
 
   func setClipboardEnabled(_ enabled: Bool) {

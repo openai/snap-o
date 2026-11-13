@@ -26,10 +26,14 @@ final class DeviceVideoHub {
   }
 
   /// A selected physical preview owns the helper even when it has no frame subscribers.
-  func preparePreview(for target: DeviceTarget) {
+  func preparePreview(for target: DeviceTarget, discovered: DiscoveredVideo? = nil) {
     guard !target.isLocalEmulator else { return }
     previewOwners[target, default: 0] += 1
-    stream(for: target).prepare()
+    stream(for: target).prepare(discovered: discovered)
+  }
+
+  func pauseUnclaimedPreview(for target: DeviceTarget) {
+    sessions[target]?.pauseUnclaimedPreview()
   }
 
   func releasePreview(for target: DeviceTarget) async {
@@ -140,6 +144,8 @@ private final class DeviceVideoStream {
   private var previous: DeviceVideoStream?
   private var startup: Task<Void, Never>?
   private var hasStarted = false
+  private var discovered: DiscoveredVideo?
+  private var discoveryCleanup: Task<Void, Never>?
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
   private var formatEvent: LivePreviewFrameEvent?
@@ -165,9 +171,29 @@ private final class DeviceVideoStream {
     if scalesFrames { source.setFrameSize(.inactive) }
   }
 
-  func prepare() {
+  func prepare(discovered: DiscoveredVideo?) {
     // A replacement stream joins the preceding transport before opening its own.
+    if let discovered {
+      if hasStarted || self.discovered != nil {
+        discovered.cancel()
+        let previousCleanup = discoveryCleanup
+        discoveryCleanup = Task {
+          await discovered.close()
+          await previousCleanup?.value
+        }
+      } else {
+        self.discovered = discovered
+      }
+      return
+    }
     if previous == nil { (source as? DeviceVideoConnection)?.prepare() }
+  }
+
+  func pauseUnclaimedPreview() {
+    guard isEmpty, let discovered, let connection = source as? DeviceVideoConnection else { return }
+    self.discovered = nil
+    // With no subscriber, the connection pauses the encoder as soon as the helper is ready.
+    connection.prepare(discovered: discovered)
   }
 
   func pause() -> Bool {
@@ -243,17 +269,24 @@ private final class DeviceVideoStream {
     guard !hasStopped else { return }
     hasStopped = true
     startup?.cancel()
+    discovered?.cancel()
     latestIndependentFrame = nil
     source.stop()
   }
 
   func waitUntilStopped() async {
     await startup?.value
+    await discovered?.close()
+    await discoveryCleanup?.value
     await source.waitUntilStopped()
   }
 
   private func start() {
     hasStarted = true
+    if let discovered {
+      self.discovered = nil
+      (source as? DeviceVideoConnection)?.prepare(discovered: discovered)
+    }
     source.start { [weak self] event in self?.receive(event) }
   }
 

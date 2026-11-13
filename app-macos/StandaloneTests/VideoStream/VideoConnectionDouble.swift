@@ -153,6 +153,15 @@ struct ADBClient {
     self
   }
 
+  func isBootComplete(deviceID: String) async throws -> Bool {
+    true
+  }
+
+  func keyEvent(deviceID: String, keyCode: String) async throws -> String {
+    precondition(keyCode == "KEYCODE_WAKEUP")
+    return ""
+  }
+
   func runShellString(deviceID: String, command: String) async throws -> String {
     preconditionFailure("Video lifetime tests must not request a native identity proof")
   }
