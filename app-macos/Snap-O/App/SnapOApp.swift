@@ -91,6 +91,12 @@ struct SnapOApp: App {
     .windowResizability(.contentMinSize)
     .commandsRemoved()
 
+    Window("Connect Android Wirelessly", id: "wireless-device") {
+      WirelessDeviceWindow()
+    }
+    .windowResizability(.contentSize)
+    .commandsRemoved()
+
     Window("Capture History", id: "capture-history") {
       CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
         .modifier(WorkspaceWindowLauncher())
