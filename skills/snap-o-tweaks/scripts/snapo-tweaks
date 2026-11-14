@@ -12,6 +12,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 
 
@@ -766,6 +767,27 @@ class LocalAbstractSocket:
         return bytes(data)
 
 
+_SOCKET_OPEN_LOCK = threading.Lock()
+
+
+def can_open_socket(output, name):
+    has_listener = False
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) != 8 or fields[4] != "0001" or fields[7] != "@" + name:
+            continue
+        try:
+            flags = int(fields[3], 16)
+        except ValueError:
+            continue
+        # Closed clients can remain queued until a frozen app accepts them.
+        if fields[5] == "02":
+            return False
+        if flags & 0x10000 and fields[5] == "01" and fields[6].isdigit() and int(fields[6]) > 0:
+            has_listener = True
+    return has_listener
+
+
 class ServerConnection:
     def __init__(self, adb, server):
         self.adb = adb
@@ -784,12 +806,16 @@ class ServerConnection:
         return False
 
     def open_socket(self, timeout=5):
-        return LocalAbstractSocket(
-            port=self.forward.port if self.forward is not None else None,
-            adb=None if self.forward is not None else self.adb,
-            server=self.server,
-            timeout=timeout,
-        )
+        with _SOCKET_OPEN_LOCK:
+            snapshot = self.adb.command("shell", "cat /proc/net/unix", serial=self.server.device_id)
+            if not can_open_socket(snapshot, self.server.socket_name):
+                raise SnapOError("The tool is not accepting connections. Open its app and try again.")
+            return LocalAbstractSocket(
+                port=self.forward.port if self.forward is not None else None,
+                adb=None if self.forward is not None else self.adb,
+                server=self.server,
+                timeout=timeout,
+            )
 
 
 def parse_process_info(output, pid):

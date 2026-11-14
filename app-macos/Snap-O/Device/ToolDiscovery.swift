@@ -115,6 +115,21 @@ public enum ToolDiscovery {
   ps -A -o PID,NAME 2>/dev/null || ps
   """
 
+  static func canOpenSocket(named name: String, inProcNetUnix output: String) -> Bool {
+    var hasListener = false
+    for line in output.split(separator: "\n") {
+      let fields = line.split(whereSeparator: \.isWhitespace)
+      guard fields.count == 8, fields[4] == "0001", fields[7] == "@" + name,
+            let flags = UInt32(fields[3], radix: 16) else { continue }
+      // Closing the client does not remove its unaccepted connection from a frozen app's queue.
+      if fields[5] == "02" { return false }
+      if flags & 0x0001_0000 != 0, fields[5] == "01", let inode = UInt64(fields[6]), inode > 0 {
+        hasListener = true
+      }
+    }
+    return hasListener
+  }
+
   public static func sockets(
     inProcNetUnix output: String,
     deviceID: String
