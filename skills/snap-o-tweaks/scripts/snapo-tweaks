@@ -137,6 +137,9 @@ class TweakConnection:
             raise SnapOError(f"Failed to read Snap-O tweaks response: {error}") from error
         if len(data) > limit:
             raise SnapOError("Snap-O tweaks server returned an oversized response")
+        # A bounded read can return early without raising IncompleteRead.
+        if self.response.length not in (None, 0):
+            raise SnapOError("Snap-O tweaks server returned an incomplete response")
         return data
 
 
