@@ -1,12 +1,12 @@
 # Device helper
 
-Snap-O bundles `snapo-device-helper.jar` for clipboard sync, keyboard and pointer input, and physical-device video.
+Snap-O bundles `snapo-device-helper.jar` for clipboard sync, keyboard and pointer input, video, playback audio, and the Android microphone.
 It runs through `app_process` as the ADB shell. No APK, root access, or app dependency is required.
 Emulators continue using their existing gRPC clipboard service.
 Keyboard input uses the helper on both emulators and physical devices.
 
 Snap-O caches the read-only JAR under `/data/local/tmp/snapo-device-helper/<sha256>.jar`.
-Video, pointer, keyboard, and clipboard sessions share it across reconnects and app launches.
+Video, audio, pointer, keyboard, and clipboard sessions share it across reconnects and app launches.
 On a cache hit, Snap-O launches the JAR directly. The launcher writes `SNHB` followed by
 its 16-character build ID before starting the requested mode. Snap-O reads the expected ID
 from the bundled JAR's ZIP comment. A missing startup identity or a different build triggers one reinstall.
@@ -14,7 +14,7 @@ On a miss, the launch script sends `ff` on stdout and reads the bundled JAR's by
 It checks the new file using SHA-256, or SHA-1 on Android 7, and renames it atomically.
 The digest in the filename lets different Snap-O versions run at the same time.
 
-Video and pointer input use ADB shell v2. Clipboard and keyboard use ADB `exec`.
+Video, audio, and pointer input use ADB shell v2. Clipboard and keyboard use ADB `exec`.
 Closing the connection ends the running helper. The cached JAR stays on the device.
 
 In clipboard mode, the helper only reads and writes plain text. It registers an Android clipboard listener and sends
@@ -137,3 +137,11 @@ Automated tests use fake frame sources and recording writers to check independen
 preview and recording lifetimes. An RGBA recording test also encodes and decodes a synthetic frame. For a manual
 check, use a connected device showing synthetic content. Start recording during
 preview, stop recording, and confirm that preview continues and the recording plays.
+
+## Recording device audio
+
+On Android 13 or newer, each recording can open an audio session for eligible playback, the Android microphone, or both.
+Android keeps playing sound on the device. The helper aligns both sources on Android’s monotonic clock and mixes the microphone into both stereo channels. It reports when Android silences the recorder’s microphone.
+The Mac encodes the samples as one AAC track in the same MP4 as the video. Stopping the recording closes its audio connection.
+
+See the [internal audio contract](../contracts/device-audio/README.md).
