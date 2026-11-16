@@ -103,7 +103,7 @@ struct ADBScreenRecording: ScreenRecording {
 }
 
 struct NativeScreenRecording: ScreenRecording {
-  static func start(target: DeviceTarget) async throws -> NativeScreenRecording {
+  static func start(target: DeviceTarget, recordsDeviceAudio: Bool, recordsMicrophone: Bool) async throws -> NativeScreenRecording {
     Self()
   }
 }
@@ -204,7 +204,7 @@ final class CaptureHistory {
 
 @MainActor
 final class RecordingCapture {
-  typealias StartRecording = @Sendable (Device, Bool) async throws -> any ScreenRecording
+  typealias StartRecording = @Sendable (Device, RecordingOptions) async throws -> any ScreenRecording
   init(
     device: Device, options: RecordingOptions, adb: ADBService, fileStore: FileStore,
     coordinator: CaptureCoordinator, startRecording: @escaping StartRecording,

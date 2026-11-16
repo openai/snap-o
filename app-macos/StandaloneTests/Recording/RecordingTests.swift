@@ -167,8 +167,8 @@ struct RecordingTests {
       return RecordingCapture(
         device: device, options: options, adb: adb, fileStore: fileStore,
         coordinator: coordinator,
-        startRecording: start ?? { device, bugReport in
-          let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
+        startRecording: start ?? { device, options in
+          let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: options.recordsBugReport)
           return ADBScreenRecording(session: session, adb: adb)
         },
         loadRecording: readsVideoMetadata ? nil : { @Sendable url, device, capturedAt in
@@ -555,9 +555,9 @@ struct RecordingTests {
     for shutdown in [false, true] {
       let gate = TestGate()
       let adb = ADBService(video: video)
-      let fixture = Fixture(root: root, video: video) { device, bugReport in
+      let fixture = Fixture(root: root, video: video) { device, options in
         await gate.wait()
-        let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
+        let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: options.recordsBugReport)
         return ADBScreenRecording(session: session, adb: adb)
       }
       let capture = fixture.recording(for: devices[0])
@@ -585,9 +585,9 @@ struct RecordingTests {
   static func failedStartupPreservesHealthyTargets(root: URL, video: URL) async throws {
     let adb = ADBService(video: video)
     let failingID = devices[1].id
-    let fixture = Fixture(root: root, video: video) { device, bugReport in
+    let fixture = Fixture(root: root, video: video) { device, options in
       if device.id == failingID { throw CocoaError(.fileReadUnknown) }
-      let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
+      let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: options.recordsBugReport)
       return ADBScreenRecording(session: session, adb: adb)
     }
     let failed = await fixture.startRecording(for: devices[1])
@@ -629,9 +629,9 @@ struct RecordingTests {
     let devices = makeDevices()
     let gate = TestGate()
     let adb = ADBService(video: video)
-    let fixture = Fixture(root: root, video: video) { device, bugReport in
+    let fixture = Fixture(root: root, video: video) { device, options in
       await gate.wait()
-      let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: bugReport)
+      let session = try await adb.startScreenrecord(deviceID: device.id, bugReport: options.recordsBugReport)
       return ADBScreenRecording(session: session, adb: adb)
     }
     let capture = fixture.recording(for: devices[0])

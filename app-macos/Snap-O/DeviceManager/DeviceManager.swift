@@ -285,7 +285,7 @@ final class DeviceManager {
     let previous = connectedDevices
       .first { $0.id == device.id && $0.connection == device.connection && $0.transportID == device.transportID }
     return Device(
-      id: device.id, model: device.model, androidVersion: device.androidVersion,
+      id: device.id, model: device.model, androidVersion: device.androidVersion, androidSDK: device.androidSDK,
       vendorModel: device.vendorModel, manufacturer: device.manufacturer, avdName: device.avdName,
       displayName: emulator?.title ?? previous?.displayName, transportID: device.transportID, connection: device.connection
     )

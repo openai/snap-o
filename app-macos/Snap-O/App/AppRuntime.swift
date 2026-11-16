@@ -64,13 +64,16 @@ final class AppRuntime {
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
     let fileStore = FileStore(frameExportHandler: recordFrame)
     let captureCoordinator = CaptureCoordinator()
-    let startRecording: RecordingCapture.StartRecording = { device, bugReport in
+    let startRecording: RecordingCapture.StartRecording = { device, options in
       let target = try device.requireConnection()
-      if device.isLocalEmulator || bugReport {
-        let session = try await adbService.exec().bound(to: target).startScreenrecord(deviceID: device.serial, bugReport: bugReport)
+      if device.isLocalEmulator || options.recordsBugReport {
+        let session = try await adbService.exec().bound(to: target)
+          .startScreenrecord(deviceID: device.serial, bugReport: options.recordsBugReport)
         return ADBScreenRecording(session: session, adb: adbService)
       }
-      return try await NativeScreenRecording.start(target: target)
+      return try await NativeScreenRecording.start(
+        target: target, recordsDeviceAudio: options.recordsDeviceAudio, recordsMicrophone: options.recordsMicrophone
+      )
     }
     let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
     let timestamps = CaptureTimestampSource()

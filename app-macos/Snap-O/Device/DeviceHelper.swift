@@ -2,16 +2,35 @@ import CryptoKit
 import Foundation
 
 struct DeviceHelper {
-  enum Mode {
-    case video, pointer, keyboard, clipboard
+  enum AudioSource: String {
+    case playback = "--playback"
+    case microphone = "--microphone"
+    case playbackAndMicrophone = "--playback --microphone"
+
+    init?(playback: Bool, microphone: Bool) {
+      switch (playback, microphone) {
+      case (true, false): self = .playback
+      case (false, true): self = .microphone
+      case (true, true): self = .playbackAndMicrophone
+      case (false, false): return nil
+      }
+    }
+  }
+
+  enum Mode: Equatable {
+    case video, audio(AudioSource), pointer, keyboard, clipboard
 
     var usesShellV2: Bool {
-      self == .video || self == .pointer
+      switch self {
+      case .video, .audio, .pointer: true
+      case .keyboard, .clipboard: false
+      }
     }
 
     fileprivate var arguments: String {
       switch self {
       case .video: "video rgba-fallback rgba-flow-control standby"
+      case .audio(let source): "audio \(source.rawValue)"
       case .pointer: "pointer"
       case .keyboard: "clipboard keyboard"
       case .clipboard: "clipboard"

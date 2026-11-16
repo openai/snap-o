@@ -459,6 +459,7 @@ class ProtocolReportTests(unittest.TestCase):
 
     def test_reports_device_audio_protocol(self):
         self.write("device-helper/src/com/openai/snapo/audio/Main.java", "private static final int MAGIC = 0x534e4131;\n")
+        self.write("app-macos/Snap-O/Device/Audio/DeviceAudioPacket.swift", 'static let magic = Data("SNA1".utf8)\n')
         self.write("contracts/device-audio/README.md",
                    "| `audio --microphone` | Android microphone. |\n"
                    "| `1`: samples | Timestamp, frame count, PCM. |\n"
@@ -466,6 +467,7 @@ class ProtocolReportTests(unittest.TestCase):
         self.commit()
         report = self.report()
         self.assertIn("Device audio helper versioned magic", report)
+        self.assertIn("Device audio client versioned magic", report)
         self.assertIn("| `1`: samples | Timestamp, frame count, PCM. |", report)
         self.assertIn("| `3`: microphone status | Android capture policy. |", report)
         self.assertIn("| `audio --microphone` | Android microphone. |", report)

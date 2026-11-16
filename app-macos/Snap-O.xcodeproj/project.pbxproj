@@ -107,6 +107,7 @@
 		D10C00032F70000100C0FFEE /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = D10C00022F70000100C0FFEE /* Dependencies */; };
 		D10C00052F70000100C0FFEE /* DependenciesTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = D10C00042F70000100C0FFEE /* DependenciesTestSupport */; };
 		D1B5A46A72CD45590AA7E405 /* Snap-O/Device/Video/DeviceVideoPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978CE95EA35B941361118127 /* Snap-O/Device/Video/DeviceVideoPacket.swift */; };
+		ADEC00012F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
 		D36902819C629DEC6C76BD7F /* Snap-O/Device/ADB/ADBConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C59B3A61547DF326F02ADD5 /* Snap-O/Device/ADB/ADBConnection.swift */; };
 		D473C5A94A9923FE88B421E8 /* Snap-O/Capture/Operations/CaptureOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D13136A17BA59CB4EB92347 /* Snap-O/Capture/Operations/CaptureOperation.swift */; };
@@ -223,6 +224,7 @@
 		941A1F023AAE45F6B8C01BDE /* Snap-O/Device/ADB/ADBServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/ADBServerStore.swift"; sourceTree = SOURCE_ROOT; };
 		95DE14A33DEE1F8F9193D91F /* Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift"; sourceTree = SOURCE_ROOT; };
 		978CE95EA35B941361118127 /* Snap-O/Device/Video/DeviceVideoPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Video/DeviceVideoPacket.swift"; sourceTree = SOURCE_ROOT; };
+		ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Audio/DeviceAudioPacket.swift"; sourceTree = SOURCE_ROOT; };
 		97CCE671C650700B969755CD /* Snap-O/Capture/Review/CaptureReviewEscapeAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Review/CaptureReviewEscapeAction.swift"; sourceTree = SOURCE_ROOT; };
 		9A18C700FE0FEF4B8BDC8001 /* Snap-O/Device/ToolServerReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ToolServerReference.swift"; sourceTree = SOURCE_ROOT; };
 		9DD5C05EA109633C368B4D0E /* Snap-O/Device/ADB/DevicePointerTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/DevicePointerTransport.swift"; sourceTree = SOURCE_ROOT; };
@@ -471,6 +473,7 @@
 				D9B19D3E7C514695AE111111 /* Snap-O/Capture/Export/VideoFileClient.swift */,
 				798562CA2312562E7E77FB80 /* Snap-O/Device/Emulators/EmulatorConnection.swift */,
 				978CE95EA35B941361118127 /* Snap-O/Device/Video/DeviceVideoPacket.swift */,
+				ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */,
 				A471E136E99C01AC20B9E101 /* Snap-O/Device/ADB/ADBShellV2Stream.swift */,
 				7FC256D4A6364890A71E50C3 /* Snap-O/Device/DeviceHelper.swift */,
 				032CA1020789BE3DBF10FDD1 /* Snap-O/Device/ADB/DeviceFileCommand.swift */,
@@ -765,6 +768,7 @@
 				8642C7C01FA351AC4662DF30 /* Snap-O/Device/ADB/DevicePointerProtocol.swift in Sources */,
 				023C84EF38EFEB972DB4D8C3 /* Snap-O/Device/Emulators/EmulatorConnection.swift in Sources */,
 				D1B5A46A72CD45590AA7E405 /* Snap-O/Device/Video/DeviceVideoPacket.swift in Sources */,
+				ADEC00012F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift in Sources */,
 				A471E136E99C01AC20B9E100 /* Snap-O/Device/ADB/ADBShellV2Stream.swift in Sources */,
 				B83A9AC4723046F69CA0E140 /* Snap-O/Device/DeviceHelper.swift in Sources */,
 				DDE1283E70292A0AB1422BE6 /* Snap-O/Device/ADB/DeviceFileCommand.swift in Sources */,

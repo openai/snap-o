@@ -38,7 +38,7 @@ final class RecordingCapture: CaptureOperation {
 
   enum Phase { case starting, recording, finishing, cancelling }
 
-  typealias StartRecording = @Sendable (Device, Bool) async throws -> any ScreenRecording
+  typealias StartRecording = @Sendable (Device, RecordingOptions) async throws -> any ScreenRecording
   typealias LoadRecording = @Sendable (URL, Device, Date) async throws -> CaptureMedia
 
   let id = UUID()
@@ -96,7 +96,7 @@ final class RecordingCapture: CaptureOperation {
       lease = try coordinator.acquire(target: target, for: options.recordsBugReport ? .bugReportRecording : .recording)
       touches = await ShowTouchesOverride.apply(target: target, enabled: options.showsTouches, using: adb)
       try Task.checkCancellation()
-      let session = try await startRecording(device, options.recordsBugReport)
+      let session = try await startRecording(device, options)
       guard let touches, let lease else { preconditionFailure("Started recording must own its resources") }
       let entry = Entry(session: session, lease: lease, showTouchesOverride: touches)
       self.entry = entry
@@ -245,7 +245,8 @@ final class RecordingCapture: CaptureOperation {
       // Preserve the remote copy unless stop was confirmed and the local copy is usable.
       if entry.stopStatus == .confirmed { await entry.session.remove() }
       await entry.session.close()
-      state = .ready(capture, warning: entry.failure)
+      let warnings = [entry.failure, entry.session.captureWarning].compactMap(\.self)
+      state = .ready(capture, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"))
     } catch {
       fileStore.discardTemporaryFile(at: destination)
       let message = [entry.failure, error.localizedDescription].compactMap(\.self).joined(separator: "\n")

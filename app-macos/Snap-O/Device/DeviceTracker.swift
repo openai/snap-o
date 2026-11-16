@@ -368,6 +368,7 @@ actor DeviceTracker: DeviceTracking {
               id: id,
               model: info.model,
               androidVersion: info.version,
+              androidSDK: info.sdk,
               vendorModel: info.vendorModel,
               manufacturer: info.manufacturer,
               avdName: info.avdName,
@@ -447,6 +448,7 @@ actor DeviceTracker: DeviceTracking {
     let info = DeviceInfo(
       model: model,
       version: version,
+      sdk: cleanProp("ro.build.version.sdk", in: props).flatMap(Int.init),
       vendorModel: vendorModel,
       manufacturer: manufacturer,
       avdName: avdName
@@ -461,6 +463,7 @@ actor DeviceTracker: DeviceTracking {
   private struct DeviceInfo {
     let model: String
     let version: String
+    let sdk: Int?
     let vendorModel: String?
     let manufacturer: String?
     let avdName: String?

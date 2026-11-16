@@ -24,12 +24,21 @@ struct DeviceHelperTests {
     #expect(good.written == TestDeviceHelper.jar)
   }
 
-  @Test(arguments: [DeviceHelper.Mode.video, .pointer, .keyboard, .clipboard], [false, true])
+  @Test(arguments: [
+    DeviceHelper.Mode.video,
+    .audio(.playback),
+    .audio(.microphone),
+    .audio(.playbackAndMicrophone),
+    .pointer,
+    .keyboard,
+    .clipboard
+  ], [false, true])
   func transmitsTheJarOnlyOnRequest(mode: DeviceHelper.Mode, upload: Bool) throws {
     let jar = TestDeviceHelper.jar
     let helper = try DeviceHelper(jar)
     let header = switch mode {
     case .video: Data("SNV1".utf8)
+    case .audio: Data("SNA1".utf8)
     case .keyboard: Data([0, 0, 0, 2])
     default: Data([0, 0, 0, 1])
     }
@@ -46,8 +55,17 @@ struct DeviceHelperTests {
     let uploadBytes = try mode.usesShellV2 ? ADBShellV2Stream.standardInput(jar) : jar
     #expect(connection.written == (upload ? uploadBytes : Data()))
     let command = try #require(connection.commands.first)
+    if case .audio(let source) = mode { #expect(command.hasSuffix(" audio " + source.rawValue)) }
     let digest = SHA256.hash(data: jar).map { String(format: "%02x", $0) }.joined()
     #expect(command.contains(digest + ".jar"))
     #expect(!command.contains(jar.base64EncodedString()))
+  }
+
+  @Test
+  func launchesOnlyTheSelectedAudioSources() {
+    #expect(DeviceHelper.AudioSource(playback: false, microphone: false) == nil)
+    #expect(DeviceHelper.AudioSource(playback: false, microphone: true)?.rawValue == "--microphone")
+    #expect(DeviceHelper.AudioSource(playback: true, microphone: false)?.rawValue == "--playback")
+    #expect(DeviceHelper.AudioSource(playback: true, microphone: true)?.rawValue == "--playback --microphone")
   }
 }
