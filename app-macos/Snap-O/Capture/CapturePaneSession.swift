@@ -158,6 +158,10 @@ final class CapturePaneSession {
     canChangeContent && captureDevice != nil
   }
 
+  var canRecordDeviceAudio: Bool {
+    !AppSettings.shared.recordAsBugReport && captureDevice?.supportsDeviceAudioRecording == true
+  }
+
   var canSelectLivePreview: Bool {
     canChangeContent
   }
@@ -266,7 +270,9 @@ final class CapturePaneSession {
     openDevice(nil)
     let capture = services.recording(device, RecordingOptions(
       recordsBugReport: AppSettings.shared.recordAsBugReport,
-      showsTouches: AppSettings.shared.showTouchesDuringCapture
+      showsTouches: AppSettings.shared.showTouchesDuringCapture,
+      recordsDeviceAudio: canRecordDeviceAudio && AppSettings.shared.recordDeviceAudio,
+      recordsMicrophone: canRecordDeviceAudio && AppSettings.shared.recordMicrophone
     ))
     if let review { retire(review) }
     content = .live(recording: capture)
