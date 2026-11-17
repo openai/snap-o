@@ -52,7 +52,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift Snap-O/LivePreview/Rendering/LivePreviewSession.swift Snap-O/LivePreview/PreviewVideo.swift \
   StandaloneTests/Support/TestGate.swift Snap-OIntegrationTests/AsyncTestSupport.swift \
   StandaloneTests/VideoStream/VideoConnectionDouble.swift StandaloneTests/VideoStream/EmulatorEndpointDouble.swift \
-  StandaloneTests/VideoStream/VideoStreamTests.swift StandaloneTests/VideoStream/NativeRecordingTests.swift \
+  StandaloneTests/VideoStream/VideoStreamTests.swift StandaloneTests/VideoStream/NativeRecordingMediaTests.swift \
   -o "$TEST_DIR/video-stream-tests"
 # Bundle lookup uses this synthetic resource; the fake connection never executes it.
 printf 'test helperSNHB0123456789abcdef' > "$TEST_DIR/snapo-device-helper.jar"
