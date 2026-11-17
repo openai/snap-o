@@ -53,7 +53,7 @@ Use the OkHttp interceptor for OkHttp directly or through Ktor's OkHttp engine.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "14.3.1"
+snapo = "15.0.0"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -73,8 +73,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:14.3.1")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:14.3.1")
+    debugImplementation("com.openai.snapo:network-okhttp3:15.0.0")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:15.0.0")
 }
 ```
 
@@ -95,7 +95,7 @@ Use the HttpURLConnection interceptor on Android 7.0 (API 24) or newer.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "14.3.1"
+snapo = "15.0.0"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -115,8 +115,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:14.3.1")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:14.3.1")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:15.0.0")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:15.0.0")
 }
 ```
 
@@ -257,6 +257,8 @@ Right-click a request to add its host to the exclusion filter. Exclusion filters
 Use the arrow keys to move between requests. Server-Sent Events show whether the stream is pending, streaming, closed, or offline. When a response body is unavailable, Snap-O explains whether it is no longer retained or is not cached on this Mac. If loading fails while connected, click **Retry**.
 
 The request list follows new calls at the bottom, or at the top when sorted newest-first. Scroll away from that edge to pause, then return to resume. While paused, the list keeps the same request in view as calls arrive or sorting changes. Your selected request stays selected.
+
+Right-click an HTTP request and choose **Copy as cURL** to copy its method, headers, and captured body. Starting with version 15.0.0 of the Android Network library, the command preserves binary bodies and text beginning with `@`.
 
 ### Intercept requests {#python-overrides}
 
