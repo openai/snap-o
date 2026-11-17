@@ -16,7 +16,7 @@ public struct Device: Identifiable, Hashable, Sendable {
   public let androidVersion: String
   let androidSDK: Int?
   var supportsDeviceAudioRecording: Bool {
-    !isLocalEmulator && (androidSDK ?? 0) >= 33
+    (androidSDK ?? 0) >= 33
   }
 
   public let vendorModel: String?

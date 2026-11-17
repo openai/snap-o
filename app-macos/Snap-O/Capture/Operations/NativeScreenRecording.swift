@@ -43,11 +43,14 @@ final class NativeScreenRecording: ScreenRecording {
       DeviceAudioConnection(target: target, source: source)
     }
     let audioTrack = audioConnection == nil ? nil : try RecordingAudioTrack()
-    // An idle preview's cached timestamp can predate the start of recording.
-    let recording = NativeScreenRecording(
-      source: DeviceVideoSource(target: target, replaysLastFrame: false),
-      audioConnection: audioConnection, audioTrack: audioTrack
-    )
+    // Emulator gRPC frames use host wall time. The Android video helper shares the audio capture clock.
+    let source: any LivePreviewFrameSource = if target.isLocalEmulator, audioConnection != nil {
+      DeviceVideoConnection(target: target)
+    } else {
+      // An idle preview's cached timestamp can predate the start of recording.
+      DeviceVideoSource(target: target, replaysLastFrame: false)
+    }
+    let recording = NativeScreenRecording(source: source, audioConnection: audioConnection, audioTrack: audioTrack)
     do {
       if let audioConnection, let audioTrack {
         audioConnection.start { [weak recording] event in recording?.receiveAudioEvent(event) } failed: { [weak recording] error in

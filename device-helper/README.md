@@ -111,8 +111,9 @@ Each consumer owns a subscription. Closing a preview does not stop its recording
 When the last subscriber pauses, a selected preview keeps the helper connected. It releases the
 display mirror, encoder or image reader, and waits for the Mac. Resuming starts a fresh capture
 in the same process. Closing the last preview and recording ends the helper.
-Emulators retain gRPC preview and Android file recording. Bug-report recordings retain
-Android's overlay writer and temporarily stop preview.
+Local emulators use gRPC for preview and Android file recording when audio is off.
+For recordings with audio, the video helper timestamps frames on the same Android clock as the audio samples.
+Bug-report recordings use Android's overlay writer and temporarily stop preview.
 
 Video uses a separate helper process and connection from keyboard and clipboard input.
 It captures the main display at its current resolution, targeting 16 Mbps and 60 fps.

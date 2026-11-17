@@ -3,10 +3,10 @@ import Foundation
 import Testing
 
 struct DeviceAudioPacketTests {
-  @Test(arguments: [32, 33, 37])
-  func offersDeviceAudioOnSupportedAndroidVersions(sdk: Int) {
+  @Test(arguments: ["phone", "emulator-5554"], [32, 33, 37])
+  func offersDeviceAudioOnSupportedAndroidVersions(serial: String, sdk: Int) {
     let device = Device(
-      id: "phone", model: "Test", androidVersion: "Preview", androidSDK: sdk,
+      id: serial, model: "Test", androidVersion: "Preview", androidSDK: sdk,
       vendorModel: nil, manufacturer: nil, avdName: nil
     )
     #expect(device.supportsDeviceAudioRecording == (sdk >= 33))

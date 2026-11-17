@@ -66,7 +66,7 @@ final class AppRuntime {
     let captureCoordinator = CaptureCoordinator()
     let startRecording: RecordingCapture.StartRecording = { device, options in
       let target = try device.requireConnection()
-      if device.isLocalEmulator || options.recordsBugReport {
+      if options.recordsBugReport || (device.isLocalEmulator && !options.recordsDeviceAudio && !options.recordsMicrophone) {
         let session = try await adbService.exec().bound(to: target)
           .startScreenrecord(deviceID: device.serial, bugReport: options.recordsBugReport)
         return ADBScreenRecording(session: session, adb: adbService)

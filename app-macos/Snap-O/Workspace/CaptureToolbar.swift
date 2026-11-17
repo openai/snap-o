@@ -395,7 +395,7 @@ private struct RecordingAudioButton: View {
       VStack(alignment: .leading, spacing: 10) {
         Toggle("Record Device Audio", isOn: $settings.recordDeviceAudio)
         Toggle("Record Microphone", isOn: $settings.recordMicrophone)
-          .help("Record the phone’s microphone. Your voice may be missing while another app uses the mic.")
+          .help("Record the microphone Android receives. Your voice may be missing while another app uses the mic.")
       }
       .toggleStyle(.checkbox)
       .buttonStyle(.automatic)

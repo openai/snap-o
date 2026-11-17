@@ -67,7 +67,23 @@ final class AVRecordingWriter: NativeRecordingWriter {
   }
 
   func finish(at end: CMTime?) async throws {
-    if let end { writer.endSession(atSourceTime: end) }
+    if let end {
+      if input.outputSettings == nil {
+        // An idle Android screen may send its last encoded frame well before the audio ends.
+        let marker = try CMSampleBuffer(
+          dataBuffer: nil, formatDescription: input.sourceFormatHint, numSamples: 0,
+          sampleTimings: [CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: end, decodeTimeStamp: end)], sampleSizes: []
+        )
+        CMSetAttachment(
+          marker,
+          key: kCMSampleBufferAttachmentKey_EndsPreviousSampleDuration,
+          value: kCFBooleanTrue,
+          attachmentMode: kCMAttachmentMode_ShouldPropagate
+        )
+        guard input.append(marker) else { throw writer.error ?? ADBError.protocolFailure("Could not finalize the last video frame") }
+      }
+      writer.endSession(atSourceTime: end)
+    }
     input.markAsFinished()
     audioInput?.markAsFinished()
     await writer.finishWriting()

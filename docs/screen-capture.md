@@ -139,9 +139,11 @@ Press `⇧⌘V` to start recording the device shown in the window. Press it agai
 
 The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.
 
-Click the audio button beside the screenshot and recording controls to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Turn on **Record Microphone** to include the phone’s microphone. Snap-O remembers each choice. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
+Click the audio button beside the screenshot and recording controls to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Turn on **Record Microphone** to include the microphone Android receives. Snap-O remembers each choice. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
 
-Audio is available for normal recordings on physical devices running Android 13 or newer. Local emulator and bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+Audio is available on physical devices and emulators running Android 13 or newer. Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+
+On an emulator, **Record Microphone** captures its virtual microphone. To use your Mac’s microphone as input, open **Extended Controls → Microphone** and turn on **Enable Host Microphone Access**. See [Android Emulator microphone controls](https://developer.android.com/studio/run/emulator-extended-controls).
 
 A voice app can hear you while your voice is missing from the screen recording. Android gives each app its own microphone input and can change the route when a conversation starts. If Android reports that it silenced Snap-O’s microphone, a warning appears in review. Android can also report an active microphone that delivers little or no sound.
 

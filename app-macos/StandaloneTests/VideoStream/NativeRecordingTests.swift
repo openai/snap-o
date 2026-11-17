@@ -79,6 +79,29 @@ struct NativeRecordingTests {
   }
 
   @Test
+  func holdsTheLastEncodedVideoFrameUntilStop() async throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+    defer { try? FileManager.default.removeItem(at: url) }
+    // One solid-red 16 × 16 H.264 keyframe, including its parameter sets.
+    let data = try #require(Data(base64Encoded: "AAAAAWdCwArZHsBEAAADAAQAAAMACDxImSAAAAABaMuDyyAAAAABZYiEBXxGKAALjMcAAToY4AA2DYA="))
+    var builder = DeviceVideoSampleBuilder()
+    let first = try #require(try builder.sample(data: data, timestamp: 0, flags: 1))
+    let writer = try AVRecordingWriter(url: url, format: #require(builder.format), start: .zero)
+    try writer.append(first)
+    while !writer.isReadyForMoreMediaData {
+      await Task.yield()
+    }
+    let last = try #require(try builder.sample(data: data, timestamp: 100_000, flags: 1))
+    try writer.append(last)
+    let stop = CMTime(value: 3, timescale: 1)
+    try await writer.finish(at: stop)
+
+    let track = try #require(try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first)
+    let frame = try #require(track.makeSampleCursorAtLastSampleInDecodeOrder())
+    #expect(frame.presentationTimeStamp + frame.currentSampleDuration == stop)
+  }
+
+  @Test
   func disconnectedRecordingKeepsRecoveryFileUntilSaved() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
