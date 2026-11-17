@@ -117,8 +117,8 @@ Bug-report recordings use Android's overlay writer and temporarily stop preview.
 
 Video uses a separate helper process and connection from keyboard and clipboard input.
 It captures the main display at its current resolution, targeting 16 Mbps and 60 fps.
-Bitrate and frame rate are capped to the encoder's advertised limits. The helper checks
-display size, Surface input, and Baseline AVC support before configuring the encoder.
+The helper checks for Surface input and Baseline AVC support. It caps bitrate and frame
+rate to the encoder's limits and tries the display size even if the encoder omits it.
 Actual frame rate and quality depend on the device encoder and transport.
 The helper uses framework display-mirroring APIs under the shell identity. These APIs
 vary across Android versions and vendors; validate supported devices before release.
