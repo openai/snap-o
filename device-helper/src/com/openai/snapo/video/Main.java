@@ -361,7 +361,7 @@ public final class Main {
         for (int color : capabilities.colorFormats) {
             if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) surfaceInput = true;
         }
-        if (!surfaceInput || video == null || !video.isSizeSupported(width, height)) {
+        if (!surfaceInput || video == null) {
             throw new IllegalArgumentException("Unsupported video input");
         }
         int profile = 0;
@@ -373,10 +373,12 @@ public final class Main {
             if (level.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileConstrainedBaseline) profile = level.profile;
         }
         if (profile == 0) throw new IllegalArgumentException("Baseline AVC is unavailable");
-        int frameRate = (int) Math.floor(video.getSupportedFrameRatesFor(width, height).clamp(60.0));
-        if (frameRate < 1 || !video.areSizeAndRateSupported(width, height, frameRate)) {
-            throw new IllegalArgumentException("Unsupported video frame rate");
-        }
+        // Some emulator encoders accept display sizes outside their advertised range.
+        boolean advertisedSize = video.isSizeSupported(width, height);
+        int frameRate = advertisedSize
+                ? (int) Math.floor(video.getSupportedFrameRatesFor(width, height).clamp(60.0))
+                : video.getSupportedFrameRates().clamp(60);
+        if (frameRate < 1) throw new IllegalArgumentException("Unsupported video frame rate");
         MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_BIT_RATE, video.getBitrateRange().clamp(16_000_000));
@@ -387,7 +389,9 @@ public final class Main {
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
         format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000);
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
-        if (!capabilities.isFormatSupported(format)) throw new IllegalArgumentException("Unsupported video format");
+        if (advertisedSize && !capabilities.isFormatSupported(format)) {
+            throw new IllegalArgumentException("Unsupported video format");
+        }
         return format;
     }
 

@@ -51,8 +51,9 @@ Each output buffer is one access unit. The Mac preserves encoder timestamps and 
 NAL start codes to lengths for Core Media. It does not infer frame boundaries or frame rate.
 A display change restarts the encoder and emits new display metadata and configuration.
 The helper caps its 16 Mbps and 60 fps targets to the selected encoder's advertised limits.
-It requires support for the display size, Surface input, and a Baseline AVC profile.
-Unsupported configurations fail before encoding; this protocol does not resize the display.
+It requires Surface input and a Baseline AVC profile. If the encoder omits the display size
+from its capabilities, the helper uses the overall frame-rate range and tries that size.
+If encoder setup fails, the fallback rules above apply.
 
 RGBA mode mirrors into an `ImageReader`, bypassing the device's video encoder. It copies
 RGBA bytes into tightly packed rows and compresses each frame independently with zlib level 1.
