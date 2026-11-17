@@ -141,7 +141,7 @@ The window stays on the recording device until you stop. To capture another devi
 
 Click the audio button beside the screenshot and recording controls to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Turn on **Record Microphone** to include the microphone Android receives. Snap-O remembers each choice. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
 
-Audio is available on physical devices and emulators running Android 13 or newer. Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+Audio recording works on phones and emulators running Android 13 or newer, starting with [Snap-O 15.0.0](https://github.com/openai/snap-o/releases/tag/15.0.0). Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
 
 On an emulator, **Record Microphone** captures its virtual microphone. To use your Mac’s microphone as input, open **Extended Controls → Microphone** and turn on **Enable Host Microphone Access**. See [Android Emulator microphone controls](https://developer.android.com/studio/run/emulator-extended-controls).
 
