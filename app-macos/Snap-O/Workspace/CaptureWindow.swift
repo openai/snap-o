@@ -46,7 +46,6 @@ struct CaptureWindow: View {
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
-  @State private var isDevicePickerPresented = false
 
   init(workspaces: CaptureWorkspaces, initialWorkspace: WorkspaceLayoutSnapshot? = nil) {
     deviceManager = workspaces.deviceManager
@@ -60,9 +59,6 @@ struct CaptureWindow: View {
     workspaceContent(controller: controller)
       .onChange(of: workspace.layout, initial: true) {
         session.updatePaneVisibility()
-      }
-      .onChange(of: isDevicePickerPresented) {
-        if isDevicePickerPresented { controller.hint.cancel() }
       }
       .focusedSceneValue(\.captureController, controller)
       .background {
@@ -190,8 +186,7 @@ struct CaptureWindow: View {
     return CapturePaneTitle(
       title: label?.name ?? "Snap-O",
       serverName: label?.server,
-      devicePicker: controller.hasAlternativeMedia() ? devicePreviewStrip : nil,
-      isPickerPresented: $isDevicePickerPresented
+      devicePicker: controller.hasAlternativeMedia() ? devicePicker : nil
     ) {
       openWindow(id: "device-manager")
     }
@@ -391,16 +386,6 @@ struct CaptureWindow: View {
     .overlay {
       deviceOpenOverlay
     }
-    .overlay(alignment: .top) {
-      if !isDevicePickerPresented, controller.previews.count > 1,
-         controller.deviceOpenError != nil || controller.hint.isVisible {
-        devicePreviewStrip
-          .padding(.top, 12)
-          .onHover { controller.hint.setHovered($0) }
-          .transition(.offset(CGSize(width: 0, height: -15)).combined(with: .opacity))
-      }
-    }
-    .animation(.easeInOut(duration: 0.3), value: controller.hint.isVisible)
     .environment(\.livePreviewLoadingMessage, livePreviewLoadingMessage)
     .environment(\.captureImageCopied, controller.imageCopied)
     .overlay {
@@ -427,16 +412,13 @@ struct CaptureWindow: View {
     .background(captureAreaBackground)
   }
 
-  private var devicePreviewStrip: LiveDevicePreviewStrip {
-    LiveDevicePreviewStrip(
+  private var devicePicker: LiveDevicePicker {
+    LiveDevicePicker(
       previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
       attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
       loadSnapshot: controller.livePreviewScreenshot,
       serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
-      selectDevice: { id in
-        controller.selectDevice(id: id, showHint: !isDevicePickerPresented)
-        isDevicePickerPresented = false
-      }
+      selectDevice: controller.selectDevice
     )
   }
 

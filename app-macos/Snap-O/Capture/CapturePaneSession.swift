@@ -32,7 +32,6 @@ final class CapturePaneSession {
   @ObservationIgnored private var deviceOpenTask: Task<Void, Never>?
   private(set) var imageCopyID: UUID?
   private(set) var isClosing = false
-  let hint = PreviewHint()
 
   private(set) var displayedPreview: LivePreviewAttachment?
   private var lastDisplay: DisplayInfo?
@@ -346,13 +345,12 @@ final class CapturePaneSession {
     }
   }
 
-  func selectDevice(id: String, showHint: Bool = true) {
+  func selectDevice(id: String) {
     guard wantedDevices.contains(where: { $0.id == id }) else { return }
     openDevice(nil)
     selectedPreviewDeviceID = id
     AppSettings.shared.lastViewedDeviceID = id
     reconcilePreviews()
-    if showHint { hint.show(available: previews.count > 1) }
   }
 
   func setVisible(_ visible: Bool) {
@@ -479,7 +477,6 @@ final class CapturePaneSession {
     }
     isClosing = true
     observation?.cancel()
-    hint.cancel()
     for task in work.values {
       task.cancel()
     }

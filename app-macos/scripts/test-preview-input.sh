@@ -35,7 +35,6 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/LivePreview/PreviewVideo.swift Snap-O/LivePreview/Rendering/LivePreviewRenderer.swift \
   Snap-O/LivePreview/Input/TextPasteboard.swift Snap-O/LivePreview/Input/ClipboardSync.swift Snap-O/Device/ShowTouchesOverride.swift \
   Snap-O/Capture/Operations/CaptureCoordinator.swift \
-  Snap-O/LivePreview/PreviewHint.swift \
   Snap-O/App/StartupCapturePreparation.swift Snap-O/Utilities/Perf.swift \
   Snap-O/LivePreview/LivePreviewDevice.swift Snap-O/LivePreview/Rendering/LivePreviewThumbnail.swift \
   Snap-O/LivePreview/Views/LivePreviewThumbnailView.swift \

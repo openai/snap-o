@@ -3,10 +3,11 @@ import SwiftUI
 struct CapturePaneTitle: View {
   let title: String
   let serverName: String?
-  let devicePicker: LiveDevicePreviewStrip?
-  @Binding var isPickerPresented: Bool
+  let devicePicker: LiveDevicePicker?
   let openDeviceManager: () -> Void
+  @State private var isPickerPresented = false
   @State private var isPickerHovered = false
+  @GestureState private var isDraggingWindow = false
 
   var body: some View {
     Group {
@@ -22,18 +23,22 @@ struct CapturePaneTitle: View {
           }
           .padding(.horizontal, 12)
           .frame(height: 24)
-          .glassEffect(isPickerHovered || isPickerPresented ? .regular.interactive() : .identity, in: Capsule())
+          .glassEffect(!isDraggingWindow && (isPickerHovered || isPickerPresented) ? .regular.interactive() : .identity, in: Capsule())
           .frame(height: min(30, WindowChromeMetrics.titlebarHeight))
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // A window drag consumes the click when the mouse button is released.
+        .highPriorityGesture(
+          WindowDragGesture().updating($isDraggingWindow) { _, isDragging, _ in isDragging = true }
+        )
         .onHover { isPickerHovered = $0 }
         .help("Switch live preview device")
         .accessibilityLabel("Switch live preview device")
         .accessibilityValue(fullName)
         .popover(isPresented: $isPickerPresented, arrowEdge: .bottom) {
           VStack(spacing: 0) {
-            devicePicker.pickerContent
+            devicePicker
             Divider()
             Button("Device Manager…") {
               isPickerPresented = false
@@ -59,9 +64,9 @@ struct CapturePaneTitle: View {
           .help("Device Manager")
           .accessibilityLabel("Device Manager")
         }
+        .simultaneousGesture(WindowDragGesture())
       }
     }
-    .simultaneousGesture(WindowDragGesture())
     .font(.system(size: 13, weight: .semibold))
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }

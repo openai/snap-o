@@ -31,7 +31,7 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Capture/Review/CaptureCropGeometry.swift Snap-O/Capture/Review/CaptureTrimRange.swift \
   Snap-O/Capture/Export/CaptureCropExporter.swift Snap-O/Capture/Review/CaptureReviewDragExport.swift \
   Snap-O/Capture/Review/CaptureReviewState.swift Snap-O/Capture/Review/CaptureReviewPlayback.swift \
-  Snap-O/Capture/Review/CaptureTrimSession.swift Snap-O/LivePreview/PreviewHint.swift \
+  Snap-O/Capture/Review/CaptureTrimSession.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Storage/StagedFileExport.swift Snap-O/Capture/Export/CaptureMediaExport.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameExporter.swift \
   Snap-O/History/CaptureHistoryEntry.swift Snap-O/History/CaptureHistoryRepository.swift Snap-O/History/CaptureHistory.swift \

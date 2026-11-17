@@ -21,10 +21,10 @@ struct DevicePickerLayoutTests {
 
   private func pickerSize(name: String) -> CGSize {
     let device = Device(id: "test", model: name, androidVersion: "16", vendorModel: nil, manufacturer: nil, avdName: nil)
-    let strip = LiveDevicePreviewStrip(
+    let picker = LiveDevicePicker(
       previews: [LivePreviewDevice(id: UUID(), device: device, display: nil)], selectedDeviceID: device.id,
       attachment: nil, loadSnapshot: { _ in throw CancellationError() }, serverName: { _ in nil }, selectDevice: { _ in }
     )
-    return NSHostingController(rootView: strip.pickerContent).sizeThatFits(in: CGSize(width: 1000, height: 600))
+    return NSHostingController(rootView: picker).sizeThatFits(in: CGSize(width: 1000, height: 600))
   }
 }

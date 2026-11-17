@@ -22,7 +22,7 @@ Capture a screenshot or recording of the selected Android device, then crop or t
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
 
-Hover over the device count to choose a preview. The picker shows a live thumbnail for the selected device and cached screenshots for the others. It appears only when more than one device is available. Devices stay in the same order when you switch between them.
+When multiple devices are connected, click the device name in the title bar to switch previews. The picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
 
 You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
