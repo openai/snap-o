@@ -104,10 +104,6 @@ final class CapturePaneSession {
     recording?.phase == .finishing
   }
 
-  var isReviewingCapture: Bool {
-    review != nil
-  }
-
   var isLivePreviewActive: Bool {
     review == nil
   }
@@ -180,12 +176,6 @@ final class CapturePaneSession {
 
   var displayInfoForSizing: DisplayInfo? {
     review?.currentCapture?.media.common.display ?? currentPreview?.display ?? lastDisplay
-  }
-
-  var captureProgressText: String? {
-    guard review == nil else { return nil }
-    guard previews.count > 1, let index = previews.firstIndex(where: { $0.device.id == selectedPreviewDeviceID }) else { return nil }
-    return "\(index + 1)/\(previews.count)"
   }
 
   func start() async {
@@ -357,13 +347,13 @@ final class CapturePaneSession {
     }
   }
 
-  func selectDevice(id: String) {
+  func selectDevice(id: String, showHint: Bool = true) {
     guard wantedDevices.contains(where: { $0.id == id }) else { return }
     openDevice(nil)
     selectedPreviewDeviceID = id
     AppSettings.shared.lastViewedDeviceID = id
     reconcilePreviews()
-    hint.show(available: previews.count > 1, transient: true)
+    if showHint { hint.show(available: previews.count > 1) }
   }
 
   func setVisible(_ visible: Bool) {
@@ -456,11 +446,6 @@ final class CapturePaneSession {
     guard !previews.isEmpty else { return }
     let index = previews.firstIndex { $0.device.id == selectedPreviewDeviceID } ?? 0
     selectDevice(id: previews[(index + offset + previews.count) % previews.count].device.id)
-  }
-
-  func setProgressHovering(_ hovering: Bool) {
-    hint.setHovered(hovering)
-    if hovering { hint.show(available: previews.count > 1, transient: false) }
   }
 
   func copyCurrentImage() {

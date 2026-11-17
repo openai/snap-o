@@ -12,14 +12,12 @@ final class PreviewHint {
   @Dependency(\.continuousClock)
   @ObservationIgnored private var clock
 
-  func show(available: Bool, transient: Bool) {
+  func show(available: Bool) {
     guard available else { cancel()
       return
     }
-    hideTask?.cancel()
-    hideTask = nil
     isVisible = true
-    if transient { hide(after: .seconds(2)) }
+    hide(after: .seconds(2))
   }
 
   func setHovered(_ hovered: Bool) {

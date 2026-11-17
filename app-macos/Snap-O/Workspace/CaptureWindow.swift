@@ -46,6 +46,7 @@ struct CaptureWindow: View {
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
+  @State private var isDevicePickerPresented = false
 
   init(workspaces: CaptureWorkspaces, initialWorkspace: WorkspaceLayoutSnapshot? = nil) {
     deviceManager = workspaces.deviceManager
@@ -59,6 +60,9 @@ struct CaptureWindow: View {
     workspaceContent(controller: controller)
       .onChange(of: workspace.layout, initial: true) {
         session.updatePaneVisibility()
+      }
+      .onChange(of: isDevicePickerPresented) {
+        if isDevicePickerPresented { controller.hint.cancel() }
       }
       .focusedSceneValue(\.captureController, controller)
       .background {
@@ -183,7 +187,12 @@ struct CaptureWindow: View {
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
     let label = captureDeviceLabel
-    return CapturePaneTitle(title: label?.name ?? "Snap-O", serverName: label?.server) {
+    return CapturePaneTitle(
+      title: label?.name ?? "Snap-O",
+      serverName: label?.server,
+      devicePicker: controller.hasAlternativeMedia() ? devicePreviewStrip : nil,
+      isPickerPresented: $isDevicePickerPresented
+    ) {
       openWindow(id: "device-manager")
     }
   }
@@ -383,18 +392,12 @@ struct CaptureWindow: View {
       deviceOpenOverlay
     }
     .overlay(alignment: .top) {
-      if controller.previews.count > 1,
+      if !isDevicePickerPresented, controller.previews.count > 1,
          controller.deviceOpenError != nil || controller.hint.isVisible {
-        LiveDevicePreviewStrip(
-          previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
-          attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
-          loadSnapshot: controller.livePreviewScreenshot,
-          serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
-          selectDevice: controller.selectDevice
-        )
-        .padding(.top, 12)
-        .onHover { controller.hint.setHovered($0) }
-        .transition(.offset(CGSize(width: 0, height: -15)).combined(with: .opacity))
+        devicePreviewStrip
+          .padding(.top, 12)
+          .onHover { controller.hint.setHovered($0) }
+          .transition(.offset(CGSize(width: 0, height: -15)).combined(with: .opacity))
       }
     }
     .animation(.easeInOut(duration: 0.3), value: controller.hint.isVisible)
@@ -422,6 +425,19 @@ struct CaptureWindow: View {
     }
     .clipped()
     .background(captureAreaBackground)
+  }
+
+  private var devicePreviewStrip: LiveDevicePreviewStrip {
+    LiveDevicePreviewStrip(
+      previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
+      attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
+      loadSnapshot: controller.livePreviewScreenshot,
+      serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
+      selectDevice: { id in
+        controller.selectDevice(id: id, showHint: !isDevicePickerPresented)
+        isDevicePickerPresented = false
+      }
+    )
   }
 
   private var showsDeviceOpenOverlay: Bool {

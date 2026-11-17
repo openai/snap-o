@@ -111,7 +111,10 @@ final class LivePreviewThumbnailDisplayView: NSView {
 
   func stop() {
     stopDisplayLink()
-    thumbnail?.cacheLiveFrame()
+    // Publishing during SwiftUI teardown can reenter AppKit's layout pass.
+    if let thumbnail {
+      Task { @MainActor in thumbnail.cacheLiveFrame() }
+    }
     thumbnail = nil
     lastPixelBuffer = nil
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)

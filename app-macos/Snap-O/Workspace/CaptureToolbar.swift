@@ -97,20 +97,17 @@ struct CaptureToolbar: View {
             .padding(.trailing, spacing * toolVisibility)
         }
         Spacer(minLength: 0)
-        if !controller.isReviewingCapture, let progress = controller.captureProgressText {
-          captureProgress(progress)
-            .padding(.trailing, spacing)
-        }
       }
 
-      captureControls()
-
-      HStack(spacing: 0) {
+      HStack(spacing: spacing) {
+        captureControls()
         if !controller.isRecording, controller.canRecordDeviceAudio {
           RecordingAudioButton()
             .disabled(!controller.canStartRecordingNow)
-            .padding(.leading, spacing)
         }
+      }
+
+      HStack(spacing: 0) {
         Spacer(minLength: historySpacing)
         historyButton()
         toolToggle()
@@ -305,29 +302,9 @@ struct CaptureToolbar: View {
         height: SnapOToolbarStyle.singleControlSize
       )
   }
-
-  private func captureProgress(_ progress: String) -> some View {
-    let isCaptureInFlight = controller.isProcessing
-    let canBrowseCaptures = !isCaptureInFlight && controller.hasAlternativeMedia()
-
-    return CaptureSelectionPill(position: progress)
-      .opacity(isCaptureInFlight ? 0.45 : 1)
-      .allowsHitTesting(!isCaptureInFlight)
-      .onHover { hovering in
-        guard canBrowseCaptures else {
-          if !hovering { controller.setProgressHovering(false) }
-          return
-        }
-        controller.setProgressHovering(hovering)
-      }
-      .onChange(of: canBrowseCaptures) {
-        guard !canBrowseCaptures else { return }
-        controller.setProgressHovering(false)
-      }
-  }
 }
 
-/// Centers the capture pill, shifting it only as far as either side needs.
+/// Centers the capture controls while leaving room for both ends of the toolbar.
 private struct CaptureToolbarLayout: Layout {
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
     let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
