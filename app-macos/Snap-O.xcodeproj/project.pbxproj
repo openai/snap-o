@@ -79,6 +79,7 @@
 		AD1257D65CCC1DD35F88B3A9 /* Snap-O/LivePreview/Rendering/LivePreviewSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5EC570FDF15AC749B404AA /* Snap-O/LivePreview/Rendering/LivePreviewSession.swift */; };
 		ADCEFF93D668F8112FD27156 /* Snap-O/Device/ToolDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9AC9E9321366B46C3F94634 /* Snap-O/Device/ToolDiscovery.swift */; };
 		ADEC00012F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */; };
+		ADEC00032F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00042F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingOptions.swift */; };
 		AF79646D4561DF076DA62A4D /* Snap-O/Tools/ToolURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D92003C09DBB9FBCBD1141A /* Snap-O/Tools/ToolURL.swift */; };
 		AFABB5C8F23608E708AF8C20 /* Snap-O/LivePreview/PreviewVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17C61C647BF6CA077AB68A4 /* Snap-O/LivePreview/PreviewVideo.swift */; };
 		AFD368F1469D647D6FB1B5B9 /* Snap-O/App/AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA8405D91B58F4CAF42432F /* Snap-O/App/AppSettings.swift */; };
@@ -236,6 +237,7 @@
 		AD47FBB5AA939895CE9C2746 /* Snap-O/Device/ADB/ADBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/ADBService.swift"; sourceTree = SOURCE_ROOT; };
 		AD7796B799B6BBCE370F9582 /* Snap-O/Device/ADB/ADBClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/ADB/ADBClient.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Audio/DeviceAudioPacket.swift"; sourceTree = SOURCE_ROOT; };
+		ADEC00042F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/RecordingOptions.swift"; sourceTree = SOURCE_ROOT; };
 		B4C1A65EBE23654466E272D5 /* Snap-O/LivePreview/Input/LivePreviewPointerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/LivePreview/Input/LivePreviewPointerBackend.swift"; sourceTree = SOURCE_ROOT; };
 		B6AD0B3A3526F29A76AFB408 /* Snap-O/LivePreview/Input/ClipboardSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/LivePreview/Input/ClipboardSync.swift"; sourceTree = SOURCE_ROOT; };
 		B6AEFC74FA89674DA6CCF8C8 /* Snap-O/Capture/Operations/ADBRecordingFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/ADBRecordingFile.swift"; sourceTree = SOURCE_ROOT; };
@@ -474,6 +476,7 @@
 				798562CA2312562E7E77FB80 /* Snap-O/Device/Emulators/EmulatorConnection.swift */,
 				978CE95EA35B941361118127 /* Snap-O/Device/Video/DeviceVideoPacket.swift */,
 				ADEC00022F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift */,
+				ADEC00042F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingOptions.swift */,
 				A471E136E99C01AC20B9E101 /* Snap-O/Device/ADB/ADBShellV2Stream.swift */,
 				7FC256D4A6364890A71E50C3 /* Snap-O/Device/DeviceHelper.swift */,
 				032CA1020789BE3DBF10FDD1 /* Snap-O/Device/ADB/DeviceFileCommand.swift */,
@@ -769,6 +772,7 @@
 				023C84EF38EFEB972DB4D8C3 /* Snap-O/Device/Emulators/EmulatorConnection.swift in Sources */,
 				D1B5A46A72CD45590AA7E405 /* Snap-O/Device/Video/DeviceVideoPacket.swift in Sources */,
 				ADEC00012F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioPacket.swift in Sources */,
+				ADEC00032F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingOptions.swift in Sources */,
 				A471E136E99C01AC20B9E100 /* Snap-O/Device/ADB/ADBShellV2Stream.swift in Sources */,
 				B83A9AC4723046F69CA0E140 /* Snap-O/Device/DeviceHelper.swift in Sources */,
 				DDE1283E70292A0AB1422BE6 /* Snap-O/Device/ADB/DeviceFileCommand.swift in Sources */,

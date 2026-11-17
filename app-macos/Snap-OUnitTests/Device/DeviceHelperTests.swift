@@ -28,7 +28,7 @@ struct DeviceHelperTests {
     DeviceHelper.Mode.video,
     .audio(.playback),
     .audio(.microphone),
-    .audio(.playbackAndMicrophone),
+    .audio(.both),
     .pointer,
     .keyboard,
     .clipboard
@@ -55,17 +55,24 @@ struct DeviceHelperTests {
     let uploadBytes = try mode.usesShellV2 ? ADBShellV2Stream.standardInput(jar) : jar
     #expect(connection.written == (upload ? uploadBytes : Data()))
     let command = try #require(connection.commands.first)
-    if case .audio(let source) = mode { #expect(command.hasSuffix(" audio " + source.rawValue)) }
+    switch mode {
+    case .audio(.playback): #expect(command.hasSuffix(" audio --playback"))
+    case .audio(.microphone): #expect(command.hasSuffix(" audio --microphone"))
+    case .audio(.both): #expect(command.hasSuffix(" audio --playback --microphone"))
+    default: break
+    }
     let digest = SHA256.hash(data: jar).map { String(format: "%02x", $0) }.joined()
     #expect(command.contains(digest + ".jar"))
     #expect(!command.contains(jar.base64EncodedString()))
   }
 
   @Test
-  func launchesOnlyTheSelectedAudioSources() {
-    #expect(DeviceHelper.AudioSource(playback: false, microphone: false) == nil)
-    #expect(DeviceHelper.AudioSource(playback: false, microphone: true)?.rawValue == "--microphone")
-    #expect(DeviceHelper.AudioSource(playback: true, microphone: false)?.rawValue == "--playback")
-    #expect(DeviceHelper.AudioSource(playback: true, microphone: true)?.rawValue == "--playback --microphone")
+  func rejectsAnAudioCommandWithoutAnySources() throws {
+    let helper = try DeviceHelper(TestDeviceHelper.jar)
+    let connection = ScriptedADBConnection(reads: [])
+    #expect(throws: ADBError.self) {
+      try helper.launch(.audio(.off), on: connection) { _ in Data() }
+    }
+    #expect(connection.commands.isEmpty)
   }
 }

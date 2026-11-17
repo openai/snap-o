@@ -1,17 +1,6 @@
 import SwiftUI
 
-enum RecordingAudioMode {
-  case off, playback, microphone, both
-
-  init(playback: Bool, microphone: Bool) {
-    switch (playback, microphone) {
-    case (false, false): self = .off
-    case (true, false): self = .playback
-    case (false, true): self = .microphone
-    case (true, true): self = .both
-    }
-  }
-
+extension RecordingAudioMode {
   var accessibilityValue: String {
     switch self {
     case .off: "Audio off"

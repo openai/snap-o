@@ -64,16 +64,23 @@ final class AppRuntime {
     let recordFrame: @MainActor @Sendable (CaptureMedia) -> Void = { captureHistory.recordFrame($0) }
     let fileStore = FileStore(frameExportHandler: recordFrame)
     let captureCoordinator = CaptureCoordinator()
-    let startRecording: RecordingCapture.StartRecording = { device, options in
+    let startRecording: RecordingCapture.StartRecording = { @MainActor device, options in
       let target = try device.requireConnection()
-      if options.recordsBugReport || (device.isLocalEmulator && !options.recordsDeviceAudio && !options.recordsMicrophone) {
+      let video: any LivePreviewFrameSource
+      switch options.videoSource(isLocalEmulator: target.isLocalEmulator) {
+      case .screenrecord:
         let session = try await adbService.exec().bound(to: target)
           .startScreenrecord(deviceID: device.serial, bugReport: options.recordsBugReport)
         return ADBScreenRecording(session: session, adb: adbService)
+      case .androidHelper:
+        // Emulator preview uses host wall time. The Android helper shares the audio capture clock.
+        video = DeviceVideoConnection(target: target)
+      case .sharedPreview:
+        // A cached preview frame can predate the start of recording.
+        video = DeviceVideoSource(target: target, replaysLastFrame: false)
       }
-      return try await NativeScreenRecording.start(
-        target: target, recordsDeviceAudio: options.recordsDeviceAudio, recordsMicrophone: options.recordsMicrophone
-      )
+      let audio = DeviceAudioConnection(target: target, mode: options.audioMode)
+      return try await NativeScreenRecording.start(source: video, audioConnection: audio)
     }
     let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
     let timestamps = CaptureTimestampSource()

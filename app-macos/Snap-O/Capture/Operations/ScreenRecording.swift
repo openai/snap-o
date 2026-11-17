@@ -1,7 +1,6 @@
 import Foundation
 
 protocol ScreenRecording: AnyObject, Sendable {
-  var id: UUID { get }
   @MainActor var captureWarning: String? { get }
   func stop() async throws
   func waitUntilStopped() async throws

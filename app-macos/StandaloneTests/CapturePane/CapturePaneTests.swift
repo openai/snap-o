@@ -64,8 +64,7 @@ struct CapturePaneTests {
     AppSettings.shared.recordDeviceAudio = false
     AppSettings.shared.recordMicrophone = false
     let recording = try #require(fixture.recordings.value.first)
-    #expect(recording.options.recordsDeviceAudio == !bugReport)
-    #expect(recording.options.recordsMicrophone == !bugReport)
+    #expect(recording.options.audioMode == (bugReport ? .off : .both))
     await pane.close()
     await fixture.close()
   }
@@ -85,8 +84,7 @@ struct CapturePaneTests {
     AppSettings.shared.recordDeviceAudio = false
     AppSettings.shared.recordMicrophone = false
     let options = try #require(fixture.recordings.value.first?.options)
-    #expect(options.recordsDeviceAudio == playback)
-    #expect(options.recordsMicrophone == mic)
+    #expect(options.audioMode == RecordingAudioMode(playback: playback, microphone: mic))
     await pane.close()
     await fixture.close()
   }

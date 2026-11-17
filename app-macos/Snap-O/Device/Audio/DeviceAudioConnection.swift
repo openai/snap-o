@@ -4,22 +4,23 @@ import Foundation
 @MainActor
 final class DeviceAudioConnection {
   private let target: DeviceTarget
-  private let source: DeviceHelper.AudioSource
+  private let mode: RecordingAudioMode
   private var task: Task<Void, Never>?
 
-  init(target: DeviceTarget, source: DeviceHelper.AudioSource) {
+  init?(target: DeviceTarget, mode: RecordingAudioMode) {
+    guard mode != .off else { return nil }
     self.target = target
-    self.source = source
+    self.mode = mode
   }
 
   func start(
     receive: @escaping @MainActor @Sendable (DeviceAudioPacket.Event) -> Void,
     failed: @escaping @MainActor @Sendable (Error) -> Void
   ) {
-    task = Task.detached(priority: .userInitiated) { [target, source] in
+    task = Task.detached(priority: .userInitiated) { [target, mode] in
       do {
         let helper = try DeviceHelper(DeviceHelper.bundledBytes())
-        let session = try await helper.connect(.audio(source), serial: target.serial, adb: ADBClient().bound(to: target))
+        let session = try await helper.connect(.audio(mode), serial: target.serial, adb: ADBClient().bound(to: target))
         let connection = session.connection
         defer { connection.close() }
         try await withTaskCancellationHandler {

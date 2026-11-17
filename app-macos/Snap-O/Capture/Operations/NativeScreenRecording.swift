@@ -5,7 +5,6 @@ import Foundation
 /// Owns one recording's device subscriptions and output file.
 @MainActor
 final class NativeScreenRecording: ScreenRecording {
-  nonisolated let id = UUID()
   private let clock: AnyClock<Duration>
   private let source: any LivePreviewFrameSource
   private let audioConnection: DeviceAudioConnection?
@@ -35,21 +34,11 @@ final class NativeScreenRecording: ScreenRecording {
     self.audioConnection = audioConnection
     self.audioTrack = audioTrack
     self.makeWriter = makeWriter
-    url = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(id).mp4")
+    url = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(UUID()).mp4")
   }
 
-  static func start(target: DeviceTarget, recordsDeviceAudio: Bool, recordsMicrophone: Bool) async throws -> NativeScreenRecording {
-    let audioConnection = DeviceHelper.AudioSource(playback: recordsDeviceAudio, microphone: recordsMicrophone).map { source in
-      DeviceAudioConnection(target: target, source: source)
-    }
+  static func start(source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?) async throws -> NativeScreenRecording {
     let audioTrack = audioConnection == nil ? nil : try RecordingAudioTrack()
-    // Emulator gRPC frames use host wall time. The Android video helper shares the audio capture clock.
-    let source: any LivePreviewFrameSource = if target.isLocalEmulator, audioConnection != nil {
-      DeviceVideoConnection(target: target)
-    } else {
-      // An idle preview's cached timestamp can predate the start of recording.
-      DeviceVideoSource(target: target, replaysLastFrame: false)
-    }
     let recording = NativeScreenRecording(source: source, audioConnection: audioConnection, audioTrack: audioTrack)
     do {
       if let audioConnection, let audioTrack {

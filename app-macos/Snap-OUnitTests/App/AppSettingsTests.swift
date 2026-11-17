@@ -9,17 +9,15 @@ struct AppSettingsTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let settings = AppSettings(defaults: defaults)
-    #expect(settings.recordDeviceAudio)
-    #expect(!settings.recordMicrophone)
+    #expect(settings.recordingAudioMode == .playback)
     settings.recordDeviceAudio = false
-    #expect(!AppSettings(defaults: defaults).recordDeviceAudio)
+    #expect(AppSettings(defaults: defaults).recordingAudioMode == .off)
     settings.recordMicrophone = true
-    #expect(!AppSettings(defaults: defaults).recordDeviceAudio)
-    #expect(AppSettings(defaults: defaults).recordMicrophone)
+    #expect(AppSettings(defaults: defaults).recordingAudioMode == .microphone)
     settings.recordDeviceAudio = true
+    #expect(AppSettings(defaults: defaults).recordingAudioMode == .both)
     settings.recordMicrophone = false
-    #expect(AppSettings(defaults: defaults).recordDeviceAudio)
-    #expect(!AppSettings(defaults: defaults).recordMicrophone)
+    #expect(AppSettings(defaults: defaults).recordingAudioMode == .playback)
   }
 
   @Test

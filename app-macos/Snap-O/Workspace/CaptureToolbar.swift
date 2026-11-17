@@ -378,7 +378,7 @@ private struct RecordingAudioButton: View {
 
   var body: some View {
     @Bindable var settings = settings
-    let mode = RecordingAudioMode(playback: settings.recordDeviceAudio, microphone: settings.recordMicrophone)
+    let mode = settings.recordingAudioMode
     Button {
       showsOptions.toggle()
     } label: {

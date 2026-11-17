@@ -161,7 +161,6 @@ struct RecordingTeardownTests {
 }
 
 private actor ControlledRecording: ScreenRecording {
-  nonisolated let id = UUID()
   private let video: URL
   private let stopped = TestGate()
   private let monitorGate: TestGate?

@@ -89,7 +89,7 @@ final class ADBService: DeviceTracking {
     probe.showsTouches = enabled
   }
 
-  func startScreenrecord(deviceID: String, bugReport: Bool) throws -> RecordingSession {
+  func startScreenrecord(deviceID: String, bugReport: Bool) async throws -> RecordingSession {
     RecordingSession()
   }
 }
@@ -102,8 +102,23 @@ struct ADBScreenRecording: ScreenRecording {
   init(session: RecordingSession, adb: ADBService) {}
 }
 
+protocol LivePreviewFrameSource {}
+struct DeviceVideoConnection: LivePreviewFrameSource {
+  init(target: DeviceTarget) {}
+}
+
+struct DeviceVideoSource: LivePreviewFrameSource {
+  init(target: DeviceTarget, replaysLastFrame: Bool) {}
+}
+
+struct DeviceAudioConnection {
+  init?(target: DeviceTarget, mode: RecordingAudioMode) {
+    if mode == .off { return nil }
+  }
+}
+
 struct NativeScreenRecording: ScreenRecording {
-  static func start(target: DeviceTarget, recordsDeviceAudio: Bool, recordsMicrophone: Bool) async throws -> NativeScreenRecording {
+  static func start(source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?) async throws -> NativeScreenRecording {
     Self()
   }
 }

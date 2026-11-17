@@ -1,7 +1,6 @@
 import Foundation
 
 final class ADBScreenRecording: ScreenRecording, @unchecked Sendable {
-  let id = UUID()
   private let session: RecordingSession
   private let adb: ADBService
 

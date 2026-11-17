@@ -47,6 +47,10 @@ final class AppSettings {
     didSet { defaults.set(recordMicrophone, forKey: "recordMicrophone") }
   }
 
+  var recordingAudioMode: RecordingAudioMode {
+    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  }
+
   var syncClipboard: Bool {
     didSet { defaults.set(syncClipboard, forKey: "syncClipboard") }
   }

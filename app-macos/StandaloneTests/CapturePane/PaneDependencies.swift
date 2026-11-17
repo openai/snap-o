@@ -44,6 +44,9 @@ final class AppSettings {
   var recordAsBugReport = false
   var recordDeviceAudio = true
   var recordMicrophone = false
+  var recordingAudioMode: RecordingAudioMode {
+    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  }
 }
 
 @MainActor

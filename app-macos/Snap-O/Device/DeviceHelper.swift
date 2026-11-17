@@ -2,23 +2,8 @@ import CryptoKit
 import Foundation
 
 struct DeviceHelper {
-  enum AudioSource: String {
-    case playback = "--playback"
-    case microphone = "--microphone"
-    case playbackAndMicrophone = "--playback --microphone"
-
-    init?(playback: Bool, microphone: Bool) {
-      switch (playback, microphone) {
-      case (true, false): self = .playback
-      case (false, true): self = .microphone
-      case (true, true): self = .playbackAndMicrophone
-      case (false, false): return nil
-      }
-    }
-  }
-
   enum Mode: Equatable {
-    case video, audio(AudioSource), pointer, keyboard, clipboard
+    case video, audio(RecordingAudioMode), pointer, keyboard, clipboard
 
     var usesShellV2: Bool {
       switch self {
@@ -27,10 +12,13 @@ struct DeviceHelper {
       }
     }
 
-    fileprivate var arguments: String {
+    fileprivate func arguments() throws -> String {
       switch self {
       case .video: "video rgba-fallback rgba-flow-control standby"
-      case .audio(let source): "audio \(source.rawValue)"
+      case .audio(.playback): "audio --playback"
+      case .audio(.microphone): "audio --microphone"
+      case .audio(.both): "audio --playback --microphone"
+      case .audio(.off): throw ADBError.protocolFailure("No audio source selected")
       case .pointer: "pointer"
       case .keyboard: "clipboard keyboard"
       case .clipboard: "clipboard"
@@ -109,6 +97,7 @@ struct DeviceHelper {
   func launch(
     _ mode: Mode, on connection: any ADBConnection, reinstall: Bool = false, read: (Int) throws -> Data
   ) throws -> Data {
+    let arguments = try mode.arguments()
     // The pointer helper handles stdin EOF itself so it can release held contacts.
     let handleHangup = mode == .pointer ? "trap '' HUP" : ""
     let needsInstall = reinstall ? "true" : #"[ ! -f "$jar" ] || [ -L "$jar" ]"#
@@ -138,7 +127,7 @@ struct DeviceHelper {
       mv -f "$tmp" "$jar" || exit 1
     fi
     \(handleHangup)
-    CLASSPATH="$jar" exec app_process / com.openai.snapo.Helper \(buildID) \(mode.arguments)
+    CLASSPATH="$jar" exec app_process / com.openai.snapo.Helper \(buildID) \(arguments)
     """
     _ = try connection.sendHostCommand((mode.usesShellV2 ? "shell,v2,raw:" : "exec:") + command, expectsResponse: false)
     var uploaded = false
