@@ -116,8 +116,40 @@ describe("export body readiness", () => {
     await copying;
     const copied = await item.getType("text/plain");
     expect(copied.type).toBe("text/plain");
-    expect(await copied.text()).toContain("--data-binary 'late body'");
+    expect(await copied.text()).toContain("--data-raw 'late body'");
     expect(await copied.text()).toContain("--url 'https://example.com/delayed'");
+  });
+
+  it.each([
+    ["text", "@fixture.txt", undefined, "", "--data-raw '@fixture.txt'"],
+    ["base64", btoa("@fixture.txt"), "base64", "printf '%b' '@fixture.txt' | ", "--data-binary @-"],
+    [
+      "invalid base64",
+      "@fixture.txt",
+      "base64",
+      "# Unable to decode base64 body - copied data uses raw text\n",
+      "--data-raw '@fixture.txt'"
+    ],
+    ["text with NUL", "@\0", undefined, String.raw`printf '%b' '@\0000' | `, "--data-binary @-"],
+    ["binary", btoa("@\0\\c\n\xff"), "base64", String.raw`printf '%b' '@\0000\0134c\0012\0377' | `, "--data-binary @-"]
+  ])("copies a leading @ literally for %s", async (_kind, requestBody, requestBodyEncoding, prefix, data) => {
+    const client = { loadBodies: vi.fn() } as unknown as NetworkClient;
+    const record = request("replay", {
+      method: "POST",
+      requestHeaders: [{ name: "X-Fixture", value: "it's quoted" }],
+      requestBody,
+      requestBodyEncoding
+    });
+    await copyCurl(client, record);
+
+    const copied = await write.mock.calls[0][0][0].getType("text/plain");
+    expect(await copied.text()).toBe(
+      [
+        `${prefix}curl --request 'POST' --url 'https://example.com/replay' \\`,
+        `  --header 'X-Fixture: it'"'"'s quoted' \\`,
+        `  ${data}`
+      ].join("\n")
+    );
   });
 
   it("still copies request metadata if loading the body fails", async () => {
@@ -126,8 +158,7 @@ describe("export body readiness", () => {
     await copyCurl(client, request("expired", { method: "POST", hasReceivedResponse: true }));
 
     const copied = await write.mock.calls[0][0][0].getType("text/plain");
-    expect(await copied.text()).toContain("--url 'https://example.com/expired'");
-    expect(await copied.text()).not.toContain("--data-binary");
+    expect(await copied.text()).toBe("curl --request 'POST' --url 'https://example.com/expired'");
   });
 });
 

@@ -9,31 +9,26 @@ import type {
 } from "./cdp";
 
 export function makeCurlCommand(request: RequestRecord): string {
-  const warnings: string[] = [];
   const parts = [
     `--request ${singleQuoted(request.method)}`,
     `--url ${singleQuoted(request.url)}`,
     ...request.requestHeaders.map((header) => `--header ${singleQuoted(`${header.name}: ${header.value}`)}`)
   ];
 
-  if (request.requestBody != null && request.requestBody.length > 0) {
-    const encoding = request.requestBodyEncoding?.toLowerCase();
-    if (encoding === "base64") {
-      const decoded = decodeBase64Bytes(request.requestBody);
-      if (decoded == null) {
-        warnings.push("Unable to decode base64 body - copied data uses raw text");
-        parts.push(`--data-binary ${singleQuoted(request.requestBody)}`);
-      } else {
-        parts.push(`--data-binary ${makeBinaryLiteral(decoded)}`);
-      }
-    } else {
-      parts.push(`--data-binary ${singleQuoted(request.requestBody)}`);
-    }
+  const body = request.requestBody;
+  if (!body) return joinCurlParts(parts);
+
+  let warning = "";
+  if (request.requestBodyEncoding?.toLowerCase() === "base64") {
+    const decoded = decodeBase64Bytes(body);
+    if (decoded != null) return curlWithBinaryBody(parts, decoded);
+    warning = "# Unable to decode base64 body - copied data uses raw text\n";
   }
 
-  const command = joinCurlParts(parts);
-  if (warnings.length === 0) return command;
-  return [...warnings.map((warning) => `# ${warning}`), command].join("\n");
+  const command = body.includes("\0")
+    ? curlWithBinaryBody(parts, new TextEncoder().encode(body))
+    : joinCurlParts([...parts, `--data-raw ${singleQuoted(body)}`]);
+  return warning + command;
 }
 
 export function streamEventsRaw(events: StreamEventRecord[]): string {
@@ -321,22 +316,14 @@ function singleQuoted(value: string): string {
   return `'${value.replace(/'/gu, "'\"'\"'")}'`;
 }
 
-function makeBinaryLiteral(data: Uint8Array): string {
-  let out = "$'";
+function curlWithBinaryBody(parts: string[], data: Uint8Array): string {
+  // Shell arguments cannot contain NUL. Escape nonprintable bytes and backslashes for printf.
+  let literal = "";
   for (const byte of data) {
-    if (byte === 0x07) out += "\\a";
-    else if (byte === 0x08) out += "\\b";
-    else if (byte === 0x09) out += "\\t";
-    else if (byte === 0x0a) out += "\\n";
-    else if (byte === 0x0b) out += "\\v";
-    else if (byte === 0x0c) out += "\\f";
-    else if (byte === 0x0d) out += "\\r";
-    else if (byte === 0x5c) out += "\\\\";
-    else if (byte === 0x27) out += "\\'";
-    else if (byte >= 0x20 && byte <= 0x7e) out += String.fromCharCode(byte);
-    else out += `\\x${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    if (byte >= 0x20 && byte <= 0x7e && byte !== 0x5c) literal += String.fromCharCode(byte);
+    else literal += `\\0${byte.toString(8).padStart(3, "0")}`;
   }
-  return `${out}'`;
+  return `printf '%b' ${singleQuoted(literal)} | ${joinCurlParts([...parts, "--data-binary @-"])}`;
 }
 
 function equalsHeader(a: string, b: string): boolean {
