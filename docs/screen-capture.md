@@ -22,7 +22,7 @@ Capture a screenshot or recording of the selected Android device, then crop or t
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
 
-Hover over the device count to choose a preview. The picker shows a live thumbnail for the selected device and cached screenshots for the others. It appears only when more than one device is available. Devices stay in the same order when you switch between them.
+When multiple devices are connected, click the device name in the title bar to switch previews. The picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
 
 You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
@@ -138,6 +138,14 @@ Press `⇧⌘S` to capture a screenshot of the device shown in the window. The s
 Press `⇧⌘V` to start recording the device shown in the window. Press it again to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling **Record Screen as Bug Report** stops Live Preview during recording. The finished recording opens for review. Press Space to pause or resume playback, use the timeline to scrub, or change the playback speed. Left and Right Arrow step through frames to inspect an animation or transition.
 
 The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.
+
+Click the audio button beside the screenshot and recording controls to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Turn on **Record Microphone** to include the microphone Android receives. Snap-O remembers each choice. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
+
+Audio is available on physical devices and emulators running Android 13 or newer. Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+
+On an emulator, **Record Microphone** captures its virtual microphone. To use your Mac’s microphone as input, open **Extended Controls → Microphone** and turn on **Enable Host Microphone Access**. See [Android Emulator microphone controls](https://developer.android.com/studio/run/emulator-extended-controls).
+
+A voice app can hear you while your voice is missing from the screen recording. Android gives each app its own microphone input and can change the route when a conversation starts. If Android reports that it silenced Snap-O’s microphone, a warning appears in review. Android can also report an active microphone that delivers little or no sound.
 
 ## Review, crop, and trim {#review-and-crop}
 

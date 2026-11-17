@@ -32,7 +32,6 @@ final class CapturePaneSession {
   @ObservationIgnored private var deviceOpenTask: Task<Void, Never>?
   private(set) var imageCopyID: UUID?
   private(set) var isClosing = false
-  let hint = PreviewHint()
 
   private(set) var displayedPreview: LivePreviewAttachment?
   private var lastDisplay: DisplayInfo?
@@ -104,10 +103,6 @@ final class CapturePaneSession {
     recording?.phase == .finishing
   }
 
-  var isReviewingCapture: Bool {
-    review != nil
-  }
-
   var isLivePreviewActive: Bool {
     review == nil
   }
@@ -158,6 +153,10 @@ final class CapturePaneSession {
     canChangeContent && captureDevice != nil
   }
 
+  var canRecordDeviceAudio: Bool {
+    !AppSettings.shared.recordAsBugReport && captureDevice?.supportsDeviceAudioRecording == true
+  }
+
   var canSelectLivePreview: Bool {
     canChangeContent
   }
@@ -176,12 +175,6 @@ final class CapturePaneSession {
 
   var displayInfoForSizing: DisplayInfo? {
     review?.currentCapture?.media.common.display ?? currentPreview?.display ?? lastDisplay
-  }
-
-  var captureProgressText: String? {
-    guard review == nil else { return nil }
-    guard previews.count > 1, let index = previews.firstIndex(where: { $0.device.id == selectedPreviewDeviceID }) else { return nil }
-    return "\(index + 1)/\(previews.count)"
   }
 
   func start() async {
@@ -266,7 +259,8 @@ final class CapturePaneSession {
     openDevice(nil)
     let capture = services.recording(device, RecordingOptions(
       recordsBugReport: AppSettings.shared.recordAsBugReport,
-      showsTouches: AppSettings.shared.showTouchesDuringCapture
+      showsTouches: AppSettings.shared.showTouchesDuringCapture,
+      audioMode: canRecordDeviceAudio ? AppSettings.shared.recordingAudioMode : .off
     ))
     if let review { retire(review) }
     content = .live(recording: capture)
@@ -357,7 +351,6 @@ final class CapturePaneSession {
     selectedPreviewDeviceID = id
     AppSettings.shared.lastViewedDeviceID = id
     reconcilePreviews()
-    hint.show(available: previews.count > 1, transient: true)
   }
 
   func setVisible(_ visible: Bool) {
@@ -452,11 +445,6 @@ final class CapturePaneSession {
     selectDevice(id: previews[(index + offset + previews.count) % previews.count].device.id)
   }
 
-  func setProgressHovering(_ hovering: Bool) {
-    hint.setHovered(hovering)
-    if hovering { hint.show(available: previews.count > 1, transient: false) }
-  }
-
   func copyCurrentImage() {
     try? review?.copyImage()
   }
@@ -489,7 +477,6 @@ final class CapturePaneSession {
     }
     isClosing = true
     observation?.cancel()
-    hint.cancel()
     for task in work.values {
       task.cancel()
     }

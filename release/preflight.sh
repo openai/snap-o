@@ -239,6 +239,14 @@ print_android_protocol_declarations() {
     print_protocol_declaration "$1" 'Device video packet definitions' \
       '^\| `[0-9]+`:' 'contracts/device-video/README.md'
   fi
+  if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/audio/Main.java" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device audio helper versioned magic' \
+      'static final int MAGIC[[:space:]]*=' 'device-helper/src/com/openai/snapo/audio/Main.java'
+    print_protocol_declaration "$1" 'Device audio packet definitions' \
+      '^\| `[0-9]+`:' 'contracts/device-audio/README.md'
+    print_protocol_declaration "$1" 'Device audio source commands' \
+      '^\| `audio' 'contracts/device-audio/README.md'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/video/Main.java" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device video helper versioned magic' \
       'static final int MAGIC[[:space:]]*=' 'device-helper/src/com/openai/snapo/video/Main.java'
@@ -293,6 +301,11 @@ print_android_protocol_declarations() {
 }
 
 print_client_protocol_declarations() {
+  if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/audio/Main.java" 2>/dev/null ||
+    git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/Audio/DeviceAudioPacket.swift" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Device audio client versioned magic' \
+      'static let magic[[:space:]]*=' 'app-macos/Snap-O/Device/Audio/DeviceAudioPacket.swift'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:device-helper/src/com/openai/snapo/Helper.java" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:app-macos/Snap-O/Device/DeviceHelper.swift" 2>/dev/null; then
     print_protocol_declaration "$1" 'Device helper client startup identity' \

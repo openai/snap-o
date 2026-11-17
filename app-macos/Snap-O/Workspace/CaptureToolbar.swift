@@ -81,12 +81,41 @@ struct CaptureToolbar: View {
     return min(max(presentation.toolVisibleWidth / presentation.toolWidth, 0), 1)
   }
 
-  private var captureToolbarControls: some View {
-    HStack(spacing: 15) {
-      captureControls()
+  private func captureToolbarControls(compact: Bool = false) -> some View {
+    let buttonSize = SnapOToolbarStyle.singleControlSize
+    let spacing: CGFloat = compact ? 3 : 8
+    let historySpacing: CGFloat = compact ? 2 : 8
+    let utilitySpacing: CGFloat = compact ? 3 : 8
+    return CaptureToolbarLayout {
+      HStack(spacing: 0) {
+        if presentation.layout == .both {
+          captureToggle()
+            .opacity(toolVisibility)
+            .allowsHitTesting(toolVisibility > 0.5)
+            .accessibilityHidden(toolVisibility < 0.5)
+            .frame(width: buttonSize * toolVisibility, alignment: .leading)
+            .padding(.trailing, spacing * toolVisibility)
+        }
+        Spacer(minLength: 0)
+      }
 
-      if !controller.isReviewingCapture, let progress = controller.captureProgressText {
-        captureProgress(progress)
+      HStack(spacing: spacing) {
+        captureControls()
+        if !controller.isRecording, controller.canRecordDeviceAudio {
+          RecordingAudioButton()
+            .disabled(!controller.canStartRecordingNow)
+        }
+      }
+
+      HStack(spacing: 0) {
+        Spacer(minLength: historySpacing)
+        historyButton()
+        toolToggle()
+          .opacity(1 - toolVisibility)
+          .allowsHitTesting(toolVisibility < 0.5)
+          .accessibilityHidden(toolVisibility > 0.5)
+          .frame(width: buttonSize * (1 - toolVisibility), alignment: .trailing)
+          .padding(.leading, utilitySpacing * (1 - toolVisibility))
       }
     }
     .controlSize(.extraLarge)
@@ -94,51 +123,20 @@ struct CaptureToolbar: View {
   }
 
   private var captureToolbarPane: some View {
-    let leadingSpace = 12 + (SnapOToolbarStyle.singleControlSize + 8) * toolVisibility
-    let trailingSpace = 20 + SnapOToolbarStyle.singleControlSize + (SnapOToolbarStyle.singleControlSize + 8) * (1 - toolVisibility)
-
-    return ZStack {
+    ZStack {
       CaptureToolbarBackground()
 
       ViewThatFits(in: .horizontal) {
-        captureToolbarControls
-          .padding(.horizontal, max(leadingSpace, trailingSpace))
-        captureToolbarControls
-          .frame(maxWidth: .infinity)
-          .padding(.leading, leadingSpace)
-          .padding(.trailing, trailingSpace)
+        captureToolbarControls()
+          .padding(.horizontal, 12)
+        captureToolbarControls(compact: true)
+          .padding(.horizontal, 12)
+        captureToolbarControls(compact: true)
+          .padding(.horizontal, 2)
       }
       .frame(maxWidth: .infinity)
       .frame(height: Self.height)
       .offset(y: titlebarHeight / 2)
-
-      if presentation.layout == .both {
-        HStack {
-          captureToggle()
-            .opacity(toolVisibility)
-            .allowsHitTesting(toolVisibility > 0.5)
-          Spacer()
-        }
-        .frame(height: Self.height)
-        .padding(.leading, 12)
-        .frame(maxWidth: .infinity)
-        .offset(y: titlebarHeight / 2)
-      }
-
-      if presentation.layout.showsCapture {
-        HStack(spacing: 0) {
-          Spacer()
-          historyButton()
-            .padding(.trailing, 8 * (1 - toolVisibility))
-          toolToggle()
-            .opacity(1 - toolVisibility)
-            .allowsHitTesting(toolVisibility < 0.5)
-            .frame(width: SnapOToolbarStyle.singleControlSize * (1 - toolVisibility), alignment: .trailing)
-        }
-        .frame(height: Self.height)
-        .padding(.trailing, 12)
-        .offset(y: titlebarHeight / 2)
-      }
     }
   }
 
@@ -304,25 +302,36 @@ struct CaptureToolbar: View {
         height: SnapOToolbarStyle.singleControlSize
       )
   }
+}
 
-  private func captureProgress(_ progress: String) -> some View {
-    let isCaptureInFlight = controller.isProcessing
-    let canBrowseCaptures = !isCaptureInFlight && controller.hasAlternativeMedia()
+/// Centers the capture controls while leaving room for both ends of the toolbar.
+private struct CaptureToolbarLayout: Layout {
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    let minimumWidth = sizes.reduce(CGFloat.zero) { $0 + $1.width }
+    return CGSize(width: max(minimumWidth, proposal.width ?? 0), height: sizes.map(\.height).max() ?? 0)
+  }
 
-    return CaptureSelectionPill(position: progress)
-      .opacity(isCaptureInFlight ? 0.45 : 1)
-      .allowsHitTesting(!isCaptureInFlight)
-      .onHover { hovering in
-        guard canBrowseCaptures else {
-          if !hovering { controller.setProgressHovering(false) }
-          return
-        }
-        controller.setProgressHovering(hovering)
-      }
-      .onChange(of: canBrowseCaptures) {
-        guard !canBrowseCaptures else { return }
-        controller.setProgressHovering(false)
-      }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let leading = subviews[0]
+    let capture = subviews[1]
+    let trailing = subviews[2]
+    let captureWidth = capture.sizeThatFits(.unspecified).width
+    let minimumX = bounds.minX + leading.sizeThatFits(.unspecified).width
+    let maximumX = bounds.maxX - trailing.sizeThatFits(.unspecified).width - captureWidth
+    let captureX = max(minimumX, min(bounds.midX - captureWidth / 2, maximumX))
+    let trailingX = captureX + captureWidth
+    leading.place(
+      at: CGPoint(x: bounds.minX, y: bounds.midY),
+      anchor: .leading,
+      proposal: ProposedViewSize(width: captureX - bounds.minX, height: bounds.height)
+    )
+    capture.place(at: CGPoint(x: captureX, y: bounds.midY), anchor: .leading, proposal: .unspecified)
+    trailing.place(
+      at: CGPoint(x: trailingX, y: bounds.midY),
+      anchor: .leading,
+      proposal: ProposedViewSize(width: bounds.maxX - trailingX, height: bounds.height)
+    )
   }
 }
 
@@ -340,49 +349,58 @@ struct CaptureActionToolbarControls: View {
       Button {
         screenshot()
       } label: {
-        Label("New Screenshot", systemImage: "camera")
-          .labelStyle(.iconOnly)
-          .font(SnapOToolbarStyle.iconFont)
-          .frame(width: 34, height: 32)
+        CaptureActionIcon(title: "New Screenshot", symbol: "camera")
       }
       .help(unavailableReason ?? "New Screenshot (⇧⌘S)")
       .disabled(!canCaptureNow)
 
-      if settings.recordAsBugReport {
-        Menu {
-          Button("Disable Bug Report Mode") {
-            settings.recordAsBugReport = false
-          }
-        } label: {
-          Label("Record", systemImage: "ant.circle")
-            .font(SnapOToolbarStyle.iconFont)
-            .frame(width: 34, height: 32)
-        } primaryAction: {
-          startRecording()
+      Button(action: startRecording) {
+        CaptureActionIcon(title: "Record", symbol: settings.recordAsBugReport ? "ant.circle" : "record.circle")
+      }
+      .help(unavailableReason ?? (settings.recordAsBugReport ? "Start Recording Bug Report (⇧⌘V)" : "Start Recording (⇧⌘V)"))
+      .disabled(!canStartRecordingNow)
+      .contextMenu {
+        if settings.recordAsBugReport {
+          Button("Disable Bug Report Mode") { settings.recordAsBugReport = false }
         }
-        .overlay(alignment: .bottomTrailing) {
-          Image(systemName: "chevron.down")
-            .font(.system(size: 5, weight: .bold))
-            .offset(x: -6, y: -2)
-        }
-        .menuIndicator(.hidden)
-        .menuStyle(.button)
-        .help(unavailableReason ?? "Start Recording Bug Report (⇧⌘V)")
-        .disabled(!canStartRecordingNow)
-      } else {
-        Button {
-          startRecording()
-        } label: {
-          Label("Record", systemImage: "record.circle")
-            .font(SnapOToolbarStyle.iconFont)
-            .frame(width: 34, height: 32)
-        }
-        .help(unavailableReason ?? "Start Recording (⇧⌘V)")
-        .disabled(!canStartRecordingNow)
       }
     }
     .labelStyle(.iconOnly)
     .controlSize(.extraLarge)
     .snapOToolbarGroupStyle()
+  }
+}
+
+private struct RecordingAudioButton: View {
+  @Environment(AppSettings.self)
+  private var settings
+  @State private var showsOptions = false
+
+  var body: some View {
+    @Bindable var settings = settings
+    let mode = settings.recordingAudioMode
+    Button {
+      showsOptions.toggle()
+    } label: {
+      RecordingAudioIcon(mode: mode)
+        .frame(width: SnapOToolbarStyle.singleControlSize, height: SnapOToolbarStyle.singleControlSize)
+        .contentShape(Circle())
+    }
+    .controlSize(.extraLarge)
+    .snapOToolbarSingleControlStyle()
+    .accessibilityLabel("Recording audio options")
+    .accessibilityValue(mode.accessibilityValue)
+    .help("Recording audio options (\(mode.accessibilityValue))")
+    .popover(isPresented: $showsOptions, arrowEdge: .bottom) {
+      VStack(alignment: .leading, spacing: 10) {
+        Toggle("Record Device Audio", isOn: $settings.recordDeviceAudio)
+        Toggle("Record Microphone", isOn: $settings.recordMicrophone)
+          .help("Record the microphone Android receives. Your voice may be missing while another app uses the mic.")
+      }
+      .toggleStyle(.checkbox)
+      .buttonStyle(.automatic)
+      .controlSize(.regular)
+      .padding(14)
+    }
   }
 }

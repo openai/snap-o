@@ -183,7 +183,11 @@ struct CaptureWindow: View {
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
     let label = captureDeviceLabel
-    return CapturePaneTitle(title: label?.name ?? "Snap-O", serverName: label?.server) {
+    return CapturePaneTitle(
+      title: label?.name ?? "Snap-O",
+      serverName: label?.server,
+      devicePicker: controller.hasAlternativeMedia() ? devicePicker : nil
+    ) {
       openWindow(id: "device-manager")
     }
   }
@@ -382,22 +386,6 @@ struct CaptureWindow: View {
     .overlay {
       deviceOpenOverlay
     }
-    .overlay(alignment: .top) {
-      if controller.previews.count > 1,
-         controller.deviceOpenError != nil || controller.hint.isVisible {
-        LiveDevicePreviewStrip(
-          previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
-          attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
-          loadSnapshot: controller.livePreviewScreenshot,
-          serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
-          selectDevice: controller.selectDevice
-        )
-        .padding(.top, 12)
-        .onHover { controller.hint.setHovered($0) }
-        .transition(.offset(CGSize(width: 0, height: -15)).combined(with: .opacity))
-      }
-    }
-    .animation(.easeInOut(duration: 0.3), value: controller.hint.isVisible)
     .environment(\.livePreviewLoadingMessage, livePreviewLoadingMessage)
     .environment(\.captureImageCopied, controller.imageCopied)
     .overlay {
@@ -422,6 +410,16 @@ struct CaptureWindow: View {
     }
     .clipped()
     .background(captureAreaBackground)
+  }
+
+  private var devicePicker: LiveDevicePicker {
+    LiveDevicePicker(
+      previews: controller.previews, selectedDeviceID: controller.selectedPreviewDeviceID,
+      attachment: controller.currentPreview.flatMap { controller.livePreviewAttachment(for: $0.device.id) },
+      loadSnapshot: controller.livePreviewScreenshot,
+      serverName: { deviceManager.remoteServerLabel(for: $0.identity) },
+      selectDevice: controller.selectDevice
+    )
   }
 
   private var showsDeviceOpenOverlay: Bool {

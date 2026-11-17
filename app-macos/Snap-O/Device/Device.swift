@@ -14,6 +14,11 @@ public struct Device: Identifiable, Hashable, Sendable {
 
   public let model: String
   public let androidVersion: String
+  let androidSDK: Int?
+  var supportsDeviceAudioRecording: Bool {
+    (androidSDK ?? 0) >= 33
+  }
+
   public let vendorModel: String?
   public let manufacturer: String?
   public let avdName: String?
@@ -25,6 +30,7 @@ public struct Device: Identifiable, Hashable, Sendable {
     id: String,
     model: String,
     androidVersion: String,
+    androidSDK: Int? = nil,
     vendorModel: String?,
     manufacturer: String?,
     avdName: String?,
@@ -36,6 +42,7 @@ public struct Device: Identifiable, Hashable, Sendable {
     self.id = identity.storedValue
     self.model = model
     self.androidVersion = androidVersion
+    self.androidSDK = androidSDK
     self.vendorModel = vendorModel
     self.manufacturer = manufacturer
     self.avdName = avdName

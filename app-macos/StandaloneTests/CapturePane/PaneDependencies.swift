@@ -42,6 +42,11 @@ final class AppSettings {
   var startupCaptureMode = StartupCaptureMode.livePreview
   var showTouchesDuringCapture = false
   var recordAsBugReport = false
+  var recordDeviceAudio = true
+  var recordMicrophone = false
+  var recordingAudioMode: RecordingAudioMode {
+    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  }
 }
 
 @MainActor

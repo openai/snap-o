@@ -16,6 +16,7 @@ public final class Helper {
         String[] options = Arrays.copyOfRange(args, 2, args.length);
         switch (args[1]) {
             case "video": com.openai.snapo.video.Main.main(options); break;
+            case "audio": com.openai.snapo.audio.Main.main(options); break;
             case "pointer": com.openai.snapo.pointer.Main.main(options); break;
             case "clipboard": com.openai.snapo.clipboard.Main.main(options); break;
             default: throw new IllegalArgumentException("Unknown helper mode");

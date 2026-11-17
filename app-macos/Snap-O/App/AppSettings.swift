@@ -39,6 +39,18 @@ final class AppSettings {
     didSet { defaults.set(recordAsBugReport, forKey: "recordAsBugReport") }
   }
 
+  var recordDeviceAudio: Bool {
+    didSet { defaults.set(recordDeviceAudio, forKey: "recordDeviceAudio") }
+  }
+
+  var recordMicrophone: Bool {
+    didSet { defaults.set(recordMicrophone, forKey: "recordMicrophone") }
+  }
+
+  var recordingAudioMode: RecordingAudioMode {
+    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  }
+
   var syncClipboard: Bool {
     didSet { defaults.set(syncClipboard, forKey: "syncClipboard") }
   }
@@ -60,6 +72,8 @@ final class AppSettings {
       .flatMap(StartupCaptureMode.init(rawValue:)) ?? .livePreview
     showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")
     recordAsBugReport = defaults.bool(forKey: "recordAsBugReport")
+    recordDeviceAudio = defaults.object(forKey: "recordDeviceAudio") as? Bool ?? true
+    recordMicrophone = defaults.bool(forKey: "recordMicrophone")
     syncClipboard = defaults.object(forKey: "syncClipboard") as? Bool ?? true
     keyboardInput = defaults.object(forKey: "keyboardInput") as? Bool ?? true
     deviceControlsPlacement = defaults.string(forKey: "deviceControlsPlacement")

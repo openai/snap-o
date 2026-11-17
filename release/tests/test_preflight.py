@@ -457,6 +457,22 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("| 5 | Key code | Press and hold a key. |", report)
         self.assertIn("| 6 | Key code | Release a key. |", report)
 
+    def test_reports_device_audio_protocol(self):
+        self.write("device-helper/src/com/openai/snapo/audio/Main.java", "private static final int MAGIC = 0x534e4131;\n")
+        self.write("app-macos/Snap-O/Device/Audio/DeviceAudioPacket.swift", 'static let magic = Data("SNA1".utf8)\n')
+        self.write("contracts/device-audio/README.md",
+                   "| `audio --microphone` | Android microphone. |\n"
+                   "| `1`: samples | Timestamp, frame count, PCM. |\n"
+                   "| `3`: microphone status | Android capture policy. |\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device audio helper versioned magic", report)
+        self.assertIn("Device audio client versioned magic", report)
+        self.assertIn("| `1`: samples | Timestamp, frame count, PCM. |", report)
+        self.assertIn("| `3`: microphone status | Android capture policy. |", report)
+        self.assertIn("| `audio --microphone` | Android microphone. |", report)
+        self.assertNotIn("UNRESOLVED: Device audio", report)
+
     def test_reports_device_pointer_versions(self):
         self.write("device-helper/src/com/openai/snapo/pointer/Main.java", "private static final int VERSION = 1;\n")
         self.write("app-macos/Snap-O/Device/ADB/DevicePointerProtocol.swift", "static let version: UInt32 = 1\n")

@@ -2,16 +2,23 @@ import CryptoKit
 import Foundation
 
 struct DeviceHelper {
-  enum Mode {
-    case video, pointer, keyboard, clipboard
+  enum Mode: Equatable {
+    case video, audio(RecordingAudioMode), pointer, keyboard, clipboard
 
     var usesShellV2: Bool {
-      self == .video || self == .pointer
+      switch self {
+      case .video, .audio, .pointer: true
+      case .keyboard, .clipboard: false
+      }
     }
 
-    fileprivate var arguments: String {
+    fileprivate func arguments() throws -> String {
       switch self {
       case .video: "video rgba-fallback rgba-flow-control standby"
+      case .audio(.playback): "audio --playback"
+      case .audio(.microphone): "audio --microphone"
+      case .audio(.both): "audio --playback --microphone"
+      case .audio(.off): throw ADBError.protocolFailure("No audio source selected")
       case .pointer: "pointer"
       case .keyboard: "clipboard keyboard"
       case .clipboard: "clipboard"
@@ -90,6 +97,7 @@ struct DeviceHelper {
   func launch(
     _ mode: Mode, on connection: any ADBConnection, reinstall: Bool = false, read: (Int) throws -> Data
   ) throws -> Data {
+    let arguments = try mode.arguments()
     // The pointer helper handles stdin EOF itself so it can release held contacts.
     let handleHangup = mode == .pointer ? "trap '' HUP" : ""
     let needsInstall = reinstall ? "true" : #"[ ! -f "$jar" ] || [ -L "$jar" ]"#
@@ -119,7 +127,7 @@ struct DeviceHelper {
       mv -f "$tmp" "$jar" || exit 1
     fi
     \(handleHangup)
-    CLASSPATH="$jar" exec app_process / com.openai.snapo.Helper \(buildID) \(mode.arguments)
+    CLASSPATH="$jar" exec app_process / com.openai.snapo.Helper \(buildID) \(arguments)
     """
     _ = try connection.sendHostCommand((mode.usesShellV2 ? "shell,v2,raw:" : "exec:") + command, expectsResponse: false)
     var uploaded = false

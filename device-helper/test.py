@@ -21,9 +21,12 @@ def main():
             str(root / "tests/FrameWindowTest.java"),
             str(root / "src/com/openai/snapo/clipboard/HeldKeys.java"),
             str(root / "tests/HeldKeysTest.java"),
+            str(root / "src/com/openai/snapo/audio/PcmBlock.java"),
+            str(root / "tests/PcmBlockTest.java"),
         ], check=True)
         subprocess.run([str(java), "-cp", temporary, "com.openai.snapo.video.FrameWindowTest"], check=True)
         subprocess.run([str(java), "-cp", temporary, "com.openai.snapo.clipboard.HeldKeysTest"], check=True)
+        subprocess.run([str(java), "-cp", temporary, "com.openai.snapo.audio.PcmBlockTest"], check=True)
 
 
 if __name__ == "__main__":

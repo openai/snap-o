@@ -47,6 +47,48 @@ struct CapturePaneTests {
     await fixture.close()
   }
 
+  @Test(arguments: ["phone", "emulator-5554"], [false, true])
+  func capturesBothAudioChoicesOnlyForSupportedRecordings(serial: String, bugReport: Bool) async throws {
+    let fixture = Fixture(deviceIDs: [serial])
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    AppSettings.shared.recordAsBugReport = bugReport
+    AppSettings.shared.recordDeviceAudio = true
+    AppSettings.shared.recordMicrophone = true
+    defer {
+      AppSettings.shared.recordDeviceAudio = true
+      AppSettings.shared.recordMicrophone = false
+      AppSettings.shared.recordAsBugReport = false
+    }
+    pane.startRecording()
+    AppSettings.shared.recordDeviceAudio = false
+    AppSettings.shared.recordMicrophone = false
+    let recording = try #require(fixture.recordings.value.first)
+    #expect(recording.options.audioMode == (bugReport ? .off : .both))
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test(arguments: [false, true], [false, true])
+  func snapshotsAudioSourcesIndependently(playback: Bool, mic: Bool) async throws {
+    let fixture = Fixture(deviceIDs: ["phone"])
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    AppSettings.shared.recordDeviceAudio = playback
+    AppSettings.shared.recordMicrophone = mic
+    defer {
+      AppSettings.shared.recordDeviceAudio = true
+      AppSettings.shared.recordMicrophone = false
+    }
+    pane.startRecording()
+    AppSettings.shared.recordDeviceAudio = false
+    AppSettings.shared.recordMicrophone = false
+    let options = try #require(fixture.recordings.value.first?.options)
+    #expect(options.audioMode == RecordingAudioMode(playback: playback, microphone: mic))
+    await pane.close()
+    await fixture.close()
+  }
+
   @Test
   func switchingPreviewReleasesOnlyThisWindowsAttachment() async throws {
     let fixture = Fixture()
@@ -658,7 +700,7 @@ struct CapturePaneTests {
       history = CaptureHistory(repository: CaptureHistoryRepository(root: root.appendingPathComponent("history")))
       let connected = deviceIDs.map { serial in
         Device(
-          id: serial, model: serial, androidVersion: "16", vendorModel: nil, manufacturer: nil, avdName: nil,
+          id: serial, model: serial, androidVersion: "16", androidSDK: 36, vendorModel: nil, manufacturer: nil, avdName: nil,
           connection: DeviceTarget(serial: serial, transportID: serial)
         )
       }
