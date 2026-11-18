@@ -83,7 +83,7 @@ final class AppRuntime {
       return try await NativeScreenRecording.start(
         source: video,
         audioConnection: audio,
-        recordsComputerMicrophone: options.audio.microphone == .computer
+        computerMicrophoneTarget: options.audio.microphone == .computer ? target : nil
       )
     }
     let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)

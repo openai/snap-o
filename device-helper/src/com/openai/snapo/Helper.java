@@ -15,6 +15,7 @@ public final class Helper {
         if (args.length < 2 || !Build.ID.equals(args[0])) return;
         String[] options = Arrays.copyOfRange(args, 2, args.length);
         switch (args[1]) {
+            case "clock": DeviceClock.serve(System.in, output); break;
             case "video": com.openai.snapo.video.Main.main(options); break;
             case "audio": com.openai.snapo.audio.Main.main(options); break;
             case "pointer": com.openai.snapo.pointer.Main.main(options); break;

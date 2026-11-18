@@ -1,3 +1,4 @@
+import CoreMedia
 import CryptoKit
 import Foundation
 import Testing
@@ -26,6 +27,7 @@ struct DeviceHelperTests {
 
   @Test(arguments: [
     DeviceHelper.Mode.video,
+    .clock,
     .audio(.playback),
     .audio(.microphone),
     .audio(.both),
@@ -38,6 +40,7 @@ struct DeviceHelperTests {
     let helper = try DeviceHelper(jar)
     let header = switch mode {
     case .video: Data("SNV1".utf8)
+    case .clock: DeviceClock.magic
     case .audio: Data("SNA1".utf8)
     case .keyboard: Data([0, 0, 0, 2])
     default: Data([0, 0, 0, 1])
@@ -56,6 +59,7 @@ struct DeviceHelperTests {
     #expect(connection.written == (upload ? uploadBytes : Data()))
     let command = try #require(connection.commands.first)
     switch mode {
+    case .clock: #expect(command.hasSuffix(" clock"))
     case .audio(.playback): #expect(command.hasSuffix(" audio --playback"))
     case .audio(.microphone): #expect(command.hasSuffix(" audio --microphone"))
     case .audio(.both): #expect(command.hasSuffix(" audio --playback --microphone"))
@@ -64,6 +68,31 @@ struct DeviceHelperTests {
     let digest = SHA256.hash(data: jar).map { String(format: "%02x", $0) }.joined()
     #expect(command.contains(digest + ".jar"))
     #expect(!command.contains(jar.base64EncodedString()))
+  }
+
+  @Test
+  func mapsTheDeviceClockUsingTheShortestRoundTrip() throws {
+    let timestamps: [UInt64] = [2_005_000, 2_202_000, 2_459_000]
+    let replies = timestamps.map { timestamp in
+      withUnsafeBytes(of: timestamp.bigEndian) { Data([1, 8, 0, 0, 0]) + Data($0) }
+    }
+    let connection = ScriptedADBConnection(reads: replies.map { .data($0) })
+    let session = DeviceHelper.Session(connection: connection, stream: ADBShellV2Stream(), header: DeviceClock.magic)
+    var hostMillis = [1000, 1100, 1200, 1204, 1400, 1460].makeIterator()
+    let offset = try DeviceClock.measure(session) {
+      CMTime(value: Int64(hostMillis.next() ?? -1), timescale: 1000)
+    }
+    #expect(offset == CMTime(value: 1, timescale: 1))
+    let request = try ADBShellV2Stream.standardInput(Data([1]))
+    #expect(connection.written == request + request + request)
+  }
+
+  @Test
+  func rejectsAnUnknownDeviceClockBeforeSendingARequest() {
+    let connection = ScriptedADBConnection(reads: [])
+    let session = DeviceHelper.Session(connection: connection, stream: ADBShellV2Stream(), header: Data("SNT2".utf8))
+    #expect(throws: ADBError.self) { try DeviceClock.measure(session) }
+    #expect(connection.written.isEmpty)
   }
 
   @Test

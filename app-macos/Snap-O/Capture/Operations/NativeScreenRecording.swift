@@ -44,11 +44,11 @@ final class NativeScreenRecording: ScreenRecording {
   }
 
   static func start(
-    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, recordsComputerMicrophone: Bool
+    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, computerMicrophoneTarget: DeviceTarget?
   ) async throws -> NativeScreenRecording {
-    let microphone = recordsComputerMicrophone ? ComputerMicrophoneCapture() : nil
-    let audioTrack = audioConnection != nil || recordsComputerMicrophone
-      ? try RecordingAudioTrack(mixesComputerMicrophone: audioConnection != nil && recordsComputerMicrophone) : nil
+    let microphone = computerMicrophoneTarget.map { _ in ComputerMicrophoneCapture() }
+    let audioTrack = audioConnection != nil || microphone != nil
+      ? try RecordingAudioTrack(mixesComputerMicrophone: audioConnection != nil && microphone != nil) : nil
     let recording = NativeScreenRecording(
       source: source,
       audioConnection: audioConnection,
@@ -56,20 +56,21 @@ final class NativeScreenRecording: ScreenRecording {
       audioTrack: audioTrack
     )
     do {
-      if let microphone {
+      if let microphone, let target = computerMicrophoneTarget {
         try await microphone.start()
-        recording.listenToComputerMicrophone(microphone)
+        let deviceClockOffset = try await DeviceClock.offset(for: target)
+        recording.listenToComputerMicrophone(microphone, deviceClockOffset: deviceClockOffset)
       }
       if let audioConnection, let audioTrack {
         audioConnection.start { [weak recording] event in recording?.receiveAudioEvent(event) } failed: { [weak recording] error in
           recording?.beginFinish(error: error)
         }
-        try await recording.waitForStartup("Recording did not receive device audio") { audioTrack.hasBufferedSamples }
+        try await recording.waitForStartup("Recording did not receive device audio") { audioTrack.hasBufferedDeviceSamples }
       }
       recording.source.start { [weak recording] event in recording?.receive(event) }
       try await recording.waitForStartup("Recording did not receive a video frame") { recording.writer != nil }
       if let audioTrack {
-        let message = switch (recordsComputerMicrophone, audioConnection != nil) {
+        let message = switch (microphone != nil, audioConnection != nil) {
         case (true, true): "Recording did not receive both device audio and computer microphone audio"
         case (true, false): "Recording did not receive computer microphone audio"
         default: "Recording did not receive device audio"
@@ -83,12 +84,12 @@ final class NativeScreenRecording: ScreenRecording {
     }
   }
 
-  private func listenToComputerMicrophone(_ microphone: ComputerMicrophoneCapture) {
+  private func listenToComputerMicrophone(_ microphone: ComputerMicrophoneCapture, deviceClockOffset: CMTime) {
     computerAudioTask = Task { [weak self] in
       do {
         for try await packet in microphone.packets {
           guard let self else { return }
-          try audioTrack?.receiveComputerMicrophone(packet, until: computerMicrophoneStopTime)
+          try audioTrack?.receiveComputerMicrophone(packet, deviceClockOffset: deviceClockOffset, until: computerMicrophoneStopTime)
         }
       } catch {
         self?.beginFinish(error: error)
@@ -145,10 +146,9 @@ final class NativeScreenRecording: ScreenRecording {
         try videoTrack.append(sample, to: writer, clock: clock)
       } else {
         let start = CMSampleBufferGetPresentationTimeStamp(sample)
-        let hostTime = CMClockGetTime(CMClockGetHostTimeClock())
         let writer = try makeWriter(url, format, start, audioTrack?.format)
         self.writer = writer
-        audioTrack?.start(at: start, hostTime: hostTime, writer: writer)
+        audioTrack?.start(at: start, writer: writer)
         try videoTrack.append(sample, to: writer, clock: clock)
         try audioTrack?.appendBufferedSamples()
       }

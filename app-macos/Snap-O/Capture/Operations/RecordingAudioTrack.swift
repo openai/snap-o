@@ -6,15 +6,9 @@ struct RecordingAudioError: LocalizedError {
 
 @MainActor
 final class RecordingAudioTrack {
-  private struct Output {
-    let writer: any NativeRecordingWriter
-    let start: CMTime
-    let hostTime: CMTime
-  }
-
   let format: CMAudioFormatDescription
-  private var pending: [DeviceAudioPacket] = []
-  private var output: Output?
+  private var pending: [(packet: DeviceAudioPacket, source: RecordingAudioMixer.Source)] = []
+  private var output: (writer: any NativeRecordingWriter, start: CMTime)?
   private let mixesComputerMicrophone: Bool
   private var mixer: RecordingAudioMixer?
   private var microphoneSilenced = false
@@ -26,51 +20,41 @@ final class RecordingAudioTrack {
     format = try DeviceAudioPacket.makeFormat()
   }
 
-  var hasBufferedSamples: Bool {
-    !pending.isEmpty
+  var hasBufferedDeviceSamples: Bool {
+    pending.contains { $0.source == .device }
   }
 
   func receive(_ event: DeviceAudioPacket.Event) throws {
     switch event {
     case .samples(let packet):
-      if output != nil {
-        try write(packet, from: .device)
-      } else {
-        guard pending.count < 512 else { throw ADBError.protocolFailure("Recording waited too long for its first video frame") }
-        pending.append(packet)
-      }
+      try write(packet, from: .device)
     case .microphoneSilenced(let silenced):
       microphoneSilenced = silenced
       if output != nil { updateMicrophoneWarning() }
     }
   }
 
-  func start(at start: CMTime, hostTime: CMTime, writer: any NativeRecordingWriter) {
-    output = Output(writer: writer, start: start, hostTime: hostTime)
+  func start(at start: CMTime, writer: any NativeRecordingWriter) {
+    output = (writer, start)
     if mixesComputerMicrophone { mixer = RecordingAudioMixer(start: start) }
     updateMicrophoneWarning()
   }
 
-  func receiveComputerMicrophone(_ packet: DeviceAudioPacket, until stop: CMTime?) throws {
-    guard let output else { return }
-    // The first fresh video keyframe ties the host clock to the Android video clock.
-    let timestamp = output.start + (packet.timestamp - output.hostTime)
+  func receiveComputerMicrophone(_ packet: DeviceAudioPacket, deviceClockOffset: CMTime, until stop: CMTime?) throws {
     var pcm = packet.pcm
     if let stop {
       let frames = CMTimeConvertScale(stop - packet.timestamp, timescale: DeviceAudioPacket.sampleRate, method: .roundTowardZero).value
       guard frames > 0 else { return }
       if frames < pcm.count / DeviceAudioPacket.bytesPerFrame { pcm = pcm.prefix(Int(frames) * DeviceAudioPacket.bytesPerFrame) }
     }
-    let duration = CMTime(value: Int64(pcm.count / DeviceAudioPacket.bytesPerFrame), timescale: DeviceAudioPacket.sampleRate)
-    guard timestamp + duration > output.start else { return }
-    try write(DeviceAudioPacket(timestamp: timestamp, pcm: pcm), from: .computer)
+    try write(DeviceAudioPacket(timestamp: packet.timestamp + deviceClockOffset, pcm: pcm), from: .computer)
   }
 
   func appendBufferedSamples() throws {
     let buffered = pending
     pending.removeAll()
-    for packet in buffered {
-      try write(packet, from: .device)
+    for (packet, source) in buffered {
+      try write(packet, from: source)
     }
   }
 
@@ -83,6 +67,13 @@ final class RecordingAudioTrack {
   }
 
   private func write(_ packet: DeviceAudioPacket, from source: RecordingAudioMixer.Source) throws {
+    guard output != nil else {
+      guard pending.count < (mixesComputerMicrophone ? 1024 : 512) else {
+        throw ADBError.protocolFailure("Recording waited too long for its first video frame")
+      }
+      pending.append((packet, source))
+      return
+    }
     if let mixer { try mixer.receive(packet, from: source, write: append) } else { try append(packet) }
   }
 

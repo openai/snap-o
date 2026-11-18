@@ -21,3 +21,11 @@ Packet headers use big-endian integers. The first byte identifies the packet.
 | `3`: microphone status | One unsigned byte. Android reports 0 when it grants mic input and 1 when its capture policy silences the recorder. Mic modes send the initial known state and any changes. |
 
 The helper opens only the selected sources on Android 13 or newer. Android applies the playing app’s capture policy. The microphone uses the Android `MIC` source with nonexclusive capture. Mic-only audio is present on both stereo channels. Combined capture adds each microphone sample to both playback channels and clips the sum to the signed 16-bit range. The Mac closes the connection when recording ends. Android releases the sources when their owner exits.
+
+## Computer microphone synchronization
+
+When recording the computer microphone, Snap-O opens a separate ADB shell v2 connection to the same device and starts the helper in `clock` mode. After the helper build ID, stdout begins with the four ASCII bytes `SNT1`.
+
+For each request byte `0x01`, the helper replies with an unsigned 64-bit big-endian timestamp in microseconds. It reads `System.nanoTime()`, the monotonic clock used for device capture. Closing the connection ends the session.
+
+Snap-O measures three round trips after the handshake. It pairs the device timestamp from the shortest trip with the midpoint between the computer’s send and receive times. Snap-O uses that offset to put microphone samples on the device video timeline. It buffers samples until the first keyframe arrives and keeps audio from that frame’s capture time onward.

@@ -3,17 +3,18 @@ import Foundation
 
 struct DeviceHelper {
   enum Mode: Equatable {
-    case video, audio(DeviceAudioMode), pointer, keyboard, clipboard
+    case clock, video, audio(DeviceAudioMode), pointer, keyboard, clipboard
 
     var usesShellV2: Bool {
       switch self {
-      case .video, .audio, .pointer: true
+      case .clock, .video, .audio, .pointer: true
       case .keyboard, .clipboard: false
       }
     }
 
     fileprivate func arguments() throws -> String {
       switch self {
+      case .clock: "clock"
       case .video: "video rgba-fallback rgba-flow-control standby"
       case .audio(.playback): "audio --playback"
       case .audio(.microphone): "audio --microphone"

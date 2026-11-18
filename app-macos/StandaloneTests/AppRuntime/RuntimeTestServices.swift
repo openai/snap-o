@@ -119,7 +119,7 @@ struct DeviceAudioConnection {
 
 struct NativeScreenRecording: ScreenRecording {
   static func start(
-    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, recordsComputerMicrophone: Bool
+    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, computerMicrophoneTarget: DeviceTarget?
   ) async throws -> NativeScreenRecording {
     Self()
   }
