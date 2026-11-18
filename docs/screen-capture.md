@@ -90,7 +90,7 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ### Open a device from a link
 
-Use `snapo://open` without parameters to show the current device’s Live Preview. To select a connected device, include its ADB serial:
+Device links bring Capture to the front. If no Capture window is open, Snap-O opens one. Use `snapo://open` to show the current device’s Live Preview. To select a connected device, include its ADB serial.
 
 ```bash
 open 'snapo://open?serial=emulator-5554'
@@ -143,7 +143,7 @@ Click the audio button beside Record to choose what goes into the video. **Recor
 
 Choose **Computer** when the app you are testing needs the Android microphone. Snap-O records your computer’s default sound input directly. The first time you record, macOS asks for microphone access. Leave **Record Device Audio** on to include Android playback alongside your voice.
 
-Device audio and the device microphone require Android 13 or newer, starting with [Snap-O 15.0.0](https://github.com/openai/snap-o/releases/tag/15.0.0). The computer microphone also works with older Android devices. Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+Device audio and the device microphone require Android 13 or newer, starting with [Snap-O 15.0.0](https://github.com/openai/snap-o/releases/tag/15.0.0). The computer microphone works on older Android devices starting with [Snap-O 15.1.0](https://github.com/openai/snap-o/releases/tag/15.1.0). Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
 
 **Device** records the microphone Android receives. A voice app can reserve that input, leaving your voice out of the recording. If Android reports that it silenced Snap-O’s microphone, a warning appears in review. Android can also report an active microphone that delivers little or no sound.
 
@@ -152,6 +152,8 @@ On an emulator, **Device** records the virtual microphone. To feed the computer 
 ## Review, crop, and trim {#review-and-crop}
 
 New screenshots and recordings stay in review until you save or discard them. Drag an edge or corner of the crop boundary to resize it. Once cropped, drag inside the boundary to move the crop.
+
+For recordings with audio, hover over the speaker in the playback controls to adjust the volume. Click the speaker to mute or unmute playback.
 
 For a recording, click the scissors to trim it. Drag the timeline handles or edit **Start** and **End**, then click **Apply Trim**. Press `Esc` to cancel the trim edit. Saved and shared copies use the selected crop and trim.
 
