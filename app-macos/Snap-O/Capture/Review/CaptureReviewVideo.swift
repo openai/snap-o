@@ -145,14 +145,13 @@ struct CapturePlaybackVolumeControl: View {
 
   var body: some View {
     let showsSlider = playback.hasAudioTrack && (isHovering || isDragging)
-    VStack(spacing: 0) {
+    VStack(spacing: -1) {
       if showsSlider {
         VerticalVolumeSlider(playback: playback, isDragging: $isDragging)
           .frame(width: 16, height: 90)
           .padding(6)
           .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
           .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
-          .padding(.bottom, 3)
           .transition(.offset(y: reduceMotion ? 0 : 4).combined(with: .opacity))
       }
 
@@ -208,18 +207,18 @@ private struct VerticalVolumeSlider: NSViewRepresentable {
   }
 
   private final class RoundThumbCell: NSSliderCell {
-    override func barRect(flipped: Bool) -> NSRect {
-      let bar = super.barRect(flipped: flipped)
-      return bar.insetBy(dx: 0, dy: (trackRect.width - bar.width) / 2)
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+      // Inset the painted track while keeping AppKit's full range for dragging.
+      let inset = (trackRect.width - rect.width) / 2
+      super.drawBar(inside: rect.insetBy(dx: 0, dy: inset), flipped: flipped)
     }
 
     override func knobRect(flipped: Bool) -> NSRect {
-      let knob = super.knobRect(flipped: flipped)
       let bar = barRect(flipped: flipped)
+      let diameter = trackRect.width
       let progress = flipped ? 1 - doubleValue : doubleValue
-      // Center the thumb on the rounded cap at each end of the track.
-      let centerY = bar.minY + bar.width / 2 + (bar.height - bar.width) * progress
-      return NSRect(x: knob.minX, y: centerY - knob.width / 2, width: knob.width, height: knob.width)
+      let y = bar.minY + (bar.height - diameter) * progress
+      return NSRect(x: bar.midX - diameter / 2, y: y, width: diameter, height: diameter)
     }
 
     override func drawKnob(_ knobRect: NSRect) {
