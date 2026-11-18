@@ -112,13 +112,15 @@ struct DeviceVideoSource: LivePreviewFrameSource {
 }
 
 struct DeviceAudioConnection {
-  init?(target: DeviceTarget, mode: RecordingAudioMode) {
+  init?(target: DeviceTarget, mode: DeviceAudioMode) {
     if mode == .off { return nil }
   }
 }
 
 struct NativeScreenRecording: ScreenRecording {
-  static func start(source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?) async throws -> NativeScreenRecording {
+  static func start(
+    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, recordsComputerMicrophone: Bool
+  ) async throws -> NativeScreenRecording {
     Self()
   }
 }

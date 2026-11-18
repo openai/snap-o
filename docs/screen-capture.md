@@ -139,13 +139,15 @@ Press `⇧⌘V` to start recording the device shown in the window. Press it agai
 
 The window stays on the recording device until you stop. To capture another device at the same time, open another window and select that device.
 
-Click the audio button beside the screenshot and recording controls to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Turn on **Record Microphone** to include the microphone Android receives. Snap-O remembers each choice. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
+Click the audio button beside Record to choose what goes into the video. **Record Device Audio** is on by default and captures sounds played by Android. Under **Microphone**, choose **Off**, **Device**, or **Computer**. Snap-O remembers both settings. The toolbar shows a speaker, a microphone, or both. A crossed-out speaker means audio is off.
 
-Audio recording works on phones and emulators running Android 13 or newer, starting with [Snap-O 15.0.0](https://github.com/openai/snap-o/releases/tag/15.0.0). Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
+Choose **Computer** when the app you are testing needs the Android microphone. Snap-O records your computer’s default sound input directly. The first time you record, macOS asks for microphone access. Leave **Record Device Audio** on to include Android playback alongside your voice.
 
-On an emulator, **Record Microphone** captures its virtual microphone. To use your Mac’s microphone as input, open **Extended Controls → Microphone** and turn on **Enable Host Microphone Access**. See [Android Emulator microphone controls](https://developer.android.com/studio/run/emulator-extended-controls).
+Device audio and the device microphone require Android 13 or newer, starting with [Snap-O 15.0.0](https://github.com/openai/snap-o/releases/tag/15.0.0). The computer microphone also works with older Android devices. Bug-report recordings capture video only. The device keeps playing sound. Apps can exclude their playback from capture.
 
-A voice app can hear you while your voice is missing from the screen recording. Android gives each app its own microphone input and can change the route when a conversation starts. If Android reports that it silenced Snap-O’s microphone, a warning appears in review. Android can also report an active microphone that delivers little or no sound.
+**Device** records the microphone Android receives. A voice app can reserve that input, leaving your voice out of the recording. If Android reports that it silenced Snap-O’s microphone, a warning appears in review. Android can also report an active microphone that delivers little or no sound.
+
+On an emulator, **Device** records the virtual microphone. To feed the computer microphone to the emulator itself, enable **Extended Controls → Microphone → Enable Host Microphone Access**. See [Android Emulator microphone controls](https://developer.android.com/studio/run/emulator-extended-controls).
 
 ## Review, crop, and trim {#review-and-crop}
 

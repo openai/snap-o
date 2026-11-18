@@ -1,7 +1,7 @@
 struct RecordingOptions {
   let recordsBugReport: Bool
   let showsTouches: Bool
-  var audioMode: RecordingAudioMode = .off
+  var audio = RecordingAudioSources()
 
   enum VideoSource {
     case screenrecord, androidHelper, sharedPreview
@@ -9,12 +9,29 @@ struct RecordingOptions {
 
   func videoSource(isLocalEmulator: Bool) -> VideoSource {
     if recordsBugReport { return .screenrecord }
-    if isLocalEmulator { return audioMode == .off ? .screenrecord : .androidHelper }
+    if isLocalEmulator { return audio == RecordingAudioSources() ? .screenrecord : .androidHelper }
     return .sharedPreview
   }
 }
 
-enum RecordingAudioMode {
+enum RecordingMicrophone: String {
+  case off, device, computer
+}
+
+struct RecordingAudioSources: Equatable {
+  var playback = false
+  var microphone: RecordingMicrophone = .off
+
+  var deviceMode: DeviceAudioMode {
+    DeviceAudioMode(playback: playback, microphone: microphone == .device)
+  }
+
+  func available(supportsDeviceAudio: Bool) -> Self {
+    supportsDeviceAudio ? self : Self(microphone: microphone == .computer ? .computer : .off)
+  }
+}
+
+enum DeviceAudioMode {
   case off, playback, microphone, both
 
   init(playback: Bool, microphone: Bool) {

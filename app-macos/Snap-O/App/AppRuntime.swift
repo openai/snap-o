@@ -79,8 +79,12 @@ final class AppRuntime {
         // A cached preview frame can predate the start of recording.
         video = DeviceVideoSource(target: target, replaysLastFrame: false)
       }
-      let audio = DeviceAudioConnection(target: target, mode: options.audioMode)
-      return try await NativeScreenRecording.start(source: video, audioConnection: audio)
+      let audio = DeviceAudioConnection(target: target, mode: options.audio.deviceMode)
+      return try await NativeScreenRecording.start(
+        source: video,
+        audioConnection: audio,
+        recordsComputerMicrophone: options.audio.microphone == .computer
+      )
     }
     let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
     let timestamps = CaptureTimestampSource()

@@ -101,8 +101,8 @@ struct CaptureToolbar: View {
 
       HStack(spacing: spacing) {
         captureControls()
-        if !controller.isRecording, controller.canRecordDeviceAudio {
-          RecordingAudioButton()
+        if !controller.isRecording, controller.canChooseRecordingAudio {
+          RecordingAudioButton(supportsDeviceAudio: controller.supportsDeviceAudio)
             .disabled(!controller.canStartRecordingNow)
         }
       }
@@ -375,27 +375,35 @@ private struct RecordingAudioButton: View {
   @Environment(AppSettings.self)
   private var settings
   @State private var showsOptions = false
+  let supportsDeviceAudio: Bool
+
+  private var sources: RecordingAudioSources {
+    settings.recordingAudio.available(supportsDeviceAudio: supportsDeviceAudio)
+  }
 
   var body: some View {
-    @Bindable var settings = settings
-    let mode = settings.recordingAudioMode
     Button {
       showsOptions.toggle()
     } label: {
-      RecordingAudioIcon(mode: mode)
+      RecordingAudioIcon(sources: sources)
         .frame(width: SnapOToolbarStyle.singleControlSize, height: SnapOToolbarStyle.singleControlSize)
         .contentShape(Circle())
     }
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
     .accessibilityLabel("Recording audio options")
-    .accessibilityValue(mode.accessibilityValue)
-    .help("Recording audio options (\(mode.accessibilityValue))")
+    .accessibilityValue(sources.accessibilityValue)
+    .help("Recording audio options (\(sources.accessibilityValue))")
     .popover(isPresented: $showsOptions, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 10) {
-        Toggle("Record Device Audio", isOn: $settings.recordDeviceAudio)
-        Toggle("Record Microphone", isOn: $settings.recordMicrophone)
-          .help("Record the microphone Android receives. Your voice may be missing while another app uses the mic.")
+        Toggle("Record Device Audio", isOn: Binding(get: { sources.playback }, set: { settings.recordDeviceAudio = $0 }))
+          .disabled(!supportsDeviceAudio)
+        Picker("Microphone", selection: Binding(get: { sources.microphone }, set: { settings.recordingMicrophone = $0 })) {
+          Text("Off").tag(RecordingMicrophone.off)
+          Text("Device").tag(RecordingMicrophone.device).disabled(!supportsDeviceAudio)
+          Text("Computer").tag(RecordingMicrophone.computer)
+        }
+        .pickerStyle(.menu)
       }
       .toggleStyle(.checkbox)
       .buttonStyle(.automatic)

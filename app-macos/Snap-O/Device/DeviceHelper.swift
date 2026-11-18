@@ -3,7 +3,7 @@ import Foundation
 
 struct DeviceHelper {
   enum Mode: Equatable {
-    case video, audio(RecordingAudioMode), pointer, keyboard, clipboard
+    case video, audio(DeviceAudioMode), pointer, keyboard, clipboard
 
     var usesShellV2: Bool {
       switch self {

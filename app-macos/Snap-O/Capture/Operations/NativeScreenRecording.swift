@@ -8,6 +8,9 @@ final class NativeScreenRecording: ScreenRecording {
   private let clock: AnyClock<Duration>
   private let source: any LivePreviewFrameSource
   private let audioConnection: DeviceAudioConnection?
+  private let computerMicrophone: ComputerMicrophoneCapture?
+  private var computerAudioTask: Task<Void, Error>?
+  private var computerMicrophoneStopTime: CMTime?
   private var videoTrack = RecordingVideoTrack()
   private let audioTrack: RecordingAudioTrack?
   private let url: URL
@@ -23,7 +26,9 @@ final class NativeScreenRecording: ScreenRecording {
 
   init(
     source: any LivePreviewFrameSource,
-    audioConnection: DeviceAudioConnection? = nil, audioTrack: RecordingAudioTrack? = nil,
+    audioConnection: DeviceAudioConnection? = nil,
+    computerMicrophone: ComputerMicrophoneCapture? = nil,
+    audioTrack: RecordingAudioTrack? = nil,
     makeWriter: @escaping @MainActor (URL, CMVideoFormatDescription, CMTime, CMAudioFormatDescription?) throws -> any NativeRecordingWriter
       = AVRecordingWriter.init
   ) {
@@ -32,15 +37,29 @@ final class NativeScreenRecording: ScreenRecording {
     self.clock = AnyClock(clock)
     self.source = source
     self.audioConnection = audioConnection
+    self.computerMicrophone = computerMicrophone
     self.audioTrack = audioTrack
     self.makeWriter = makeWriter
     url = FileManager.default.temporaryDirectory.appendingPathComponent("snapo-recording-\(UUID()).mp4")
   }
 
-  static func start(source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?) async throws -> NativeScreenRecording {
-    let audioTrack = audioConnection == nil ? nil : try RecordingAudioTrack()
-    let recording = NativeScreenRecording(source: source, audioConnection: audioConnection, audioTrack: audioTrack)
+  static func start(
+    source: any LivePreviewFrameSource, audioConnection: DeviceAudioConnection?, recordsComputerMicrophone: Bool
+  ) async throws -> NativeScreenRecording {
+    let microphone = recordsComputerMicrophone ? ComputerMicrophoneCapture() : nil
+    let audioTrack = audioConnection != nil || recordsComputerMicrophone
+      ? try RecordingAudioTrack(mixesComputerMicrophone: audioConnection != nil && recordsComputerMicrophone) : nil
+    let recording = NativeScreenRecording(
+      source: source,
+      audioConnection: audioConnection,
+      computerMicrophone: microphone,
+      audioTrack: audioTrack
+    )
     do {
+      if let microphone {
+        try await microphone.start()
+        recording.listenToComputerMicrophone(microphone)
+      }
       if let audioConnection, let audioTrack {
         audioConnection.start { [weak recording] event in recording?.receiveAudioEvent(event) } failed: { [weak recording] error in
           recording?.beginFinish(error: error)
@@ -50,12 +69,31 @@ final class NativeScreenRecording: ScreenRecording {
       recording.source.start { [weak recording] event in recording?.receive(event) }
       try await recording.waitForStartup("Recording did not receive a video frame") { recording.writer != nil }
       if let audioTrack {
-        try await recording.waitForStartup("Recording did not receive device audio") { audioTrack.endTime != nil }
+        let message = switch (recordsComputerMicrophone, audioConnection != nil) {
+        case (true, true): "Recording did not receive both device audio and computer microphone audio"
+        case (true, false): "Recording did not receive computer microphone audio"
+        default: "Recording did not receive device audio"
+        }
+        try await recording.waitForStartup(message) { audioTrack.endTime != nil }
       }
       return recording
     } catch {
       await recording.remove()
       throw error
+    }
+  }
+
+  private func listenToComputerMicrophone(_ microphone: ComputerMicrophoneCapture) {
+    computerAudioTask = Task { [weak self] in
+      do {
+        for try await packet in microphone.packets {
+          guard let self else { return }
+          try audioTrack?.receiveComputerMicrophone(packet, until: computerMicrophoneStopTime)
+        }
+      } catch {
+        self?.beginFinish(error: error)
+        throw error
+      }
     }
   }
 
@@ -107,9 +145,10 @@ final class NativeScreenRecording: ScreenRecording {
         try videoTrack.append(sample, to: writer, clock: clock)
       } else {
         let start = CMSampleBufferGetPresentationTimeStamp(sample)
+        let hostTime = CMClockGetTime(CMClockGetHostTimeClock())
         let writer = try makeWriter(url, format, start, audioTrack?.format)
         self.writer = writer
-        audioTrack?.start(at: start, writer: writer)
+        audioTrack?.start(at: start, hostTime: hostTime, writer: writer)
         try videoTrack.append(sample, to: writer, clock: clock)
         try audioTrack?.appendBufferedSamples()
       }
@@ -131,12 +170,19 @@ final class NativeScreenRecording: ScreenRecording {
     guard finishTask == nil else { return }
     source.stop()
     audioConnection?.stop()
-    let end = [videoTrack.endTime(at: clock.now), audioTrack?.endTime].compactMap(\.self).max()
+    computerMicrophoneStopTime = CMClockGetTime(CMClockGetHostTimeClock())
+    let videoEnd = videoTrack.endTime(at: clock.now)
     finishTask = Task {
+      await computerMicrophone?.stop()
+      let microphoneResult = await computerAudioTask?.result
       await source.waitUntilStopped()
       await audioConnection?.waitUntilStopped()
+      let audioResult = Result { try audioTrack?.finish() }
+      let end = [videoEnd, audioTrack?.endTime].compactMap(\.self).max()
       try await writer?.finish(at: end)
       if let error { throw error }
+      try microphoneResult?.get()
+      _ = try audioResult.get()
     }
     for waiter in stopWaiters {
       waiter.resume()

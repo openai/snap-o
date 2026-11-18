@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// Stereo PCM at 48 kHz. Each timestamp identifies the first sample on the device clock.
+/// Stereo PCM at 48 kHz. Each timestamp identifies the first frame on the source clock.
 struct DeviceAudioPacket {
   static let magic = Data("SNA1".utf8)
   static let sampleRate: Int32 = 48000
