@@ -19,6 +19,13 @@ final class CaptureReviewPlayback {
   private(set) var time: Double = 0
   private(set) var wantsPlayback = true
   private(set) var speed: Float = 1
+  private(set) var hasAudioTrack = false
+  private var preferredVolume: Float = 1
+  private var lastAudibleVolume: Float = 1
+  var volume: Float {
+    hasAudioTrack ? preferredVolume : 0
+  }
+
   private(set) var isScrubbing = false
   private(set) var errorMessage: String?
   private var isWindowVisible = false
@@ -75,12 +82,14 @@ final class CaptureReviewPlayback {
       let rate = info.frameRate
       guard !Task.isCancelled, token == generation else { return }
       duration = seconds
+      hasAudioTrack = info.hasAudioTrack
       frameRate = rate.isFinite && rate >= 1 ? Double(rate) : 30
       trimSession = CaptureTrimSession(duration: seconds, frameRate: frameRate, trim: trim)
       driver.load(url) { [weak self] time in
         guard let self, token == generation, !self.isScrubbing, !self.seeks.isSeeking, time.isFinite else { return }
         self.time = max(0, min(time, duration))
       }
+      driver.setVolume(volume)
       configurePlayer()
       isActive = true
       seek(to: playbackRange.start)
@@ -100,6 +109,7 @@ final class CaptureReviewPlayback {
     trimSession = CaptureTrimSession()
     time = 0
     duration = 0
+    hasAudioTrack = false
   }
 
   func setPaneVisible(_ visible: Bool) {
@@ -123,6 +133,17 @@ final class CaptureReviewPlayback {
   func setSpeed(_ value: Float) {
     speed = value
     updatePlayback()
+  }
+
+  func setVolume(_ value: Float) {
+    guard hasAudioTrack, value.isFinite else { return }
+    preferredVolume = min(1, max(0, value))
+    if preferredVolume > 0 { lastAudibleVolume = preferredVolume }
+    driver.setVolume(preferredVolume)
+  }
+
+  func toggleMute() {
+    setVolume(volume == 0 ? lastAudibleVolume : 0)
   }
 
   func setScrubbing(_ editing: Bool) {
@@ -262,6 +283,7 @@ protocol CapturePlaybackDriver: AnyObject {
   func load(_ url: URL, onTime: @escaping @MainActor (Double) -> Void)
   func configure(range: CaptureTrimRange, isTrimming: Bool, onEnd: @escaping @MainActor () -> Void)
   func setPlayback(rate: Float?, end: Double?)
+  func setVolume(_ volume: Float)
   func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void)
   func stop()
 }
@@ -321,6 +343,10 @@ final class AVPlaybackDriver: CapturePlaybackDriver {
         item.forwardPlaybackEndTime = .invalid
       }
     }
+  }
+
+  func setVolume(_ volume: Float) {
+    player?.volume = volume
   }
 
   func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void) {

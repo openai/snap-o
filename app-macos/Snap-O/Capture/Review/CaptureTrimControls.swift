@@ -65,6 +65,7 @@ struct CaptureTrimControls: View {
       HStack(spacing: 8) {
         playButton
         CaptureTrimTimeline(playback: playback, url: url)
+        CapturePlaybackVolumeControl.buttonAnchor
       }
       .frame(height: CaptureReviewLayout.trimTimelineHeight)
       timeFields

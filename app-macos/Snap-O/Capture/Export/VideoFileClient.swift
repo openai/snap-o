@@ -8,6 +8,7 @@ struct VideoFileInfo {
   var size: CGSize
   var transform: CGAffineTransform = .identity
   var frameRate: Double = 30
+  var hasAudioTrack = false
 
   var displayedSize: CGSize {
     let bounds = CGRect(origin: .zero, size: size).applying(transform)
@@ -58,17 +59,18 @@ extension VideoFileClient: DependencyKey {
   static let liveValue = Self(
     inspect: { url in
       let asset = AVURLAsset(url: url)
-      guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+      let (duration, playable, tracks) = try await asset.load(.duration, .isPlayable, .tracks)
+      guard let track = tracks.first(where: { $0.mediaType == .video }) else {
         throw CocoaError(.fileReadCorruptFile)
       }
-      let (duration, playable) = try await asset.load(.duration, .isPlayable)
       let (size, transform, rate) = try await track.load(.naturalSize, .preferredTransform, .nominalFrameRate)
       return VideoFileInfo(
         duration: duration.seconds,
         isPlayable: playable,
         size: size,
         transform: transform,
-        frameRate: Double(rate)
+        frameRate: Double(rate),
+        hasAudioTrack: tracks.contains { $0.mediaType == .audio }
       )
     },
     export: { source, settings, destination in
