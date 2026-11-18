@@ -1,18 +1,20 @@
 import SwiftUI
 
-extension RecordingAudioMode {
+extension RecordingAudioSources {
   var accessibilityValue: String {
-    switch self {
-    case .off: "Audio off"
-    case .playback: "Device audio on"
-    case .microphone: "Device microphone on"
-    case .both: "Device audio and microphone on"
+    switch (playback, microphone) {
+    case (false, .off): "Audio off"
+    case (true, .off): "Device audio on"
+    case (false, .device): "Device microphone on"
+    case (true, .device): "Device audio and device microphone on"
+    case (false, .computer): "Computer microphone on"
+    case (true, .computer): "Device audio and computer microphone on"
     }
   }
 }
 
 struct RecordingAudioIcon: View {
-  let mode: RecordingAudioMode
+  let sources: RecordingAudioSources
 
   var body: some View {
     symbol
@@ -22,15 +24,15 @@ struct RecordingAudioIcon: View {
   }
 
   @ViewBuilder private var symbol: some View {
-    switch mode {
-    case .off:
+    switch (sources.playback, sources.microphone) {
+    case (false, .off):
       Image(systemName: "speaker.slash")
         .font(SnapOToolbarStyle.iconFont)
-    case .playback:
+    case (true, .off):
       Image(systemName: "speaker.wave.2.fill")
-    case .microphone:
+    case (false, _):
       Image(systemName: "microphone.fill")
-    case .both:
+    case (true, _):
       ZStack {
         Image(systemName: "speaker.wave.1.fill")
           .offset(x: -4, y: -3.5)

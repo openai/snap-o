@@ -4,10 +4,10 @@ import Foundation
 @MainActor
 final class DeviceAudioConnection {
   private let target: DeviceTarget
-  private let mode: RecordingAudioMode
+  private let mode: DeviceAudioMode
   private var task: Task<Void, Never>?
 
-  init?(target: DeviceTarget, mode: RecordingAudioMode) {
+  init?(target: DeviceTarget, mode: DeviceAudioMode) {
     guard mode != .off else { return nil }
     self.target = target
     self.mode = mode

@@ -9,15 +9,20 @@ struct AppSettingsTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let settings = AppSettings(defaults: defaults)
-    #expect(settings.recordingAudioMode == .playback)
+    #expect(settings.recordingAudio == RecordingAudioSources(playback: true))
     settings.recordDeviceAudio = false
-    #expect(AppSettings(defaults: defaults).recordingAudioMode == .off)
-    settings.recordMicrophone = true
-    #expect(AppSettings(defaults: defaults).recordingAudioMode == .microphone)
+    #expect(AppSettings(defaults: defaults).recordingAudio == RecordingAudioSources())
+    defaults.set(true, forKey: "recordMicrophone")
+    #expect(AppSettings(defaults: defaults).recordingMicrophone == .device)
+    defaults.set("mac", forKey: "recordingMicrophone")
+    #expect(AppSettings(defaults: defaults).recordingMicrophone == .computer)
+    #expect(defaults.string(forKey: "recordingMicrophone") == "computer")
+    settings.recordingMicrophone = .computer
+    #expect(AppSettings(defaults: defaults).recordingAudio == RecordingAudioSources(microphone: .computer))
     settings.recordDeviceAudio = true
-    #expect(AppSettings(defaults: defaults).recordingAudioMode == .both)
-    settings.recordMicrophone = false
-    #expect(AppSettings(defaults: defaults).recordingAudioMode == .playback)
+    #expect(AppSettings(defaults: defaults).recordingAudio == RecordingAudioSources(playback: true, microphone: .computer))
+    settings.recordingMicrophone = .off
+    #expect(AppSettings(defaults: defaults).recordingAudio == RecordingAudioSources(playback: true))
   }
 
   @Test

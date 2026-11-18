@@ -43,9 +43,9 @@ final class AppSettings {
   var showTouchesDuringCapture = false
   var recordAsBugReport = false
   var recordDeviceAudio = true
-  var recordMicrophone = false
-  var recordingAudioMode: RecordingAudioMode {
-    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  var recordingMicrophone = RecordingMicrophone.off
+  var recordingAudio: RecordingAudioSources {
+    RecordingAudioSources(playback: recordDeviceAudio, microphone: recordingMicrophone)
   }
 }
 

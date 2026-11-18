@@ -473,6 +473,17 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("| `audio --microphone` | Android microphone. |", report)
         self.assertNotIn("UNRESOLVED: Device audio", report)
 
+    def test_reports_device_clock_protocol(self):
+        self.write("device-helper/src/com/openai/snapo/DeviceClock.java", "private static final int MAGIC = 0x534e5431;\n")
+        self.commit()
+        self.assertIn("UNRESOLVED: Device clock client versioned magic", self.report())
+        self.write("app-macos/Snap-O/Device/DeviceClock.swift", 'static let magic = Data("SNT1".utf8)\n')
+        self.commit()
+        report = self.report()
+        self.assertIn("Device clock helper versioned magic", report)
+        self.assertIn("Device clock client versioned magic", report)
+        self.assertNotIn("UNRESOLVED: Device clock", report)
+
     def test_reports_device_pointer_versions(self):
         self.write("device-helper/src/com/openai/snapo/pointer/Main.java", "private static final int VERSION = 1;\n")
         self.write("app-macos/Snap-O/Device/ADB/DevicePointerProtocol.swift", "static let version: UInt32 = 1\n")

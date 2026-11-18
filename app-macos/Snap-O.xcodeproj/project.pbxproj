@@ -82,6 +82,9 @@
 		ADEC00052F70100000C0FFEE /* Snap-O/Capture/Operations/AVRecordingWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00062F70100000C0FFEE /* Snap-O/Capture/Operations/AVRecordingWriter.swift */; };
 		ADEC00072F70100000C0FFEE /* Snap-O/Capture/Operations/NativeScreenRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00082F70100000C0FFEE /* Snap-O/Capture/Operations/NativeScreenRecording.swift */; };
 		ADEC00092F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC000A2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioTrack.swift */; };
+		ADEC01112F70100000C0FFEE /* Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC01122F70100000C0FFEE /* Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift */; };
+		ADEC01132F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioMixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC01142F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioMixer.swift */; };
+		ADEC01152F70100000C0FFEE /* Snap-O/Device/DeviceClock.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC01162F70100000C0FFEE /* Snap-O/Device/DeviceClock.swift */; };
 		ADEC000B2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingVideoTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC000C2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingVideoTrack.swift */; };
 		ADEC000D2F70100000C0FFEE /* Snap-O/Capture/Operations/ScreenRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC000E2F70100000C0FFEE /* Snap-O/Capture/Operations/ScreenRecording.swift */; };
 		ADEC000F2F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEC00102F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioConnection.swift */; };
@@ -245,6 +248,9 @@
 		ADEC00062F70100000C0FFEE /* Snap-O/Capture/Operations/AVRecordingWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/AVRecordingWriter.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC00082F70100000C0FFEE /* Snap-O/Capture/Operations/NativeScreenRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/NativeScreenRecording.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC000A2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/RecordingAudioTrack.swift"; sourceTree = SOURCE_ROOT; };
+		ADEC01122F70100000C0FFEE /* Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift"; sourceTree = SOURCE_ROOT; };
+		ADEC01142F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioMixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/RecordingAudioMixer.swift"; sourceTree = SOURCE_ROOT; };
+		ADEC01162F70100000C0FFEE /* Snap-O/Device/DeviceClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/DeviceClock.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC000C2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingVideoTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/RecordingVideoTrack.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC000E2F70100000C0FFEE /* Snap-O/Capture/Operations/ScreenRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Capture/Operations/ScreenRecording.swift"; sourceTree = SOURCE_ROOT; };
 		ADEC00102F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Audio/DeviceAudioConnection.swift"; sourceTree = SOURCE_ROOT; };
@@ -489,11 +495,14 @@
 				ADEC00062F70100000C0FFEE /* Snap-O/Capture/Operations/AVRecordingWriter.swift */,
 				ADEC00082F70100000C0FFEE /* Snap-O/Capture/Operations/NativeScreenRecording.swift */,
 				ADEC000A2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioTrack.swift */,
+				ADEC01122F70100000C0FFEE /* Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift */,
+				ADEC01142F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioMixer.swift */,
 				ADEC000C2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingVideoTrack.swift */,
 				ADEC000E2F70100000C0FFEE /* Snap-O/Capture/Operations/ScreenRecording.swift */,
 				ADEC00102F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioConnection.swift */,
 				A471E136E99C01AC20B9E101 /* Snap-O/Device/ADB/ADBShellV2Stream.swift */,
 				7FC256D4A6364890A71E50C3 /* Snap-O/Device/DeviceHelper.swift */,
+				ADEC01162F70100000C0FFEE /* Snap-O/Device/DeviceClock.swift */,
 				032CA1020789BE3DBF10FDD1 /* Snap-O/Device/ADB/DeviceFileCommand.swift */,
 				7026EDEFFB2567A42251091F /* Snap-O/Utilities/Logging.swift */,
 				C0E3FDC6E60EA9FD9B55AF23 /* Snap-O/Utilities/Perf.swift */,
@@ -791,11 +800,14 @@
 				ADEC00052F70100000C0FFEE /* Snap-O/Capture/Operations/AVRecordingWriter.swift in Sources */,
 				ADEC00072F70100000C0FFEE /* Snap-O/Capture/Operations/NativeScreenRecording.swift in Sources */,
 				ADEC00092F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioTrack.swift in Sources */,
+				ADEC01112F70100000C0FFEE /* Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift in Sources */,
+				ADEC01132F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingAudioMixer.swift in Sources */,
 				ADEC000B2F70100000C0FFEE /* Snap-O/Capture/Operations/RecordingVideoTrack.swift in Sources */,
 				ADEC000D2F70100000C0FFEE /* Snap-O/Capture/Operations/ScreenRecording.swift in Sources */,
 				ADEC000F2F70100000C0FFEE /* Snap-O/Device/Audio/DeviceAudioConnection.swift in Sources */,
 				A471E136E99C01AC20B9E100 /* Snap-O/Device/ADB/ADBShellV2Stream.swift in Sources */,
 				B83A9AC4723046F69CA0E140 /* Snap-O/Device/DeviceHelper.swift in Sources */,
+				ADEC01152F70100000C0FFEE /* Snap-O/Device/DeviceClock.swift in Sources */,
 				DDE1283E70292A0AB1422BE6 /* Snap-O/Device/ADB/DeviceFileCommand.swift in Sources */,
 				070EBCE02999D50E6728DA90 /* Snap-O/Utilities/Logging.swift in Sources */,
 				2DD273EBBBEAF96739F5A110 /* Snap-O/Utilities/Perf.swift in Sources */,
@@ -1040,7 +1052,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
 				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
@@ -1085,7 +1097,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
 				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
@@ -1232,7 +1244,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
 				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;

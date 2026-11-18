@@ -82,6 +82,92 @@ struct NativeScreenRecordingTests {
   }
 
   @Test
+  func mapsComputerMicrophoneSamplesToVideoTimeAndTrimsBothEnds() throws {
+    let track = try RecordingAudioTrack()
+    let writer = Writer()
+    let videoStart = CMTime(value: 7, timescale: 1)
+    let hostStart = CMTime(value: 800, timescale: 1)
+    track.start(at: videoStart, writer: writer)
+    let pcm = [Int16](1 ... 12).withUnsafeBytes { Data($0) }
+    let packet = DeviceAudioPacket(timestamp: .zero, pcm: pcm)
+    let sample = try #require(try packet.sample(format: track.format, startingAt: .zero))
+    let captured = try ComputerMicrophoneCapture.packet(from: sample, hostTime: hostStart - frames(2))
+    try track.receiveComputerMicrophone(captured, deviceClockOffset: videoStart - hostStart, until: hostStart + frames(3))
+    #expect(writer.timestamps == [videoStart.seconds])
+    #expect(writer.audioFrames == [3])
+    #expect(writer.pcm == [5, 6, 7, 8, 9, 10])
+  }
+
+  @Test(arguments: [true, false])
+  func mixesComputerMicrophoneWithPlaybackAndKeepsTheLongerTail(microphoneArrivesFirst: Bool) throws {
+    let track = try RecordingAudioTrack(mixesComputerMicrophone: true)
+    let writer = Writer()
+    let videoStart = CMTime(value: 37, timescale: 1)
+    let hostStart = CMTime(value: 800, timescale: 1)
+    let deviceFrame: [Int16] = [1000, -31000]
+    let microphoneFrame: [Int16] = [1500, -2000]
+    track.start(at: videoStart, writer: writer)
+    func sendDevice() throws {
+      let pcm = Array(repeating: deviceFrame, count: 963).flatMap(\.self).withUnsafeBytes { Data($0) }
+      try track.receive(.samples(DeviceAudioPacket(timestamp: videoStart, pcm: pcm)))
+    }
+    func sendComputerMicrophone() throws {
+      let pcm = Array(repeating: microphoneFrame, count: 600).flatMap(\.self).withUnsafeBytes { Data($0) }
+      let packet = DeviceAudioPacket(timestamp: hostStart + frames(480), pcm: pcm)
+      try track.receiveComputerMicrophone(packet, deviceClockOffset: videoStart - hostStart, until: nil)
+    }
+    if microphoneArrivesFirst { try sendComputerMicrophone() }
+    try sendDevice()
+    if !microphoneArrivesFirst { try sendComputerMicrophone() }
+    #expect(writer.audioFrames == [960])
+    try track.finish()
+    #expect(writer.audioFrames == [960, 120])
+    #expect(writer.timestamps == [videoStart.seconds, (videoStart + frames(960)).seconds])
+    let expected = Array(repeating: deviceFrame, count: 480)
+      + Array(repeating: [2500, Int16.min], count: 483)
+      + Array(repeating: microphoneFrame, count: 117)
+    #expect(writer.pcm == expected.flatMap(\.self))
+  }
+
+  private func frames(_ count: Int64) -> CMTime {
+    CMTime(value: count, timescale: DeviceAudioPacket.sampleRate)
+  }
+
+  @Test(arguments: [false, true])
+  func keepsMicrophoneInSyncWhenTheFirstVideoFrameArrivesLate(withPlayback: Bool) async throws {
+    @Dependency(\.continuousClock, as: TestClock<Duration>.self)
+    var clock
+    let track = try RecordingAudioTrack(mixesComputerMicrophone: withPlayback)
+    let writer = Writer()
+    let recording = NativeScreenRecording(source: Source(), audioTrack: track) { _, _, _, _ in writer }
+    let videoStart = CMTime(value: 7, timescale: 1)
+    let hostStart = CMTime(value: 800, timescale: 1)
+    let microphone = [Int16](repeating: 1000, count: 960 * 2).withUnsafeBytes { Data($0) }
+    let playback = [Int16](repeating: 2000, count: 960 * 2).withUnsafeBytes { Data($0) }
+    func sendAudio(at elapsed: CMTime) throws {
+      let packet = DeviceAudioPacket(timestamp: hostStart + elapsed, pcm: microphone)
+      try track.receiveComputerMicrophone(packet, deviceClockOffset: videoStart - hostStart, until: nil)
+      if withPlayback {
+        recording.receiveAudioEvent(.samples(DeviceAudioPacket(timestamp: videoStart + elapsed, pcm: playback)))
+      }
+    }
+    let format = try makeFormat()
+    recording.receive(.format(format))
+    await clock.advance(by: .milliseconds(200))
+    try sendAudio(at: CMTime(value: 200, timescale: 1000))
+    #expect(track.hasBufferedDeviceSamples == withPlayback)
+    #expect(writer.timestamps.isEmpty)
+    await clock.advance(by: .milliseconds(300))
+    try recording.receive(.sample(makeSample(format, at: videoStart.seconds), isKeyFrame: true))
+    await clock.advance(by: .milliseconds(300))
+    try sendAudio(at: CMTime(value: 800, timescale: 1000))
+    try await recording.stop()
+    #expect(writer.timestamps == [7, 7.2, 7.8])
+    #expect(writer.audioFrames == [960, 960])
+    #expect(writer.pcm == [Int16](repeating: withPlayback ? 3000 : 1000, count: 2 * 960 * 2))
+  }
+
+  @Test
   func formatCanChangeUntilTheFirstKeyframe() async throws {
     let writer = Writer()
     var initialWidth: Int32?
@@ -160,10 +246,20 @@ struct NativeScreenRecordingTests {
     var end: Double?
     var timestamps: [Double] = []
     var audioFrames: [Int] = []
+    var pcm: [Int16] = []
     func append(_ sample: CMSampleBuffer) {
       timestamps.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
       if let format = CMSampleBufferGetFormatDescription(sample), CMFormatDescriptionGetMediaType(format) == kCMMediaType_Audio {
         audioFrames.append(CMSampleBufferGetNumSamples(sample))
+        if let block = sample.dataBuffer {
+          var samples = [Int16](repeating: 0, count: CMBlockBufferGetDataLength(block) / MemoryLayout<Int16>.size)
+          let status = samples.withUnsafeMutableBytes { bytes in
+            guard let address = bytes.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
+            return CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: bytes.count, destination: address)
+          }
+          #expect(status == noErr)
+          pcm.append(contentsOf: samples)
+        }
       }
     }
 

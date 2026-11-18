@@ -45,9 +45,10 @@ swiftc_with_test_dependencies -swift-version 6 -parse-as-library -D SNAPO_STANDA
   Snap-O/Device/Emulators/emulator_preview.pb.swift \
   Snap-O/Capture/Operations/NativeScreenRecording.swift Snap-O/Capture/Operations/ScreenRecording.swift \
   Snap-O/Capture/Operations/RecordingVideoTrack.swift Snap-O/Capture/Operations/RecordingAudioTrack.swift \
+  Snap-O/Capture/Operations/RecordingAudioMixer.swift Snap-O/Capture/Operations/ComputerMicrophoneCapture.swift \
   Snap-O/Capture/Operations/AVRecordingWriter.swift \
   Snap-O/Capture/Operations/RecordingOptions.swift Snap-O/Device/Audio/DeviceAudioConnection.swift Snap-O/Device/Audio/DeviceAudioPacket.swift \
-  Snap-O/Device/DeviceHelper.swift Snap-O/Device/Video/DiscoveredVideo.swift Snap-O/Device/Video/DeviceVideoConnection.swift \
+  Snap-O/Device/DeviceHelper.swift Snap-O/Device/DeviceClock.swift Snap-O/Device/Video/DiscoveredVideo.swift Snap-O/Device/Video/DeviceVideoConnection.swift \
   Snap-O/Device/Video/DeviceVideoSource.swift Snap-O/Device/Video/DeviceVideoPacket.swift \
   Snap-O/LivePreview/Rendering/LivePreviewFrameSource.swift Snap-O/LivePreview/Rendering/LivePreviewSession.swift Snap-O/LivePreview/PreviewVideo.swift \
   StandaloneTests/Support/TestGate.swift Snap-OIntegrationTests/AsyncTestSupport.swift \

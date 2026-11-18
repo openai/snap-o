@@ -43,12 +43,12 @@ final class AppSettings {
     didSet { defaults.set(recordDeviceAudio, forKey: "recordDeviceAudio") }
   }
 
-  var recordMicrophone: Bool {
-    didSet { defaults.set(recordMicrophone, forKey: "recordMicrophone") }
+  var recordingMicrophone: RecordingMicrophone {
+    didSet { defaults.set(recordingMicrophone.rawValue, forKey: "recordingMicrophone") }
   }
 
-  var recordingAudioMode: RecordingAudioMode {
-    RecordingAudioMode(playback: recordDeviceAudio, microphone: recordMicrophone)
+  var recordingAudio: RecordingAudioSources {
+    RecordingAudioSources(playback: recordDeviceAudio, microphone: recordingMicrophone)
   }
 
   var syncClipboard: Bool {
@@ -73,7 +73,11 @@ final class AppSettings {
     showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")
     recordAsBugReport = defaults.bool(forKey: "recordAsBugReport")
     recordDeviceAudio = defaults.object(forKey: "recordDeviceAudio") as? Bool ?? true
-    recordMicrophone = defaults.bool(forKey: "recordMicrophone")
+    if defaults.string(forKey: "recordingMicrophone") == "mac" {
+      defaults.set(RecordingMicrophone.computer.rawValue, forKey: "recordingMicrophone")
+    }
+    recordingMicrophone = defaults.string(forKey: "recordingMicrophone").flatMap(RecordingMicrophone.init(rawValue:))
+      ?? (defaults.bool(forKey: "recordMicrophone") ? .device : .off)
     syncClipboard = defaults.object(forKey: "syncClipboard") as? Bool ?? true
     keyboardInput = defaults.object(forKey: "keyboardInput") as? Bool ?? true
     deviceControlsPlacement = defaults.string(forKey: "deviceControlsPlacement")

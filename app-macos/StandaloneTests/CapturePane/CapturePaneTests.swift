@@ -54,37 +54,52 @@ struct CapturePaneTests {
     await fixture.start(pane)
     AppSettings.shared.recordAsBugReport = bugReport
     AppSettings.shared.recordDeviceAudio = true
-    AppSettings.shared.recordMicrophone = true
+    AppSettings.shared.recordingMicrophone = .computer
     defer {
       AppSettings.shared.recordDeviceAudio = true
-      AppSettings.shared.recordMicrophone = false
+      AppSettings.shared.recordingMicrophone = .off
       AppSettings.shared.recordAsBugReport = false
     }
     pane.startRecording()
     AppSettings.shared.recordDeviceAudio = false
-    AppSettings.shared.recordMicrophone = false
+    AppSettings.shared.recordingMicrophone = .off
     let recording = try #require(fixture.recordings.value.first)
-    #expect(recording.options.audioMode == (bugReport ? .off : .both))
+    #expect(recording.options.audio == (bugReport ? RecordingAudioSources() : RecordingAudioSources(playback: true, microphone: .computer)))
     await pane.close()
     await fixture.close()
   }
 
-  @Test(arguments: [false, true], [false, true])
-  func snapshotsAudioSourcesIndependently(playback: Bool, mic: Bool) async throws {
+  @Test(arguments: [false, true], [RecordingMicrophone.off, .device, .computer])
+  func snapshotsAudioSourcesIndependently(playback: Bool, mic: RecordingMicrophone) async throws {
     let fixture = Fixture(deviceIDs: ["phone"])
     let pane = fixture.pane()
     await fixture.start(pane)
     AppSettings.shared.recordDeviceAudio = playback
-    AppSettings.shared.recordMicrophone = mic
+    AppSettings.shared.recordingMicrophone = mic
     defer {
       AppSettings.shared.recordDeviceAudio = true
-      AppSettings.shared.recordMicrophone = false
+      AppSettings.shared.recordingMicrophone = .off
     }
     pane.startRecording()
     AppSettings.shared.recordDeviceAudio = false
-    AppSettings.shared.recordMicrophone = false
+    AppSettings.shared.recordingMicrophone = .off
     let options = try #require(fixture.recordings.value.first?.options)
-    #expect(options.audioMode == RecordingAudioMode(playback: playback, microphone: mic))
+    #expect(options.audio == RecordingAudioSources(playback: playback, microphone: mic))
+    await pane.close()
+    await fixture.close()
+  }
+
+  @Test
+  func offersTheComputerMicrophoneOnDevicesWithoutAudioCapture() async throws {
+    let fixture = Fixture(deviceIDs: ["phone"], android: (version: "12", sdk: 32))
+    let pane = fixture.pane()
+    await fixture.start(pane)
+    AppSettings.shared.recordingMicrophone = .computer
+    defer { AppSettings.shared.recordingMicrophone = .off }
+    #expect(pane.canChooseRecordingAudio && !pane.supportsDeviceAudio)
+    pane.startRecording()
+    let options = try #require(fixture.recordings.value.first?.options)
+    #expect(options.audio == RecordingAudioSources(microphone: .computer))
     await pane.close()
     await fixture.close()
   }
@@ -692,7 +707,7 @@ struct CapturePaneTests {
     let recordings = TestValue<[RecordingCapture]>([])
     let store: FileStore
     let history: CaptureHistory
-    init(deviceIDs: [String] = ["A", "B"]) {
+    init(deviceIDs: [String] = ["A", "B"], android: (version: String, sdk: Int) = ("16", 36)) {
       AppSettings.shared.lastViewedDeviceID = nil
       AppSettings.shared.startupCaptureMode = .livePreview
       AppSettings.shared.recordAsBugReport = false
@@ -700,7 +715,8 @@ struct CapturePaneTests {
       history = CaptureHistory(repository: CaptureHistoryRepository(root: root.appendingPathComponent("history")))
       let connected = deviceIDs.map { serial in
         Device(
-          id: serial, model: serial, androidVersion: "16", androidSDK: 36, vendorModel: nil, manufacturer: nil, avdName: nil,
+          id: serial, model: serial, androidVersion: android.version, androidSDK: android.sdk, vendorModel: nil, manufacturer: nil,
+          avdName: nil,
           connection: DeviceTarget(serial: serial, transportID: serial)
         )
       }
