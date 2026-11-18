@@ -34,6 +34,75 @@ struct CaptureReviewPlaybackTests {
 
   @Test
   @MainActor
+  func unmutingRestoresTheLastAudibleVolume() async {
+    let driver = PlaybackSpy()
+    let playback = CaptureReviewPlayback(driver: driver)
+    await loadRecording(into: playback, hasAudioTrack: true)
+    playback.setVolume(0.4)
+    #expect(driver.volume == 0.4)
+    playback.toggleMute()
+    #expect(playback.volume == 0 && driver.volume == 0)
+    playback.toggleMute()
+    #expect(playback.volume == 0.4 && driver.volume == 0.4)
+  }
+
+  @Test
+  @MainActor
+  func adjustingVolumeFromSilenceSetsANewUnmuteLevel() async {
+    let driver = PlaybackSpy()
+    let playback = CaptureReviewPlayback(driver: driver)
+    await loadRecording(into: playback, hasAudioTrack: true)
+    playback.toggleMute()
+    playback.setVolume(0.6)
+    #expect(playback.volume == 0.6 && driver.volume == 0.6)
+    playback.setVolume(0)
+    playback.toggleMute()
+    #expect(playback.volume == 0.6 && driver.volume == 0.6)
+  }
+
+  @Test
+  @MainActor
+  func mutedPlaybackContinuesThroughTrimPreview() async {
+    let driver = PlaybackSpy()
+    let playback = CaptureReviewPlayback(driver: driver)
+    await loadRecording(into: playback, hasAudioTrack: true)
+    playback.setWindowVisible(true)
+    playback.toggleMute()
+    #expect(driver.rate == 1 && driver.volume == 0)
+    playback.beginTrimming()
+    playback.togglePlayback()
+    #expect(driver.rate == 1 && driver.volume == 0)
+    playback.cancelTrimming()
+    #expect(driver.rate == 1 && driver.volume == 0)
+    playback.stop()
+  }
+
+  @Test(arguments: [false, true])
+  @MainActor
+  func videoWithoutAudioStaysMutedAndPreservesThePreferredVolume(wasMuted: Bool) async {
+    let driver = PlaybackSpy()
+    let playback = CaptureReviewPlayback(driver: driver)
+    await loadRecording(into: playback, hasAudioTrack: true)
+    playback.setVolume(0.4)
+    if wasMuted { playback.toggleMute() }
+
+    await loadRecording(into: playback, hasAudioTrack: false)
+    #expect(!playback.hasAudioTrack && playback.volume == 0 && driver.volume == 0)
+    playback.toggleMute()
+    playback.beginTrimming()
+    playback.setVolume(0.8)
+    #expect(playback.isTrimming && playback.volume == 0 && driver.volume == 0)
+
+    await loadRecording(into: playback, hasAudioTrack: true)
+    let expectedVolume: Float = wasMuted ? 0 : 0.4
+    #expect(playback.hasAudioTrack && playback.volume == expectedVolume && driver.volume == expectedVolume)
+    playback.setVolume(0)
+    playback.toggleMute()
+    #expect(playback.volume == 0.4 && driver.volume == 0.4)
+  }
+
+  @Test
+  @MainActor
   func trimmingPassesBoundsAndRestoresPlayback() async {
     let driver = PlaybackSpy()
     await withDependencies {
@@ -120,12 +189,24 @@ struct CaptureReviewPlaybackTests {
 }
 
 @MainActor
+private func loadRecording(into playback: CaptureReviewPlayback, hasAudioTrack: Bool) async {
+  await withDependencies {
+    $0.videoFiles.inspect = { _ in
+      VideoFileInfo(duration: 3, size: CGSize(width: 64, height: 32), hasAudioTrack: hasAudioTrack)
+    }
+  } operation: {
+    await playback.load(URL(filePath: hasAudioTrack ? "/audio.mp4" : "/silent.mp4"))
+  }
+}
+
+@MainActor
 private final class PlaybackSpy: CapturePlaybackDriver {
   var player: AVQueuePlayer? {
     nil
   }
 
   var rate: Float?
+  var volume: Float = 1
   var end: Double?
   var position = 0.0
   var range = CaptureTrimRange(start: 0, end: 0)
@@ -139,6 +220,10 @@ private final class PlaybackSpy: CapturePlaybackDriver {
   func setPlayback(rate: Float?, end: Double?) {
     self.rate = rate
     self.end = end
+  }
+
+  func setVolume(_ volume: Float) {
+    self.volume = volume
   }
 
   func seek(_ request: CaptureSeekQueue.Request, completion: @escaping @MainActor () -> Void) {

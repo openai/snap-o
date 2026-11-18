@@ -97,6 +97,17 @@ struct CaptureReviewView: View {
         ) { try? review.makeDragItem(frame: $0) }
           .id(capture.id)
       }
+      // Keep the slider above the video's crop handles as the pointer moves up from the speaker.
+      .overlayPreferenceValue(CapturePlaybackVolumeControl.ButtonBounds.self) { anchor in
+        if let anchor {
+          GeometryReader { geometry in
+            let button = geometry[anchor]
+            CapturePlaybackVolumeControl(playback: review.playback)
+              .frame(height: button.maxY, alignment: .bottom)
+              .position(x: button.midX, y: button.maxY / 2)
+          }
+        }
+      }
       .task(id: request) { await review.prepareDrag() }
     } else {
       VStack(spacing: 12) {
