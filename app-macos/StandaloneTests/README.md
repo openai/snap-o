@@ -172,11 +172,12 @@ coverage; a unit pass does not verify app integration or visual behavior.
 
 After changing URL handling or workspace scene declarations, verify routing in a local test build with a connected device or installed AVD. This check opens app windows and requires the same approval as other native UI checks.
 
-1. Open a workspace and note the workspace count in the Window menu.
+1. Launch Snap-O normally. Confirm it opens a capture workspace and Device Manager stays closed. Note the workspace count in the Window menu.
 2. Open a device link using `open -a /path/to/Snap-O.app` and the URL.
-3. Confirm the existing workspace switches to that device’s Live Preview and the workspace count stays unchanged.
+3. Confirm the existing workspace shows that device’s Live Preview. Check that Device Manager stays closed and the workspace count stays the same.
 4. Repeat with Device Manager focused and with the workspace minimized. Confirm the same workspace returns.
-5. Quit the test app, then open the URL again. Confirm it creates one workspace and shows the requested device.
+5. Leave Device Manager open and close the workspace. Open the URL and confirm a new workspace shows the device.
+6. Close Device Manager and quit the test app. Open the URL again and confirm that only the workspace for the requested device appears.
 
 Coordinator unit tests use mock targets, so they do not cover SwiftUI scene creation. See the [device link parameters](https://openai.github.io/snap-o/screen-capture.html#open-a-device-from-a-link) for URL examples.
 

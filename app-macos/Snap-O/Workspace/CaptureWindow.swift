@@ -116,20 +116,23 @@ struct CaptureWindow: View {
         )
         .frame(width: 0, height: 0)
       )
-      .background(
-        WindowCommandRegistration {
-          session.showLivePreview()
-        } openDevice: { request in
-          session.openDevice(request)
-        } attached: { window in
-          session.attach(to: window)
-        } thumbnail: { connection in
-          guard let attachment = controller.livePreviewAttachment(for: connection.deviceID.storedValue),
-                attachment.target == connection else { return nil }
-          return attachment.thumbnail
+      .background {
+        // SwiftUI can update a workspace's views after AppKit closes its window.
+        if !session.isClosed {
+          WindowCommandRegistration {
+            session.showLivePreview()
+          } openDevice: { request in
+            session.openDevice(request)
+          } attached: { window in
+            session.attach(to: window)
+          } thumbnail: { connection in
+            guard let attachment = controller.livePreviewAttachment(for: connection.deviceID.storedValue),
+                  attachment.target == connection else { return nil }
+            return attachment.thumbnail
+          }
+          .frame(width: 0, height: 0)
         }
-        .frame(width: 0, height: 0)
-      )
+      }
   }
 
   private var captureDeviceLabel: (name: String, server: String?)? {
