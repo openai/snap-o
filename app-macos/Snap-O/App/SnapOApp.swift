@@ -4,6 +4,8 @@ import SwiftUI
 struct SnapOApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self)
   var appDelegate
+  @Environment(\.openWindow)
+  private var openWindow
 
   private let runtime: AppRuntime
   private let settings = AppSettings.shared
@@ -48,6 +50,15 @@ struct SnapOApp: App {
   }
 
   var body: some Scene {
+    // A device link can arrive before any window has appeared.
+    SnapOCommandCoordinator.shared.openWorkspace = { [openWindow] in
+      openWindow(id: WorkspaceWindowID.main)
+    }
+    // AppDelegate routes each URL so SwiftUI does not open a second window for it.
+    return windows.handlesExternalEvents(matching: [])
+  }
+
+  @SceneBuilder private var windows: some Scene {
     WindowGroup(
       id: WorkspaceWindowID.main,
       for: WorkspaceWindowConfiguration.self,
@@ -56,14 +67,12 @@ struct SnapOApp: App {
           workspaces: runtime.workspaces,
           initialWorkspace: configuration.wrappedValue.workspace
         )
-        .modifier(WorkspaceWindowLauncher())
       },
       defaultValue: {
         WorkspaceWindowConfiguration(workspace: .persisted())
       }
     )
-    // AppDelegate routes URLs and opens a workspace only when needed.
-    .handlesExternalEvents(matching: [])
+    .defaultLaunchBehavior(.presented)
     .environment(settings)
     .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)
@@ -78,7 +87,6 @@ struct SnapOApp: App {
 
     Window("Device Manager", id: "device-manager") {
       DeviceManagerWindow(manager: runtime.deviceManager)
-        .modifier(WorkspaceWindowLauncher())
     }
     .defaultSize(width: 680, height: 420)
     .windowResizability(.contentMinSize)
@@ -93,7 +101,6 @@ struct SnapOApp: App {
 
     Window("Capture History", id: "capture-history") {
       CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
-        .modifier(WorkspaceWindowLauncher())
     }
     .defaultSize(width: 800, height: 650)
     .windowResizability(.contentMinSize)
