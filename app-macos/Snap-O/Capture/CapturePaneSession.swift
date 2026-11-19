@@ -154,7 +154,7 @@ final class CapturePaneSession {
   }
 
   var canChooseRecordingAudio: Bool {
-    !AppSettings.shared.recordAsBugReport && captureDevice != nil
+    !AppSettings.shared.recordAsBugReport
   }
 
   var supportsDeviceAudio: Bool {

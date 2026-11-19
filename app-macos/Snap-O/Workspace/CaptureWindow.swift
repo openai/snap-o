@@ -159,7 +159,7 @@ struct CaptureWindow: View {
         return (deviceManager.emulators.first { $0.avdName == name }?.title ?? name, nil)
       }
     }
-    if controller.isLivePreviewActive, let serial = controller.loadingPreviewDeviceID {
+    if controller.isLivePreviewActive, controller.hasDevices, let serial = controller.loadingPreviewDeviceID {
       return deviceLabel(for: serial)
     }
     guard let title = controller.currentCaptureDeviceTitle else { return nil }
@@ -187,9 +187,9 @@ struct CaptureWindow: View {
     guard layout.showsCapture else { return nil }
     let label = captureDeviceLabel
     return CapturePaneTitle(
-      title: label?.name ?? "Snap-O",
+      title: label?.name ?? "Devices",
       serverName: label?.server,
-      devicePicker: controller.hasAlternativeMedia() ? devicePicker : nil
+      devicePicker: devicePicker
     ) {
       openWindow(id: "device-manager")
     }

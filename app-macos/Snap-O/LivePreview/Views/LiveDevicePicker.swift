@@ -11,6 +11,11 @@ struct LiveDevicePicker: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 0) {
+        if previews.isEmpty {
+          Text("No active devices")
+            .foregroundStyle(.secondary)
+            .padding(8)
+        }
         ForEach(previews) { preview in
           DevicePickerRow(
             preview: preview, attachment: attachment?.target == preview.device.connection ? attachment : nil,
