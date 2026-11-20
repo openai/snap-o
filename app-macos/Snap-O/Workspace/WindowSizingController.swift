@@ -61,6 +61,7 @@ struct WindowSizingController: NSViewRepresentable {
 
     private weak var window: NSWindow?
     private let edgeFit = WindowEdgeFitController()
+    private var captureResize = CaptureWindowResize()
     private let defaults: UserDefaults
     private var currentAspect: CGFloat = 1
     private var currentLayout: WorkspaceLayout?
@@ -293,18 +294,19 @@ struct WindowSizingController: NSViewRepresentable {
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
       guard !fullScreen.usesFullScreenFrame else { return frameSize }
-      let width = max(frameSize.width, sender.minSize.width)
-      guard currentLayout == .capture, !isApplyingLayoutTransition else {
-        return NSSize(width: width, height: frameSize.height)
+      var size = frameSize
+      // AppKit proposes the desktop tile size before live resize begins.
+      if currentLayout == .capture, sender.inLiveResize, !isApplyingLayoutTransition {
+        size = captureResize.frameSize(
+          from: sender.frame.size, to: frameSize, aspectRatio: currentAspect,
+          chromeHeight: WindowChromeMetrics.totalToolbarHeight, desktop: sender.screen?.visibleFrame.size
+        )
       }
-      let aspect = max(currentAspect, 0.0001)
-      return NSSize(
-        width: width,
-        height: (WindowChromeMetrics.totalToolbarHeight + (width / aspect)).rounded()
-      )
+      return CGSize(width: max(size.width, sender.minSize.width), height: size.height)
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
+      captureResize = CaptureWindowResize()
       guard !fullScreen.usesFullScreenFrame, !edgeFit.isAnimating, let window = notification.object as? NSWindow,
             let currentLayout else { return }
       rememberWindowSize(window, layout: currentLayout)

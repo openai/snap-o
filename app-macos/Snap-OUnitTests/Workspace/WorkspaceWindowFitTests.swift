@@ -2,6 +2,49 @@ import CoreGraphics
 import Testing
 
 struct WorkspaceWindowFitTests {
+  private struct Drag {
+    var current = CGSize(width: 300, height: 680)
+    var aspectRatio: CGFloat = 0.5
+    var resize = CaptureWindowResize()
+
+    mutating func propose(width: CGFloat, height: CGFloat) -> CGSize {
+      current = resize.frameSize(
+        from: current, to: CGSize(width: width, height: height), aspectRatio: aspectRatio,
+        chromeHeight: 80, desktop: CGSize(width: 1440, height: 900)
+      )
+      return current
+    }
+  }
+
+  @Test
+  func verticalDragTracksHeightAcrossUpdatesAndDirectionChanges() {
+    var drag = Drag()
+    #expect(drag.propose(width: 300, height: 680) == CGSize(width: 300, height: 680))
+    #expect(drag.propose(width: 300, height: 741) == CGSize(width: 331, height: 741))
+    #expect(drag.propose(width: 300, height: 760) == CGSize(width: 340, height: 760))
+    #expect(drag.propose(width: 340, height: 660) == CGSize(width: 290, height: 660))
+  }
+
+  @Test
+  func cornerDragKeepsUsingWidthWhenOnlyHeightChangesLater() {
+    var drag = Drag()
+    #expect(drag.propose(width: 320, height: 700) == CGSize(width: 320, height: 720))
+    #expect(drag.propose(width: 320, height: 750) == CGSize(width: 320, height: 720))
+  }
+
+  @Test
+  func verticalDragFromDesktopFillKeepsTheWindowWidthForAPortraitDevice() {
+    var drag = Drag(current: CGSize(width: 1440, height: 900))
+    #expect(drag.propose(width: 1440, height: 880) == CGSize(width: 1440, height: 880))
+  }
+
+  @Test
+  func verticalDragStopsWideningALandscapeWindowAtTheDesktopWidth() {
+    var drag = Drag(current: CGSize(width: 1200, height: 680), aspectRatio: 2)
+    #expect(drag.propose(width: 1200, height: 810) == CGSize(width: 1440, height: 810))
+    #expect(drag.propose(width: 1440, height: 790) == CGSize(width: 1420, height: 790))
+  }
+
   @Test
   func portraitAndLandscapePreviewsUseTheLimitingDesktopDimension() {
     let available = CGSize(width: 1440, height: 800)
