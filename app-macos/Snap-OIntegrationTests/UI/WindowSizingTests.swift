@@ -182,12 +182,46 @@ struct WindowSizingTests {
   }
 
   @Test
+  func desktopFillKeepsItsSizeAndManualResizingResumesTheDeviceAspectWhenItFits() throws {
+    let suite = "WindowSizingTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let sizing = WindowSizingController.Coordinator(defaults: defaults)
+    let portrait = DisplayInfo(size: CGSize(width: 320, height: 480), densityScale: 1)
+    let window = ResizeStateWindow(
+      contentRect: CGRect(origin: .zero, size: portrait.size),
+      styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false
+    )
+    sizing.update(
+      layout: .capture, displayInfo: portrait, capturePaneWidth: portrait.size.width,
+      capturePaneWidthChanged: { _ in }, presentationChanged: { _ in }
+    )
+    sizing.attach(to: window)
+
+    let desktop = try #require(window.screen).visibleFrame.size
+    let compact = CGSize(width: 240, height: 480)
+    #expect(sizing.windowWillResize(window, to: desktop) == desktop)
+    #expect(sizing.windowWillResize(window, to: compact) == compact)
+
+    window.reportedLiveResize = true
+    // At this width the device alone uses the desktop height, leaving no room for the toolbar.
+    let wide = CGSize(width: (desktop.height * portrait.aspectRatio).rounded(.down), height: desktop.height - 20)
+    #expect(sizing.windowWillResize(window, to: wide) == wide)
+    let fitted = CGSize(width: 240, height: (360 + WindowChromeMetrics.totalToolbarHeight).rounded())
+    #expect(sizing.windowWillResize(window, to: compact) == fitted)
+
+    sizing.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
+    let shorter = CGSize(width: window.frame.width, height: fitted.height)
+    #expect(sizing.windowWillResize(window, to: shorter) == fitted)
+  }
+
+  @Test
   func splitViewKeepsItsFrameWhenResizedOrRotated() async throws {
     let suite = "WindowSizingTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let sizing = WindowSizingController.Coordinator(defaults: defaults)
-    let window = NSWindow(
+    let window = ResizeStateWindow(
       contentRect: CGRect(x: 0, y: 0, width: 320, height: 640),
       styleMask: [.borderless, .resizable], backing: .buffered, defer: false
     )
@@ -212,10 +246,11 @@ struct WindowSizingTests {
     let savedFrame = try #require(defaults.string(forKey: "workspace.windowFrame.capture"))
 
     sizing.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: window))
+    window.reportedLiveResize = true
     let screen = CGSize(width: 1440, height: 900)
     #expect(sizing.windowWillResize(window, to: screen) == screen)
     sizing.windowDidEnterFullScreen(Notification(name: NSWindow.didEnterFullScreenNotification, object: window))
-    for width: CGFloat in [400, 720, 1100] {
+    for width: CGFloat in [240, 400, 720, 1100] {
       let tile = CGSize(width: width, height: screen.height)
       #expect(sizing.windowWillResize(window, to: tile) == tile)
       window.setFrame(CGRect(origin: windowedFrame.origin, size: tile), display: false)
@@ -223,6 +258,7 @@ struct WindowSizingTests {
       sizing.windowDidMove(move)
     }
 
+    window.reportedLiveResize = false
     let tileFrame = window.frame
     update(.capture, display: landscape)
     #expect(window.frame == tileFrame)
@@ -246,10 +282,18 @@ struct WindowSizingTests {
     sizing.windowWillExitFullScreen(willExit)
     sizing.window(window, startCustomAnimationToExitFullScreenWithDuration: 0)
     sizing.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: window))
+    window.reportedLiveResize = true
     let proposed = CGSize(width: 600, height: 900)
     #expect(sizing.windowWillResize(window, to: proposed) == CGSize(
       width: 600, height: (WindowChromeMetrics.totalToolbarHeight + 300).rounded()
     ))
+  }
+}
+
+private final class ResizeStateWindow: NSWindow {
+  var reportedLiveResize = false
+  override var inLiveResize: Bool {
+    reportedLiveResize
   }
 }
 

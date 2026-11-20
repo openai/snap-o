@@ -56,6 +56,35 @@ extension WorkspaceLayout {
   }
 }
 
+struct CaptureWindowResize {
+  private enum Axis {
+    case horizontal, vertical
+  }
+
+  private var axis: Axis?
+
+  mutating func frameSize(
+    from current: CGSize, to proposed: CGSize, aspectRatio: CGFloat, chromeHeight: CGFloat, desktop: CGSize?
+  ) -> CGSize {
+    // Keep the same axis when a corner drag briefly changes only one dimension.
+    if axis == nil {
+      guard current != proposed else { return proposed }
+      axis = proposed.width == current.width ? .vertical : .horizontal
+    }
+
+    let aspect = max(aspectRatio, 0.0001)
+    if axis == .vertical {
+      // A filled window can be wider than the preview even at its maximum height.
+      if let desktop, current.width > ((desktop.height - chromeHeight) * aspect).rounded(.up) { return proposed }
+      let width = (max(proposed.height - chromeHeight, 0) * aspect).rounded()
+      return CGSize(width: min(width, desktop?.width ?? .infinity), height: proposed.height)
+    }
+    let height = (chromeHeight + proposed.width / aspect).rounded()
+    if let desktop, height > desktop.height { return proposed }
+    return CGSize(width: proposed.width, height: height)
+  }
+}
+
 enum WorkspaceWindowEdge {
   case left
   case right
