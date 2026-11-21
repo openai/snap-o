@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 protocol SnapOCommandTarget: AnyObject {
+  func showWindow() -> Bool
   func showLivePreview()
   func openDevice(_ request: DeviceOpenRequest)
   func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail?
@@ -15,7 +16,12 @@ final class SnapOCommandCoordinator {
   private let targets = NSHashTable<AnyObject>.weakObjects()
   private weak var focusedTarget: (any SnapOCommandTarget)?
   private weak var lastTarget: (any SnapOCommandTarget)?
+  private var currentTarget: (any SnapOCommandTarget)? {
+    focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget
+  }
+
   private var pendingDeviceRequest: DeviceOpenRequest?
+  private var workspaceActivation: CheckedContinuation<Void, Never>?
   private var isOpeningWorkspace = false
   var openWorkspace: (() -> Void)? {
     didSet { openWorkspaceIfNeeded() }
@@ -36,6 +42,7 @@ final class SnapOCommandCoordinator {
     case .target(let request):
       if let authorizeDeviceLink, requiresDeviceLinkApproval(request) {
         deviceLinkTask = Task {
+          await prepareWorkspaceForApproval()
           let approved = await authorizeDeviceLink(request)
           self.deviceLinkTask = nil
           if let approved { self.openDevice(approved) }
@@ -44,7 +51,7 @@ final class SnapOCommandCoordinator {
         openDevice(request)
       }
     case .currentPreview:
-      if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
+      if let target = currentTarget {
         target.showLivePreview()
       } else {
         pendingLivePreview = true
@@ -56,7 +63,7 @@ final class SnapOCommandCoordinator {
 
   func openDevice(_ request: DeviceOpenRequest) {
     guard deviceLinkTask == nil else { return }
-    if let target = focusedTarget ?? lastTarget ?? targets.allObjects.first as? any SnapOCommandTarget {
+    if let target = currentTarget {
       target.openDevice(request)
     } else {
       pendingDeviceRequest = request
@@ -64,8 +71,18 @@ final class SnapOCommandCoordinator {
     }
   }
 
+  private func prepareWorkspaceForApproval() async {
+    if currentTarget?.showWindow() == true { return }
+    // SwiftUI can register a hidden launch window. Wait for a workspace to become key
+    // so the review dialogs have a parent when the first alert closes.
+    await withCheckedContinuation {
+      workspaceActivation = $0
+      openWorkspaceIfNeeded()
+    }
+  }
+
   private func openWorkspaceIfNeeded() {
-    guard pendingDeviceRequest != nil || pendingLivePreview,
+    guard pendingDeviceRequest != nil || pendingLivePreview || workspaceActivation != nil,
           !isOpeningWorkspace, let openWorkspace else { return }
     isOpeningWorkspace = true
     openWorkspace()
@@ -97,11 +114,13 @@ final class SnapOCommandCoordinator {
     targets.add(target)
     focusedTarget = target
     lastTarget = target
+    workspaceActivation?.resume()
+    workspaceActivation = nil
     deliverPending(to: target)
   }
 
   private func deliverPending(to target: any SnapOCommandTarget) {
-    isOpeningWorkspace = false
+    if workspaceActivation == nil { isOpeningWorkspace = false }
     if let request = pendingDeviceRequest {
       pendingDeviceRequest = nil
       target.openDevice(request)
@@ -184,13 +203,14 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     openDeviceRequest(request)
   }
 
-  private func showWindow() {
+  @discardableResult
+  func showWindow() -> Bool {
     // Let SwiftUI finish creating a hidden launch window before requesting focus.
-    if let window, window.isVisible || window.isMiniaturized {
-      NSApplication.shared.activate(ignoringOtherApps: true)
-      window.deminiaturize(nil)
-      window.makeKeyAndOrderFront(nil)
-    }
+    guard let window, window.isVisible || window.isMiniaturized else { return false }
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    window.deminiaturize(nil)
+    window.makeKeyAndOrderFront(nil)
+    return true
   }
 
   func liveThumbnail(for connection: DeviceTarget) -> LivePreviewThumbnail? {
