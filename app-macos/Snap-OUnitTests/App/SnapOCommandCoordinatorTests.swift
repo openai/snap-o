@@ -5,6 +5,43 @@ import Testing
 @MainActor
 struct SnapOCommandCoordinatorTests {
   @Test(arguments: [false, true])
+  func coldLaunchWaitsForVisibleWorkspaceBeforeReviewingServer(hasHiddenWindow: Bool) async throws {
+    let coordinator = SnapOCommandCoordinator()
+    let launchWindow = CommandTarget()
+    launchWindow.canShowWindow = false
+    if hasHiddenWindow { coordinator.register(launchWindow) }
+    let windowsOpened = TestValue(0)
+    coordinator.openWorkspace = { [weak coordinator] in
+      windowsOpened.value += 1
+      coordinator?.register(launchWindow)
+    }
+    let reviews = TestValue([DeviceOpenRequest]())
+    coordinator.authorizeDeviceLink = { request in
+      reviews.value.append(request)
+      return request
+    }
+    let url = try #require(URL(string: "snapo://open?serial=phone&server=test-host"))
+    #expect(coordinator.handle(url: url))
+    let task = try #require(coordinator.deviceLinkTask)
+    try await waitForState { windowsOpened.value > 0 || !reviews.value.isEmpty }
+    #expect(reviews.value.isEmpty)
+    coordinator.openWorkspace = { windowsOpened.value += 1 }
+    #expect(try coordinator.handle(url: #require(URL(string: "snapo://open"))))
+    #expect(launchWindow.previews == 0)
+    coordinator.remove(launchWindow)
+
+    let target = CommandTarget()
+    coordinator.activate(target)
+    await task.value
+
+    let request = DeviceOpenRequest.serial("phone", server: .ssh(destination: "test-host"))
+    #expect(windowsOpened.value == 1)
+    #expect(reviews.value == [request])
+    #expect(target.requests == [request])
+    #expect(target.previews == 0)
+  }
+
+  @Test(arguments: [false, true])
   func incomingLinksCannotReplaceAnApproval(approved: Bool) async throws {
     let coordinator = SnapOCommandCoordinator()
     let target = CommandTarget()
@@ -243,10 +280,16 @@ struct SnapOCommandCoordinatorTests {
 
 @MainActor
 private final class CommandTarget: SnapOCommandTarget {
+  var canShowWindow = true
   var requests: [DeviceOpenRequest] = []
   var previews = 0
   var connection: DeviceTarget?
   var thumbnail: LivePreviewThumbnail?
+
+  @discardableResult
+  func showWindow() -> Bool {
+    canShowWindow
+  }
 
   func showLivePreview() {
     previews += 1
