@@ -22,7 +22,7 @@ Capture a screenshot or recording of the selected Android device, then crop or t
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
 
-When multiple devices are connected, click the device name in the title bar to switch previews. The picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
+Click the device name in the Capture title bar to open the picker. If no device is connected, click **Devices**. Select a device to preview it. The picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
 
 You can preview the same device in multiple Snap-O windows. Each window keeps its own selection.
 
@@ -30,7 +30,7 @@ When Snap-O opens in Live Preview mode, it starts connecting as soon as it finds
 
 An unshared preview pauses after its window has been fully covered for about three seconds. When you return, Snap-O blurs the last frame, if one is available, until a fresh frame arrives.
 
-Double-click any edge of the Snap-O window on the desktop to fit it to the available space. In full screen and Split View, the device image stays centered in its pane and keeps its aspect ratio.
+Drag the top or bottom edge of the Capture window to adjust its height. Double-click any edge to fit the window to the available space. Use the macOS **Fill** command to expand the window across the desktop. In Fill, full screen, and Split View, the preview stays centered and keeps its aspect ratio.
 
 You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.
 
@@ -76,7 +76,7 @@ Progress and transfer errors appear at the bottom of the preview. Device policy 
 
 ## Device Manager {#device-manager}
 
-[Snap-O 11.0.0](https://github.com/openai/snap-o/releases/tag/11.0.0) adds Device Manager for existing Android emulators and connected devices. Open **Device → Device Manager**, or use the Capture title's ellipsis menu.
+[Snap-O 11.0.0](https://github.com/openai/snap-o/releases/tag/11.0.0) adds Device Manager for existing Android emulators and connected devices. Choose **Device → Device Manager** or click **Device Manager…** at the bottom of the device picker.
 
 Click **Start** beside a stopped emulator. The row shows startup progress until Android finishes booting. Click **Open** to select a running emulator or connected phone in Live Preview and focus Capture. Start and Cold Boot do not select a device or focus Capture. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.
 
@@ -125,7 +125,7 @@ For a saved but disabled SSH server, Snap-O asks you to enable it and open the r
 
 For an unknown SSH server, Snap-O first warns that an external link requested a new server. **Review Server** opens a prefilled **Add ADB Server** dialog without connecting. Review or edit the connection, then choose **Add and Open** to save it, connect, and open the requested device. Cancel at either step discards the request.
 
-Incoming confirmations do not accept Enter as approval. Additional device links are ignored while a request is being reviewed or saved. Once approved, the request stays bound to that server and reports connection or device discovery errors without selecting another device. Choose **Retry** to try the request again, or **Cancel** to return to the available preview. When multiple devices are available, you can also select one in the preview picker.
+Incoming confirmations do not accept Enter as approval. Additional device links are ignored while a request is being reviewed or saved. Once approved, the request stays bound to that server and reports connection or device discovery errors without selecting another device. Choose **Retry** to try the request again, or **Cancel** to return to the available preview. You can also select an available device from the picker.
 
 </details>
 
