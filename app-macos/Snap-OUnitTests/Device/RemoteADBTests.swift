@@ -49,10 +49,13 @@ struct RemoteADBTests {
     let response = http ? "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body : body + "\n"
     let local = ScriptedADBConnection()
     let remote = ScriptedADBConnection(reads: [.data(Data(response.utf8)), .end])
-    let server = Server(id: serverID, connection: remote)
+    let kind: ToolID = http ? .tweaks : .network
+    let snapshot = ScriptedADBConnection(reads: [
+      .data(Data("1: 00000002 00000000 00010000 0001 01 101 @snapo_\(kind.rawValue)_42".utf8)), .end
+    ])
+    let server = Server(id: serverID, connection: remote) { snapshot.isClosed ? remote : snapshot }
     let target = DeviceTarget(serial: "emulator-5554", transportID: "7", server: server)
     let client = ADBClient(discoveryTimeout: .seconds(2)) { local }.bound(to: target)
-    let kind: ToolID = http ? .tweaks : .network
     let reference = ToolServerReference(deviceId: target.deviceID.storedValue, socketName: "snapo_\(kind.rawValue)_42")
     #expect(reference.deviceId != target.serial)
     let metadata = try await client.legacyPluginMetadata(
@@ -561,9 +564,14 @@ struct RemoteADBTests {
     let id = UUID()
     let serverID: ADBServerID
     let connection: ScriptedADBConnection
-    init(id: ADBServerID, connection: ScriptedADBConnection) {
+    private let factory: @Sendable () -> ScriptedADBConnection
+    init(
+      id: ADBServerID, connection: ScriptedADBConnection,
+      factory: (@Sendable () -> ScriptedADBConnection)? = nil
+    ) {
       serverID = id
       self.connection = connection
+      self.factory = factory ?? { connection }
     }
 
     func register(_: DeviceTarget) {}
@@ -572,7 +580,7 @@ struct RemoteADBTests {
     }
 
     func makeOperationConnection() throws -> any ADBConnection {
-      connection
+      factory()
     }
   }
 
