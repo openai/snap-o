@@ -97,6 +97,9 @@ class HTTPResponse:
                 data = self.response.read(limit + 1)
             if len(data) > limit:
                 raise SnapOError("Tool HTTP response is too large")
+            # A bounded read can return early without raising IncompleteRead.
+            if self.response.length not in (None, 0):
+                raise SnapOError("Incomplete tool HTTP response")
             value = json.loads(data)
             if not isinstance(value, dict):
                 raise SnapOError("Invalid tool HTTP response")
