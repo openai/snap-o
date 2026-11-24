@@ -52,6 +52,7 @@ export function TweaksToolApp({
   const [ordering] = useState<TweakOrdering>(() => ({ sections: new Map(), tweaks: new Map() }));
   const sectionListId = useId();
   const activeColorPanelRef = useRef<ActiveColorPanelSession | null>(null);
+  const updateRevision = useRef(0);
   const currentConnection = connectionState?.connection === connection ? connectionState : null;
   const canEdit = connection !== null && !connection.signal.aborted && currentConnection?.error === null;
   const connectionError = currentConnection?.error ?? null;
@@ -60,24 +61,34 @@ export function TweaksToolApp({
     () =>
       new TweakUpdateQueue(client, {
         onUpdate(updates, pending) {
+          updateRevision.current += 1;
           setTweaks((current) => applyTweakUpdates(current, updates, pending));
         },
         onRejected(_errors, pending, inFlight, isCurrent) {
-          void client
-            .listTweaks()
-            .then((response) => {
-              if (!isCurrent()) return;
-              const pendingAtReply = new Map(pending);
-              const inFlightAtReply = new Set(inFlight);
-              setTweaks((current) =>
-                reconcileStreamedTweaks(current, response.tweaks, pendingAtReply, inFlightAtReply)
-              );
-              setError(null);
-            })
-            .catch((cause: unknown) => {
-              if (!isCurrent()) return;
-              setError(cause instanceof Error ? cause.message : "Unable to reload tweaks.");
-            });
+          const reload = async () => {
+            while (isCurrent()) {
+              const revision = updateRevision.current;
+              try {
+                const response = await client.listTweaks();
+                if (!isCurrent()) return;
+                // A newer write or streamed snapshot can supersede this reload.
+                if (revision !== updateRevision.current) continue;
+                const pendingAtReply = new Map(pending);
+                const inFlightAtReply = new Set(inFlight);
+                setTweaks((current) =>
+                  reconcileStreamedTweaks(current, response.tweaks, pendingAtReply, inFlightAtReply)
+                );
+                setError(null);
+                return;
+              } catch (cause: unknown) {
+                if (!isCurrent()) return;
+                if (revision !== updateRevision.current) continue;
+                setError(cause instanceof Error ? cause.message : "Unable to reload tweaks.");
+                return;
+              }
+            }
+          };
+          void reload();
         },
         onError: setError,
         onSavingChange: setSaving
@@ -112,6 +123,7 @@ export function TweaksToolApp({
           connection,
           (snapshot) => {
             if (disposed || failed || connection.signal.aborted) return;
+            updateRevision.current += 1;
             // Preserve queue state at receipt, before Preact defers this update.
             const pending = new Map(queue.pending);
             const inFlight = new Set(queue.inFlight);
